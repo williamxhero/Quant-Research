@@ -1,0 +1,10 @@
+# This repository is a workspace shell. Track only the files explicitly
+# re-included below; every project and runtime artifact belongs elsewhere.
+*
+!.gitignore
+!README.md
+!AGENTS.md
+!docs/
+docs/*
+!docs/agents/
+!docs/agents/*.md
