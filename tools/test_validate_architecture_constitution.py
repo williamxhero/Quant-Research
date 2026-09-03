@@ -90,6 +90,17 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
         self.assertIn("semantic identity", candidate["identity_impact"])
 
+    def test_spec_029_external_runner_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-029.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertEqual(candidate["public_seam"], "ExternalResearchRunner / WorkspaceClient")
+        self.assertIn("runner policy", candidate["identity_impact"])
+        self.assertIn("zero launch", candidate["fail_closed_behavior"])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
