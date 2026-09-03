@@ -22,6 +22,15 @@ class ConstitutionValidationTests(unittest.TestCase):
     def test_committed_policy_is_valid(self) -> None:
         validator.validate_policy(self.policy)
 
+    def test_spec_001_campaign_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-001.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
