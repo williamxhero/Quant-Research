@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-004",
+  "canonical_owner": "quant_runtime",
+  "public_seam": "quant-runtime preflight / WorkspaceClient",
+  "identity_impact": "A frozen MarketHub snapshot and canonical run request include every meaning-bearing source, query, revision, coverage, as-of, PIT, and time-semantic value; observation timestamps are excluded.",
+  "evidence_level": "Preflight evidence supports immutable formal-run input only; NautilusTrader output remains the sole formal truth.",
+  "fail_closed_behavior": "Reject missing or drifting MarketHub evidence, incomplete coverage, invalid delivery, unavailable required PIT or time semantics, and any attempt to submit before successful preflight.",
+  "claims": [],
+  "lifecycle_states": []
+}

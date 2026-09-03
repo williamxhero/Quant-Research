@@ -31,6 +31,15 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["canonical_owner"], "apex_research")
         self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
 
+    def test_spec_004_preflight_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-004.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "quant_runtime")
+        self.assertEqual(candidate["public_seam"], "quant-runtime preflight / WorkspaceClient")
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
