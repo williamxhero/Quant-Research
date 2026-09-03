@@ -1,0 +1,62 @@
+{
+  "schema": "quant-research.architecture-constitution.v1",
+  "canonical_flow": [
+    "source-evidence",
+    "strategy-package",
+    "quant-runtime",
+    "apex-research-evidence",
+    "strategy-reporting"
+  ],
+  "owners": {
+    "strategy_workspace": {
+      "owns": ["strategy-packages", "run-requests", "run-lifecycle", "records", "artifacts", "lineage"],
+      "public_seams": ["WorkspaceClient", "WorkspaceWorker", "json-schemas", "workspace-artifact-uri"]
+    },
+    "quant_runtime": {
+      "owns": ["markethub-access", "qlib-discovery", "nautilus-formal-execution", "single-run-native-metrics"],
+      "public_seams": ["quant-runtime-cli", "runtime-capability", "workspace-result"]
+    },
+    "apex_research": {
+      "owns": ["campaigns", "research-policies", "trials", "cross-run-gates", "evidence-composition", "research-decisions"],
+      "public_seams": ["apex-research-cli", "study-report-source"]
+    },
+    "strategy_reporting": {
+      "owns": ["deterministic-read-models", "human-presentation"],
+      "public_seams": ["strategy-reporting-cli", "render-report"]
+    },
+    "markethub": {
+      "owns": ["market-data"],
+      "public_seams": ["published-snapshot-contract"]
+    }
+  },
+  "evidence": {
+    "formal_truth": "nautilustrader-output",
+    "discovery_engine": "qlib",
+    "discovery_is_formal_truth": false,
+    "formal_truth_namespace": "formal.nautilus"
+  },
+  "external_adoption": {
+    "categories": ["adapter", "internalized-idea", "benchmark", "rejected-dependency"],
+    "required_reverification": ["license", "upstream-interface"]
+  },
+  "lifecycle": {
+    "terminal_states": ["research_qualified", "retired"],
+    "forbidden_states": ["approved", "active", "order", "position", "live-trading"]
+  },
+  "future_spec_admission": {
+    "required_declarations": [
+      "canonical_owner",
+      "public_seam",
+      "identity_impact",
+      "evidence_level",
+      "fail_closed_behavior"
+    ],
+    "allowed_owners": ["strategy_workspace", "quant_runtime", "apex_research", "strategy_reporting", "markethub"],
+    "forbidden_claims": [
+      "parallel-control-plane",
+      "private-cross-repository-storage",
+      "alternate-formal-truth",
+      "production-trading"
+    ]
+  }
+}
