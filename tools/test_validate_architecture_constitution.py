@@ -40,6 +40,16 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["canonical_owner"], "quant_runtime")
         self.assertEqual(candidate["public_seam"], "quant-runtime preflight / WorkspaceClient")
 
+    def test_spec_006_governance_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-006.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
+        self.assertIn("reservation", candidate["identity_impact"])
+
     def test_spec_011a_lineage_admission_is_valid(self) -> None:
         candidate = validator.read_json(
             ROOT / "docs" / "architecture-admissions" / "spec-011a.v1.json"
