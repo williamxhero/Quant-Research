@@ -40,6 +40,15 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["canonical_owner"], "quant_runtime")
         self.assertEqual(candidate["public_seam"], "quant-runtime preflight / WorkspaceClient")
 
+    def test_spec_011a_lineage_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-011a.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "strategy_workspace")
+        self.assertEqual(candidate["public_seam"], "WorkspaceClient lineage query")
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
