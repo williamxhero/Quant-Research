@@ -23,7 +23,23 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "apex_research",
             "strategy_reporting",
         ])
-        self.assertTrue(all(item.command[:5] == ("uv", "run", "--extra", "dev", "pytest") for item in plan))
+        command_by_owner = {item.owner: item.command[:5] for item in plan}
+        self.assertEqual(
+            command_by_owner["strategy_workspace"],
+            ("uv", "run", "--extra", "dev", "pytest"),
+        )
+        self.assertEqual(
+            command_by_owner["quant_runtime"],
+            ("uv", "run", "--extra", "dev", "pytest"),
+        )
+        self.assertEqual(
+            command_by_owner["apex_research"],
+            ("uv", "run", "--group", "dev", "pytest"),
+        )
+        self.assertEqual(
+            command_by_owner["strategy_reporting"],
+            ("uv", "run", "--extra", "dev", "pytest"),
+        )
         workspace = next(item for item in plan if item.owner == "strategy_workspace")
         runtime = next(item for item in plan if item.owner == "quant_runtime")
         self.assertIn(

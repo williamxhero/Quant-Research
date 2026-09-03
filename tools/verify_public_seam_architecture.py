@@ -60,7 +60,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
             (
                 "uv",
                 "run",
-                "--extra",
+                "--group",
                 "dev",
                 "pytest",
                 "tests/test_report_source.py::test_source_round_trips_as_real_workspace_publication_envelope",
