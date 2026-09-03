@@ -64,6 +64,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "dev",
                 "pytest",
                 "tests/test_report_source.py::test_source_round_trips_as_real_workspace_publication_envelope",
+                "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
             ),
         ),
         FixtureCheck(
@@ -88,6 +89,12 @@ SOURCE_RULES = {
         ("strategy_reporting", "Workspace must not own Reporting behavior"),
         ("nautilus_trader", "Workspace must not own formal execution"),
         ("from qlib", "Workspace must not own discovery execution"),
+        ("factorcandidate", "Workspace must not own Candidate semantics"),
+        ("factor-candidate", "Workspace must not own Candidate schemas"),
+        ("modelcandidate", "Workspace must not own Candidate semantics"),
+        ("model-candidate", "Workspace must not own Candidate schemas"),
+        ("strategycandidate", "Workspace must not own Candidate semantics"),
+        ("strategy-candidate", "Workspace must not own Candidate schemas"),
     ),
     "quant-runtime": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -95,6 +102,12 @@ SOURCE_RULES = {
         ("sqlite3", "Runtime must not create a parallel control plane"),
         ("apex_research", "Runtime must not own research orchestration"),
         ("strategy_reporting", "Runtime must not own presentation"),
+        ("factorcandidate", "Runtime must not own Candidate semantics"),
+        ("factor-candidate", "Runtime must not own Candidate schemas"),
+        ("modelcandidate", "Runtime must not own Candidate semantics"),
+        ("model-candidate", "Runtime must not own Candidate schemas"),
+        ("strategycandidate", "Runtime must not own Candidate semantics"),
+        ("strategy-candidate", "Runtime must not own Candidate schemas"),
     ),
     "apex-research": (
         ("strategy_workspace.storage", "private Workspace access"),

@@ -48,6 +48,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertIn("tests/test_preflight.py", runtime.command)
         self.assertIn("tests/test_preflight_run_order.py", runtime.command)
+        apex = next(item for item in plan if item.owner == "apex_research")
+        self.assertIn(
+            "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
+            apex.command,
+        )
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
