@@ -53,6 +53,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
             apex.command,
         )
+        self.assertIn("tests/test_governance_seams.py", apex.command)
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -62,6 +63,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             (source / "bad.py").write_text("from strategy_workspace.storage import secret\n")
             with self.assertRaisesRegex(verifier.ArchitectureViolation, "private Workspace access"):
                 verifier.scan_sources(source_root)
+
+    def test_source_scan_rejects_an_unguarded_apex_subprocess(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "apex-research" / "src" / "apex_research"
+            source.mkdir(parents=True)
+            (source / "rogue.py").write_text("import subprocess\nsubprocess.run(['tool'])\n")
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "subprocess seam"):
+                verifier.scan_sources(root)
 
 
 if __name__ == "__main__":

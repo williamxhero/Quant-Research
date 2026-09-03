@@ -65,6 +65,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "pytest",
                 "tests/test_report_source.py::test_source_round_trips_as_real_workspace_publication_envelope",
                 "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
+                "tests/test_governance_seams.py",
             ),
         ),
         FixtureCheck(
@@ -95,6 +96,8 @@ SOURCE_RULES = {
         ("model-candidate", "Workspace must not own Candidate schemas"),
         ("strategycandidate", "Workspace must not own Candidate semantics"),
         ("strategy-candidate", "Workspace must not own Candidate schemas"),
+        ("campaignpolicy", "Workspace must not interpret Apex budget policy"),
+        ("budgetdimension", "Workspace must not interpret Apex budget dimensions"),
     ),
     "quant-runtime": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -108,6 +111,8 @@ SOURCE_RULES = {
         ("model-candidate", "Runtime must not own Candidate schemas"),
         ("strategycandidate", "Runtime must not own Candidate semantics"),
         ("strategy-candidate", "Runtime must not own Candidate schemas"),
+        ("campaignpolicy", "Runtime must not interpret Apex budget policy"),
+        ("budgetdimension", "Runtime must not interpret Apex budget dimensions"),
     ),
     "apex-research": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -126,6 +131,8 @@ SOURCE_RULES = {
         ("import apex_research", "Reporting must consume published Apex evidence"),
         ("from apex_research", "Reporting must consume published Apex evidence"),
         ("subprocess", "Reporting must not invoke upstream tools"),
+        ("campaignpolicy", "Reporting must not interpret Apex budget policy"),
+        ("budgetdimension", "Reporting must not interpret Apex budget dimensions"),
     ),
 }
 FORBIDDEN_LIFECYCLE_TERMS = (
@@ -153,6 +160,39 @@ def scan_sources(repository_root: Path) -> None:
                     raise ArchitectureViolation(
                         f"{repository}: forbidden production-trading lifecycle term {term!r}: {path}"
                     )
+    _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
+
+
+def _scan_apex_governance_seams(source_root: Path) -> None:
+    if not source_root.is_dir():
+        return
+    adapter = source_root / "adapters" / "tools.py"
+    application = source_root / "application.py"
+    for path in source_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        if "subprocess" in source and path != adapter:
+            raise ArchitectureViolation(f"apex-research: ungoverned subprocess seam: {path}")
+    if adapter.is_file():
+        source = adapter.read_text(encoding="utf-8")
+        for marker in ("ActionGrant", "runtime_resource_scope", "lease_expires_at"):
+            if marker not in source:
+                raise ArchitectureViolation(
+                    f"apex-research: Runtime adapter lacks governed {marker} binding"
+                )
+    if application.is_file():
+        source = application.read_text(encoding="utf-8")
+        if "workspace.submit_run(" in source:
+            raise ArchitectureViolation("apex-research: run submitted before Runtime preflight")
+        for marker in (
+            "governance.execute(",
+            "GovernedAction.CANDIDATE_PACKAGE_INTAKE",
+            "GovernedAction.FORMAL_RUN",
+            "GovernedAction.REPORT_PUBLICATION",
+        ):
+            if marker not in source:
+                raise ArchitectureViolation(
+                    f"apex-research: application lacks governed side-effect marker {marker}"
+                )
 
 
 def validate_constitution() -> None:
