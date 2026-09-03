@@ -31,6 +31,17 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["canonical_owner"], "apex_research")
         self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
 
+    def test_spec_003_package_intake_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-003.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "strategy_workspace")
+        self.assertEqual(candidate["public_seam"], "WorkspaceClient package registration")
+        self.assertIn("deterministic bundle", candidate["identity_impact"])
+        self.assertIn("without execution", candidate["evidence_level"])
+
     def test_spec_004_preflight_admission_is_valid(self) -> None:
         candidate = validator.read_json(
             ROOT / "docs" / "architecture-admissions" / "spec-004.v1.json"
