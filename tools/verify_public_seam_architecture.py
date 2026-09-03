@@ -33,8 +33,11 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
             (
                 "uv",
                 "run",
+                "--extra",
+                "dev",
                 "pytest",
                 "tests/test_lifecycle.py::test_completed_lifecycle_is_monotonic_and_result_is_public",
+                "tests/test_schemas_and_package.py::test_preflight_request_requires_verified_data_semantics",
             ),
         ),
         FixtureCheck(
@@ -43,8 +46,12 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
             (
                 "uv",
                 "run",
+                "--extra",
+                "dev",
                 "pytest",
                 "tests/test_nautilus_native.py::test_nautilus_preserves_native_evidence_and_observed_bar_decisions",
+                "tests/test_preflight.py",
+                "tests/test_preflight_run_order.py",
             ),
         ),
         FixtureCheck(
@@ -53,6 +60,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
             (
                 "uv",
                 "run",
+                "--extra",
+                "dev",
                 "pytest",
                 "tests/test_report_source.py::test_source_round_trips_as_real_workspace_publication_envelope",
             ),
@@ -63,6 +72,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
             (
                 "uv",
                 "run",
+                "--extra",
+                "dev",
                 "pytest",
                 "tests/test_workspace_roundtrip.py::test_real_workspace_client_publication_round_trip",
             ),

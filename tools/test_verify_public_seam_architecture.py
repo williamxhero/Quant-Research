@@ -23,7 +23,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "apex_research",
             "strategy_reporting",
         ])
-        self.assertTrue(all(item.command[:3] == ("uv", "run", "pytest") for item in plan))
+        self.assertTrue(all(item.command[:5] == ("uv", "run", "--extra", "dev", "pytest") for item in plan))
+        workspace = next(item for item in plan if item.owner == "strategy_workspace")
+        runtime = next(item for item in plan if item.owner == "quant_runtime")
+        self.assertIn(
+            "tests/test_schemas_and_package.py::test_preflight_request_requires_verified_data_semantics",
+            workspace.command,
+        )
+        self.assertIn("tests/test_preflight.py", runtime.command)
+        self.assertIn("tests/test_preflight_run_order.py", runtime.command)
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
