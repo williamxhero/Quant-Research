@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-028",
+  "canonical_owner": "apex_research",
+  "public_seam": "WorkspaceClient publication/query",
+  "identity_impact": "Candidate semantic identity covers only canonical meaning-bearing Factor, Model, or Strategy semantics. Immutable revision and assessment envelopes preserve provenance without changing semantic identity; model artifact bytes, training environment, and fit semantics are meaning-bearing.",
+  "evidence_level": "Typed immutable research candidate records and structural assessments only; never single-run formal metrics, formal validity, or research qualification.",
+  "fail_closed_behavior": "Reject unknown candidate variants, free-form semantic extensions, non-canonical identities, dangling or mismatched typed revisions, ambiguous semantics, and invalid composition while preserving legacy v1 records without reinterpretation.",
+  "claims": [],
+  "lifecycle_states": []
+}
