@@ -205,7 +205,13 @@ def scan_sources(repository_root: Path) -> None:
 
 
 def _scan_research_memory_seams(repository: Path) -> None:
-    memory = repository / "src" / "apex_research" / "memory.py"
+    source_root = repository / "src" / "apex_research"
+    memory = (
+        source_root / "memory.py",
+        source_root / "memory_query.py",
+        source_root / "memory_workflow.py",
+        source_root / "memory_integration.py",
+    )
     _scan_apex_public_seam(
         memory,
         ApexSeamPolicy(
@@ -278,57 +284,63 @@ def _scan_focused_loop_seams(repository: Path) -> None:
 
 
 def _scan_apex_public_seam(
-    path: Path,
+    source_paths: Path | tuple[Path, ...],
     policy: ApexSeamPolicy,
 ) -> None:
-    if not path.is_file():
+    paths = (source_paths,) if isinstance(source_paths, Path) else source_paths
+    paths = tuple(path for path in paths if path.is_file())
+    if not paths:
         return
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
-    classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
-    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    trees = tuple(
+        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for path in paths
+    )
+    nodes = tuple(node for _, tree in trees for node in ast.walk(tree))
+    classes = {node.name for node in nodes if isinstance(node, ast.ClassDef)}
+    names = {node.id for node in nodes if isinstance(node, ast.Name)}
     imports = {
         alias.name
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.Import)
         for alias in node.names
     } | {
         node.module or ""
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.ImportFrom)
     }
     calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
     }
     attributes = {
         f"{node.value.id}.{node.attr}"
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
     }
-    for node in ast.walk(tree):
+    path_label = ", ".join(str(path) for path in paths)
+    for node in nodes:
         if isinstance(node, ast.ClassDef) and any(
             owner in node.name
             for owner in ("Ledger", "Registry", "Runner", "Backtester", "EvidenceTruth")
         ):
             raise ArchitectureViolation(
-                f"apex-research: {policy.component} defines forbidden parallel owner {node.name}: {path}"
+                f"apex-research: {policy.component} defines forbidden parallel owner {node.name}: {path_label}"
             )
     for module, reason in policy.forbidden_imports:
         if any(item == module or item.startswith(f"{module}.") for item in imports):
             raise ArchitectureViolation(
-                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
+                f"apex-research: {policy.component} owns forbidden {reason}: {path_label}"
             )
     for call, reason in policy.forbidden_calls:
         if call in calls:
             raise ArchitectureViolation(
-                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
+                f"apex-research: {policy.component} owns forbidden {reason}: {path_label}"
             )
     for attribute, reason in policy.forbidden_attributes:
         if attribute in attributes:
             raise ArchitectureViolation(
-                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
+                f"apex-research: {policy.component} owns forbidden {reason}: {path_label}"
             )
     missing = (
         set(policy.required_classes) - classes,
@@ -338,7 +350,7 @@ def _scan_apex_public_seam(
     if any(missing):
         absent = sorted(set().union(*missing))
         raise ArchitectureViolation(
-            f"apex-research: {policy.component} lacks public tracer boundaries {absent}: {path}"
+            f"apex-research: {policy.component} lacks public tracer boundaries {absent}: {path_label}"
         )
 
 
