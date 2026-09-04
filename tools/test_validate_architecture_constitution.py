@@ -31,6 +31,20 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["canonical_owner"], "apex_research")
         self.assertEqual(candidate["public_seam"], "WorkspaceClient publication/query")
 
+    def test_spec_002_orchestrator_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-002.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertEqual(candidate["public_seam"], "ResearchOrchestrator / WorkspaceClient")
+        self.assertEqual(
+            candidate["lifecycle_states"],
+            ["created", "running", "paused", "completed", "exhausted", "failed", "cancelled"],
+        )
+        self.assertIn("reconciliation_required blocker", candidate["fail_closed_behavior"])
+
     def test_spec_003_package_intake_admission_is_valid(self) -> None:
         candidate = validator.read_json(
             ROOT / "docs" / "architecture-admissions" / "spec-003.v1.json"
