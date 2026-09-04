@@ -1,0 +1,24 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-008",
+  "canonical_owner": "apex_research",
+  "public_seam": "ResearchEnginePort / ExternalResearchRunner / WorkspaceClient",
+  "identity_impact": "Each bounded RD-Agent request freezes the exact upstream release and commit, license notice, dependency lock, OCI image, adapter and worker protocol, model, prompt, tool, resource, seed, environment, frozen data materialization, continuation context, budget reservation, and idempotency semantics while existing Candidate, package, Runtime, and evidence identities remain unchanged.",
+  "evidence_level": "Typed Candidate proposals, hypotheses, usage, bounded failures, artifacts, and Qlib discovery-only observations; never behavioral, formal, qualification, production, runner, ledger, or lifecycle truth.",
+  "fail_closed_behavior": "Tag, commit, license, dependency lock, image, protocol, schema, input, artifact, continuation, budget, capability, or output drift causes zero launch or structured item rejection; disabled operation requires no upstream installation; fin_quant and incomplete Strategy semantics are rejected without fallback, guessing, private cross-repository access, package registration, Runtime submission, or alternate data access.",
+  "native_capabilities": ["factor", "model"],
+  "conditional_capabilities": ["strategy"],
+  "forbidden_operations": ["fin_quant", "factor-model-co-evolution", "upstream-lifecycle"],
+  "compatibility": [
+    "spec-003-package-intake",
+    "spec-004-markethub-preflight",
+    "spec-005-generated-package-sandbox",
+    "spec-006-governance",
+    "spec-007-research-engine-port",
+    "spec-009-candidate-gate",
+    "spec-028-candidate-ir",
+    "spec-029-external-runner"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}
