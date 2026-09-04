@@ -105,6 +105,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             runner.mkdir(parents=True)
             (runner / "oci.py").write_text("import subprocess\n")
             (runner / "guardian.py").write_text("import subprocess\n")
+            (runner / "recovery.py").write_text("import shutil\nshutil.copy2('a', 'b')\n")
             verifier.scan_sources(root)
 
 
