@@ -6,6 +6,32 @@
   "identity_impact": "Exact Candidate revision, family lineage, immutable gate policy and campaign binding, deterministic methods and thresholds, package intake binding, artifact bytes, sandbox proof, behavioral scenarios, parameters, and conformance outcomes participate in canonical assessment identity while prior Candidate, package, and Runtime identities remain unchanged.",
   "evidence_level": "Deterministic static and behavioral-conformance gate observations only; they are not formal evidence, research qualification, production approval, or live-trading truth.",
   "fail_closed_behavior": "All inputs are read back through public Workspace seams; missing, unsupported, unparsable, incomparable, tampered, unsafe, ungoverned, or identity-drifting inputs fail closed before registration, Runtime launch, MarketHub preflight, or canonical run as applicable.",
+  "stage_owners": {
+    "policy_orchestration_assessment": "apex_research",
+    "package_artifact_lineage": "strategy_workspace",
+    "preflight_sandbox_execution": "quant_runtime",
+    "formal_semantic_truth": "quant_runtime",
+    "presentation": "strategy_reporting"
+  },
+  "forbidden_additions": [
+    "candidate-schema",
+    "sandbox-or-backtester",
+    "governance-ledger",
+    "lifecycle",
+    "artifact-or-evidence-truth",
+    "private-cross-repository-access",
+    "adapter-gate-bypass",
+    "formal-or-qualification-masquerade"
+  ],
+  "compatibility": [
+    "spec-003-package-intake",
+    "spec-004-markethub-preflight",
+    "spec-005-generated-package-sandbox",
+    "spec-006-governance",
+    "spec-007-research-engine-port",
+    "spec-028-candidate-ir",
+    "spec-029-external-runner"
+  ],
   "claims": [],
   "lifecycle_states": []
 }

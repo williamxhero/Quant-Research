@@ -137,6 +137,33 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("CandidateGate", candidate["public_seam"])
         self.assertIn("not formal", candidate["evidence_level"])
         self.assertIn("fail closed", candidate["fail_closed_behavior"])
+        self.assertEqual(
+            candidate["stage_owners"],
+            {
+                "policy_orchestration_assessment": "apex_research",
+                "package_artifact_lineage": "strategy_workspace",
+                "preflight_sandbox_execution": "quant_runtime",
+                "formal_semantic_truth": "quant_runtime",
+                "presentation": "strategy_reporting",
+            },
+        )
+        self.assertEqual(
+            set(candidate["forbidden_additions"]),
+            {
+                "candidate-schema",
+                "sandbox-or-backtester",
+                "governance-ledger",
+                "lifecycle",
+                "artifact-or-evidence-truth",
+                "private-cross-repository-access",
+                "adapter-gate-bypass",
+                "formal-or-qualification-masquerade",
+            },
+        )
+        self.assertIn("spec-003-package-intake", candidate["compatibility"])
+        self.assertIn("spec-029-external-runner", candidate["compatibility"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
 
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
