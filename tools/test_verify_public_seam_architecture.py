@@ -62,6 +62,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_memory_policy.py", apex.command)
         self.assertIn("tests/test_memory_records.py", apex.command)
         self.assertIn("tests/test_memory_query.py", apex.command)
+        self.assertIn("tests/test_memory_orchestration.py", apex.command)
 
     def test_research_memory_rejects_private_truth_and_global_scans(self) -> None:
         required = """

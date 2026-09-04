@@ -88,6 +88,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_memory_policy.py",
                 "tests/test_memory_records.py",
                 "tests/test_memory_query.py",
+                "tests/test_memory_orchestration.py",
             ),
         ),
         FixtureCheck(
