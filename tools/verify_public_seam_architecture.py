@@ -167,11 +167,38 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
     if not source_root.is_dir():
         return
     adapter = source_root / "adapters" / "tools.py"
+    allowed_process_seams = {
+        adapter,
+        source_root / "external_runner" / "oci.py",
+        source_root / "external_runner" / "guardian.py",
+    }
     application = source_root / "application.py"
     for path in source_root.rglob("*.py"):
         source = path.read_text(encoding="utf-8")
-        if "subprocess" in source and path != adapter:
+        if "subprocess" in source and path not in allowed_process_seams:
             raise ArchitectureViolation(f"apex-research: ungoverned subprocess seam: {path}")
+    adapters = source_root / "adapters"
+    if adapters.is_dir():
+        for path in adapters.rglob("*.py"):
+            if path.name in {"__init__.py", "tools.py"}:
+                continue
+            source = path.read_text(encoding="utf-8")
+            external_adapter = any(
+                marker in source
+                for marker in (
+                    "ResearchEnginePort",
+                    "EmpiricalResearchPort",
+                    "ResearchEngineAdapter",
+                    "EmpiricalResearchAdapter",
+                )
+            )
+            if external_adapter and not any(
+                seam in source
+                for seam in ("GovernedExternalResearchRunner", "ExternalResearchRunner")
+            ):
+                raise ArchitectureViolation(
+                    f"apex-research: external adapter bypasses runner interface: {path}"
+                )
     if adapter.is_file():
         source = adapter.read_text(encoding="utf-8")
         for marker in ("ActionGrant", "runtime_resource_scope", "lease_expires_at"):

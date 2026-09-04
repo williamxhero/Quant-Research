@@ -73,6 +73,38 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             with self.assertRaisesRegex(verifier.ArchitectureViolation, "subprocess seam"):
                 verifier.scan_sources(root)
 
+    def test_external_adapter_must_depend_on_the_runner_interface(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapters = root / "apex-research" / "src" / "apex_research" / "adapters"
+            adapters.mkdir(parents=True)
+            candidate = adapters / "future_engine.py"
+            candidate.write_text("class ResearchEngineAdapter:\n    pass\n")
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "bypasses runner"):
+                verifier.scan_sources(root)
+            candidate.write_text(
+                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                "class ResearchEngineAdapter:\n"
+                "    def __init__(self, runner: GovernedExternalResearchRunner):\n"
+                "        self.runner = runner\n"
+            )
+            verifier.scan_sources(root)
+
+    def test_only_dedicated_apex_process_control_files_are_admitted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = (
+                root
+                / "apex-research"
+                / "src"
+                / "apex_research"
+                / "external_runner"
+            )
+            runner.mkdir(parents=True)
+            (runner / "oci.py").write_text("import subprocess\n")
+            (runner / "guardian.py").write_text("import subprocess\n")
+            verifier.scan_sources(root)
+
 
 if __name__ == "__main__":
     unittest.main()
