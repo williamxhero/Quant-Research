@@ -56,6 +56,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertIn("tests/test_preflight.py", runtime.command)
         self.assertIn("tests/test_preflight_run_order.py", runtime.command)
+        self.assertIn("tests/test_cli_and_distribution.py", runtime.command)
         apex = next(item for item in plan if item.owner == "apex_research")
         self.assertIn(
             "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
@@ -71,6 +72,49 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_memory_records.py", apex.command)
         self.assertIn("tests/test_memory_query.py", apex.command)
         self.assertIn("tests/test_memory_orchestration.py", apex.command)
+        self.assertIn("tests/test_validation_protocol.py", apex.command)
+        self.assertIn("tests/test_validation_eligibility.py", apex.command)
+        self.assertIn("tests/test_validation_execution.py", apex.command)
+        self.assertIn("tests/test_validation_staging.py", apex.command)
+        self.assertIn("tests/test_validation_evidence.py", apex.command)
+        self.assertIn("tests/test_validation_reporting.py", apex.command)
+        reporting = next(item for item in plan if item.owner == "strategy_reporting")
+        self.assertIn(
+            "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
+            reporting.command,
+        )
+
+    def test_validation_matrix_rejects_parallel_truth_and_execution_bypasses(self) -> None:
+        required = """
+class ValidationProtocolMatrix: pass
+class ValidationMatrixExpander: pass
+class ValidationEligibilityService: pass
+class ValidationCellExecutor: pass
+class ValidationMatrixOrchestrator: pass
+class ValidationEvidenceAggregator: pass
+class ValidationReconciliationRequired: pass
+WorkspaceClientProtocol = object
+QuantRuntimeAdapter = object
+GovernedAction.EXTERNAL_VALIDATION
+GovernedAction.FORMAL_RUN
+"""
+        forbidden = {
+            "import sqlite3\n": "parallel ledger",
+            "import quant_runtime\n": "Runtime",
+            "workspace.submit_run({})\n": "formal submission",
+            "class ValidationRunner: pass\n": "parallel runner",
+            "class ValidationEvidenceStore: pass\n": "parallel evidence",
+            "class CandidateRegistry: pass\n": "package registry",
+            "import requests\n": "direct network",
+        }
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                validation = root / "apex-research/src/apex_research/validation.py"
+                validation.parent.mkdir(parents=True)
+                validation.write_text(required + source_text, encoding="utf-8")
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
 
     def test_research_memory_rejects_private_truth_and_global_scans(self) -> None:
         required = """

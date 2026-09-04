@@ -67,6 +67,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_nautilus_native.py::test_nautilus_preserves_native_evidence_and_observed_bar_decisions",
                 "tests/test_preflight.py",
                 "tests/test_preflight_run_order.py",
+                "tests/test_cli_and_distribution.py",
             ),
         ),
         FixtureCheck(
@@ -93,6 +94,12 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_memory_records.py",
                 "tests/test_memory_query.py",
                 "tests/test_memory_orchestration.py",
+                "tests/test_validation_protocol.py",
+                "tests/test_validation_eligibility.py",
+                "tests/test_validation_execution.py",
+                "tests/test_validation_staging.py",
+                "tests/test_validation_evidence.py",
+                "tests/test_validation_reporting.py",
             ),
         ),
         FixtureCheck(
@@ -105,6 +112,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "dev",
                 "pytest",
                 "tests/test_workspace_roundtrip.py::test_real_workspace_client_publication_round_trip",
+                "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
+                "tests/test_research_reporting.py::test_validation_external_readback_tamper_fails_closed",
             ),
         ),
     )
@@ -206,6 +215,50 @@ def scan_sources(repository_root: Path) -> None:
     _scan_rdagent_seams(repository_root / "apex-research")
     _scan_focused_loop_seams(repository_root / "apex-research")
     _scan_research_memory_seams(repository_root / "apex-research")
+    _scan_validation_matrix_seams(repository_root / "apex-research")
+
+
+def _scan_validation_matrix_seams(repository: Path) -> None:
+    validation = repository / "src" / "apex_research" / "validation.py"
+    if not validation.is_file():
+        return
+    source = validation.read_text(encoding="utf-8")
+    required = (
+        "ValidationProtocolMatrix",
+        "ValidationMatrixExpander",
+        "ValidationEligibilityService",
+        "ValidationCellExecutor",
+        "ValidationMatrixOrchestrator",
+        "ValidationEvidenceAggregator",
+        "ValidationReconciliationRequired",
+        "WorkspaceClientProtocol",
+        "QuantRuntimeAdapter",
+        "GovernedAction.EXTERNAL_VALIDATION",
+        "GovernedAction.FORMAL_RUN",
+    )
+    for marker in required:
+        if marker not in source:
+            raise ArchitectureViolation(
+                f"apex-research: validation matrix lacks canonical seam {marker}: {validation}"
+            )
+    forbidden = (
+        ("import sqlite3", "parallel ledger"),
+        ("from sqlite3", "parallel ledger"),
+        ("import quant_runtime", "private Runtime"),
+        ("from quant_runtime", "private Runtime"),
+        ("submit_run(", "formal submission"),
+        ("class ValidationRunner", "parallel runner"),
+        ("class ValidationEvidenceStore", "parallel evidence"),
+        ("class CandidateRegistry", "package registry"),
+        ("import requests", "direct network"),
+        ("import httpx", "direct network"),
+        ("import socket", "direct network"),
+    )
+    for marker, reason in forbidden:
+        if marker in source:
+            raise ArchitectureViolation(
+                f"apex-research: validation matrix owns forbidden {reason}: {validation}"
+            )
 
 
 def _scan_research_memory_seams(repository: Path) -> None:
