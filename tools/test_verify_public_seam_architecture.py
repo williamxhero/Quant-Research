@@ -46,6 +46,14 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "tests/test_schemas_and_package.py::test_preflight_request_requires_verified_data_semantics",
             workspace.command,
         )
+        self.assertIn(
+            "tests/test_lineage_query.py::test_reusable_snapshot_freezes_cross_root_queries_and_allows_empty_typed_root",
+            workspace.command,
+        )
+        self.assertIn(
+            "tests/test_lineage_query.py::test_snapshot_token_tamper_store_and_cursor_mismatch_fail_closed",
+            workspace.command,
+        )
         self.assertIn("tests/test_preflight.py", runtime.command)
         self.assertIn("tests/test_preflight_run_order.py", runtime.command)
         apex = next(item for item in plan if item.owner == "apex_research")
@@ -74,7 +82,7 @@ class ResearchMemoryContextBuilder: pass
 class ResearchMemoryStep: pass
 WorkspaceClientProtocol = object
 def use_lineage(workspace):
-    return workspace.query_lineage()
+    return workspace.query_lineage(snapshot_token=snapshot_token)
 """
         forbidden = {
             "import sqlite3\n": "database",
@@ -88,9 +96,35 @@ def use_lineage(workspace):
         for source_text, reason in forbidden.items():
             with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
-                memory = root / "apex-research/src/apex_research/memory.py"
+                memory = root / "apex-research/src/apex_research/memory_query.py"
                 memory.parent.mkdir(parents=True)
                 memory.write_text(required + source_text, encoding="utf-8")
+                with self.assertRaises(verifier.ArchitectureViolation):
+                    verifier.scan_sources(root)
+
+    def test_research_memory_requires_shared_snapshot_and_no_missing_root_downgrade(self) -> None:
+        required = """
+class ResearchMemoryPolicy: pass
+class ResearchMemoryEntry: pass
+class ResearchMemoryQuery: pass
+class ResearchMemoryDuplicateService: pass
+class ResearchMemoryContextBuilder: pass
+class ResearchMemoryStep: pass
+WorkspaceClientProtocol = object
+def use_lineage(workspace):
+    return workspace.query_lineage(snapshot_token=snapshot_token)
+"""
+        forbidden = (
+            required.replace("snapshot_token=snapshot_token", "cursor=cursor"),
+            required + "\nallow_missing_root = True\n",
+            required + "\nlineage_root_not_found = 'empty'\n",
+        )
+        for source_text in forbidden:
+            with self.subTest(source=source_text), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                memory = root / "apex-research/src/apex_research/memory_query.py"
+                memory.parent.mkdir(parents=True)
+                memory.write_text(source_text, encoding="utf-8")
                 with self.assertRaises(verifier.ArchitectureViolation):
                     verifier.scan_sources(root)
 

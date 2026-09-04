@@ -49,6 +49,10 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "pytest",
                 "tests/test_lifecycle.py::test_completed_lifecycle_is_monotonic_and_result_is_public",
                 "tests/test_schemas_and_package.py::test_preflight_request_requires_verified_data_semantics",
+                "tests/test_lineage_query.py::test_reusable_snapshot_freezes_cross_root_queries_and_allows_empty_typed_root",
+                "tests/test_lineage_query.py::test_snapshot_token_tamper_store_and_cursor_mismatch_fail_closed",
+                "tests/test_lineage_query.py::test_root_published_after_reused_snapshot_is_not_treated_as_empty",
+                "tests/test_lineage_query.py::test_snapshot_contract_and_future_high_water_fail_closed",
             ),
         ),
         FixtureCheck(
@@ -212,6 +216,8 @@ def _scan_research_memory_seams(repository: Path) -> None:
         source_root / "memory_workflow.py",
         source_root / "memory_integration.py",
     )
+    if not any(path.is_file() for path in memory):
+        return
     _scan_apex_public_seam(
         memory,
         ApexSeamPolicy(
@@ -241,6 +247,17 @@ def _scan_research_memory_seams(repository: Path) -> None:
             required_calls=("query_lineage",),
         ),
     )
+    query_path = source_root / "memory_query.py"
+    query_source = query_path.read_text(encoding="utf-8") if query_path.is_file() else ""
+    if "snapshot_token" not in query_source:
+        raise ArchitectureViolation(
+            "apex-research: Research Memory lacks reusable Workspace snapshot token"
+        )
+    for forbidden in ("allow_missing_root", "lineage_root_not_found"):
+        if forbidden in query_source:
+            raise ArchitectureViolation(
+                "apex-research: Research Memory must not downgrade missing lineage roots to empty"
+            )
 
 
 def _scan_focused_loop_seams(repository: Path) -> None:
