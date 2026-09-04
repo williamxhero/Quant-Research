@@ -127,6 +127,17 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("unpublished", candidate["evidence_level"])
         self.assertIn("partial", candidate["fail_closed_behavior"])
 
+    def test_spec_009_candidate_gate_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-009.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("CandidateGate", candidate["public_seam"])
+        self.assertIn("not formal", candidate["evidence_level"])
+        self.assertIn("fail closed", candidate["fail_closed_behavior"])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)

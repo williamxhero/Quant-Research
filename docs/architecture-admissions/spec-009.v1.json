@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-009",
+  "canonical_owner": "apex_research",
+  "public_seam": "CandidateGate / WorkspaceClient / quant-runtime conformance",
+  "identity_impact": "Exact Candidate revision, family lineage, immutable gate policy and campaign binding, deterministic methods and thresholds, package intake binding, artifact bytes, sandbox proof, behavioral scenarios, parameters, and conformance outcomes participate in canonical assessment identity while prior Candidate, package, and Runtime identities remain unchanged.",
+  "evidence_level": "Deterministic static and behavioral-conformance gate observations only; they are not formal evidence, research qualification, production approval, or live-trading truth.",
+  "fail_closed_behavior": "All inputs are read back through public Workspace seams; missing, unsupported, unparsable, incomparable, tampered, unsafe, ungoverned, or identity-drifting inputs fail closed before registration, Runtime launch, MarketHub preflight, or canonical run as applicable.",
+  "claims": [],
+  "lifecycle_states": []
+}
