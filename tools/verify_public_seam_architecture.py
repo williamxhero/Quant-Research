@@ -210,13 +210,14 @@ def scan_sources(repository_root: Path) -> None:
 
 def _scan_research_memory_seams(repository: Path) -> None:
     source_root = repository / "src" / "apex_research"
-    memory = (
-        source_root / "memory.py",
-        source_root / "memory_query.py",
-        source_root / "memory_workflow.py",
-        source_root / "memory_integration.py",
+    memory = tuple(
+        sorted(
+            path
+            for path in source_root.rglob("memory*.py")
+            if "__pycache__" not in path.parts
+        )
     )
-    if not any(path.is_file() for path in memory):
+    if not memory:
         return
     _scan_apex_public_seam(
         memory,
@@ -228,6 +229,9 @@ def _scan_research_memory_seams(repository: Path) -> None:
                 ("sqlite3", "authoritative memory database"),
                 ("subprocess", "parallel runner"),
                 ("socket", "direct network"),
+                ("requests", "direct network"),
+                ("httpx", "direct network"),
+                ("urllib.request", "direct network"),
             ),
             forbidden_calls=(
                 ("list_records", "bounded global record scan"),

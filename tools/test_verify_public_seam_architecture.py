@@ -89,6 +89,9 @@ def use_lineage(workspace):
             "from strategy_workspace import storage\n": "private Workspace alias",
             "workspace.list_records(limit=10000)\n": "global scan",
             "import subprocess\n": "runner",
+            "import requests\n": "requests network",
+            "import httpx\n": "httpx network",
+            "from urllib.request import urlopen\n": "urllib network",
             "workspace.register_package(source)\n": "registry",
             "workspace.submit_run(request)\n": "formal path",
             "class MemoryLedger: pass\n": "parallel owner",
@@ -101,6 +104,27 @@ def use_lineage(workspace):
                 memory.write_text(required + source_text, encoding="utf-8")
                 with self.assertRaises(verifier.ArchitectureViolation):
                     verifier.scan_sources(root)
+
+    def test_research_memory_scans_new_memory_helpers(self) -> None:
+        required = """
+class ResearchMemoryPolicy: pass
+class ResearchMemoryEntry: pass
+class ResearchMemoryQuery: pass
+class ResearchMemoryDuplicateService: pass
+class ResearchMemoryContextBuilder: pass
+class ResearchMemoryStep: pass
+WorkspaceClientProtocol = object
+def use_lineage(workspace):
+    return workspace.query_lineage(snapshot_token=snapshot_token)
+"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "apex-research/src/apex_research"
+            source.mkdir(parents=True)
+            (source / "memory_query.py").write_text(required, encoding="utf-8")
+            (source / "memory_store.py").write_text("import sqlite3\n", encoding="utf-8")
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "database"):
+                verifier.scan_sources(root)
 
     def test_research_memory_requires_shared_snapshot_and_no_missing_root_downgrade(self) -> None:
         required = """
