@@ -64,11 +64,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_memory_query.py", apex.command)
 
     def test_research_memory_rejects_private_truth_and_global_scans(self) -> None:
-        required = (
-            "# ResearchMemoryPolicy ResearchMemoryEntry ResearchMemoryQuery "
-            "ResearchMemoryDuplicateService ResearchMemoryContextBuilder "
-            "ResearchMemoryStep WorkspaceClientProtocol query_lineage(\n"
-        )
+        required = """
+class ResearchMemoryPolicy: pass
+class ResearchMemoryEntry: pass
+class ResearchMemoryQuery: pass
+class ResearchMemoryDuplicateService: pass
+class ResearchMemoryContextBuilder: pass
+class ResearchMemoryStep: pass
+WorkspaceClientProtocol = object
+def use_lineage(workspace):
+    return workspace.query_lineage()
+"""
         forbidden = {
             "import sqlite3\n": "database",
             "workspace.list_records(limit=10000)\n": "global scan",

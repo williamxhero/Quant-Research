@@ -25,6 +25,16 @@ class FixtureCheck(NamedTuple):
     command: tuple[str, ...]
 
 
+class ApexSeamPolicy(NamedTuple):
+    component: str
+    forbidden_imports: tuple[tuple[str, str], ...]
+    forbidden_calls: tuple[tuple[str, str], ...]
+    forbidden_attributes: tuple[tuple[str, str], ...]
+    required_classes: tuple[str, ...]
+    required_names: tuple[str, ...]
+    required_calls: tuple[str, ...]
+
+
 def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
     """Return public-seam fixture tests without creating shared state or evidence."""
     return (
@@ -197,26 +207,31 @@ def _scan_research_memory_seams(repository: Path) -> None:
     memory = repository / "src" / "apex_research" / "memory.py"
     _scan_apex_public_seam(
         memory,
-        component="Research Memory",
-        forbidden=(
+        ApexSeamPolicy(
+            component="Research Memory",
+            forbidden_imports=(
             ("strategy_workspace.storage", "private Workspace access"),
             ("strategy_workspace.core", "private Workspace access"),
-            ("import sqlite3", "authoritative memory database"),
-            (".list_records(", "bounded global record scan"),
-            ("import subprocess", "parallel runner"),
-            ("import socket", "direct network"),
-            ("register_package(", "package registry bypass"),
-            ("submit_run(", "formal runner bypass"),
-        ),
-        required=(
-            "ResearchMemoryPolicy",
-            "ResearchMemoryEntry",
-            "ResearchMemoryQuery",
-            "ResearchMemoryDuplicateService",
-            "ResearchMemoryContextBuilder",
-            "ResearchMemoryStep",
-            "WorkspaceClientProtocol",
-            "query_lineage(",
+                ("sqlite3", "authoritative memory database"),
+                ("subprocess", "parallel runner"),
+                ("socket", "direct network"),
+            ),
+            forbidden_calls=(
+                ("list_records", "bounded global record scan"),
+                ("register_package", "package registry bypass"),
+                ("submit_run", "formal runner bypass"),
+            ),
+            forbidden_attributes=(),
+            required_classes=(
+                "ResearchMemoryPolicy",
+                "ResearchMemoryEntry",
+                "ResearchMemoryQuery",
+                "ResearchMemoryDuplicateService",
+                "ResearchMemoryContextBuilder",
+                "ResearchMemoryStep",
+            ),
+            required_names=("WorkspaceClientProtocol",),
+            required_calls=("query_lineage",),
         ),
     )
 
@@ -225,67 +240,105 @@ def _scan_focused_loop_seams(repository: Path) -> None:
     focused = repository / "src" / "apex_research" / "focused.py"
     _scan_apex_public_seam(
         focused,
-        component="focused loop",
-        forbidden=(
-            ("strategy_workspace.storage", "private Workspace access"),
-            ("strategy_workspace.core", "private Workspace access"),
-            ("import quant_runtime", "private Runtime execution"),
-            ("from quant_runtime", "private Runtime execution"),
-            ("import subprocess", "parallel runner"),
-            ("from subprocess", "parallel runner"),
-            ("import socket", "direct network"),
-            ("import httpx", "direct network"),
-            ("import requests", "direct network"),
-            ("os.getenv", "host credential"),
-            ("os.environ", "host credential"),
-            ("import keyring", "host credential"),
-            ("import sqlite3", "parallel ledger"),
-            ("register_package(", "package registry bypass"),
-            ("submit_run(", "formal runner bypass"),
-        ),
-        required=(
-            "FocusedCandidateSelector",
-            "FocusedStageRecord",
-            "FocusedPreflightResult",
-            "FocusedFormalRun",
-            "FocusedReflection",
-            "FocusedFeedback",
-            "FocusedDecision",
-            "WorkspaceClientProtocol",
-            "PublishedRecordRef",
+        ApexSeamPolicy(
+            component="focused loop",
+            forbidden_imports=(
+                ("strategy_workspace.storage", "private Workspace access"),
+                ("strategy_workspace.core", "private Workspace access"),
+                ("quant_runtime", "private Runtime execution"),
+                ("subprocess", "parallel runner"),
+                ("socket", "direct network"),
+                ("httpx", "direct network"),
+                ("requests", "direct network"),
+                ("keyring", "host credential"),
+                ("sqlite3", "parallel ledger"),
+            ),
+            forbidden_calls=(
+                ("register_package", "package registry bypass"),
+                ("submit_run", "formal runner bypass"),
+            ),
+            forbidden_attributes=(
+                ("os.getenv", "host credential"),
+                ("os.environ", "host credential"),
+            ),
+            required_classes=(
+                "FocusedCandidateSelector",
+                "FocusedStageRecord",
+                "FocusedPreflightResult",
+                "FocusedFormalRun",
+                "FocusedReflection",
+                "FocusedFeedback",
+                "FocusedDecision",
+            ),
+            required_names=("WorkspaceClientProtocol", "PublishedRecordRef"),
+            required_calls=(),
         ),
     )
 
 
 def _scan_apex_public_seam(
     path: Path,
-    *,
-    component: str,
-    forbidden: tuple[tuple[str, str], ...],
-    required: tuple[str, ...],
+    policy: ApexSeamPolicy,
 ) -> None:
     if not path.is_file():
         return
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
+    classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        node.module or ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    calls = {
+        node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+    }
+    attributes = {
+        f"{node.value.id}.{node.attr}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+    }
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and any(
             owner in node.name
             for owner in ("Ledger", "Registry", "Runner", "Backtester", "EvidenceTruth")
         ):
             raise ArchitectureViolation(
-                f"apex-research: {component} defines forbidden parallel owner {node.name}: {path}"
+                f"apex-research: {policy.component} defines forbidden parallel owner {node.name}: {path}"
             )
-    for marker, reason in forbidden:
-        if marker in source:
+    for module, reason in policy.forbidden_imports:
+        if any(item == module or item.startswith(f"{module}.") for item in imports):
             raise ArchitectureViolation(
-                f"apex-research: {component} owns forbidden {reason}: {path}"
+                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
             )
-    for marker in required:
-        if marker not in source:
+    for call, reason in policy.forbidden_calls:
+        if call in calls:
             raise ArchitectureViolation(
-                f"apex-research: {component} lacks public tracer boundary {marker}: {path}"
+                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
             )
+    for attribute, reason in policy.forbidden_attributes:
+        if attribute in attributes:
+            raise ArchitectureViolation(
+                f"apex-research: {policy.component} owns forbidden {reason}: {path}"
+            )
+    missing = (
+        set(policy.required_classes) - classes,
+        set(policy.required_names) - names,
+        set(policy.required_calls) - calls,
+    )
+    if any(missing):
+        absent = sorted(set().union(*missing))
+        raise ArchitectureViolation(
+            f"apex-research: {policy.component} lacks public tracer boundaries {absent}: {path}"
+        )
 
 
 def _scan_rdagent_seams(repository: Path) -> None:
