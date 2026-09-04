@@ -100,6 +100,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_validation_staging.py",
                 "tests/test_validation_evidence.py",
                 "tests/test_validation_reporting.py",
+                "tests/test_statistical_control.py",
             ),
         ),
         FixtureCheck(
@@ -114,6 +115,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_workspace_roundtrip.py::test_real_workspace_client_publication_round_trip",
                 "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
                 "tests/test_research_reporting.py::test_validation_external_readback_tamper_fails_closed",
+                "tests/test_research_reporting.py::test_statistical_assessment_is_read_back_and_displayed_without_recalculation",
+                "tests/test_research_reporting.py::test_statistical_external_readback_tamper_fails_closed",
             ),
         ),
     )
@@ -216,6 +219,52 @@ def scan_sources(repository_root: Path) -> None:
     _scan_focused_loop_seams(repository_root / "apex-research")
     _scan_research_memory_seams(repository_root / "apex-research")
     _scan_validation_matrix_seams(repository_root / "apex-research")
+    _scan_statistical_control_seams(repository_root / "apex-research")
+
+
+def _scan_statistical_control_seams(repository: Path) -> None:
+    source_root = repository / "src" / "apex_research"
+    statistical = source_root / "statistical_control.py"
+    reporting = source_root / "statistical_reporting.py"
+    if not statistical.is_file():
+        return
+    _scan_apex_public_seam(
+        (statistical, reporting),
+        ApexSeamPolicy(
+            component="statistical control",
+            forbidden_imports=(
+                ("strategy_workspace.storage", "private Workspace access"),
+                ("strategy_workspace.core", "private Workspace access"),
+                ("quant_runtime", "private Runtime execution"),
+                ("sqlite3", "parallel state or evidence truth"),
+                ("subprocess", "parallel runner"),
+                ("requests", "direct network"),
+                ("httpx", "direct network"),
+            ),
+            forbidden_calls=(
+                ("list_records", "global record scan"),
+                ("register_package", "package registry bypass"),
+                ("submit_run", "formal runner bypass"),
+            ),
+            forbidden_attributes=(),
+            required_classes=(
+                "StatisticalControlPolicy",
+                "TestFamily",
+                "CampaignTrialCensus",
+                "SelectionSnapshot",
+                "PurgeEmbargoEvaluator",
+                "RawPValueEvidence",
+                "MultipleTestingService",
+                "NautilusReturnArtifactReader",
+                "DeflatedSharpeService",
+                "StatisticalAssessment",
+                "StatisticalAssessmentService",
+                "StatisticalStudyReportPublisher",
+            ),
+            required_names=("WorkspaceClientProtocol", "PublishedRecordRef"),
+            required_calls=("get_record", "verify_artifact", "read_artifact"),
+        ),
+    )
 
 
 def _scan_validation_matrix_seams(repository: Path) -> None:

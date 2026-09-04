@@ -78,11 +78,56 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_validation_staging.py", apex.command)
         self.assertIn("tests/test_validation_evidence.py", apex.command)
         self.assertIn("tests/test_validation_reporting.py", apex.command)
+        self.assertIn("tests/test_statistical_control.py", apex.command)
         reporting = next(item for item in plan if item.owner == "strategy_reporting")
         self.assertIn(
             "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
             reporting.command,
         )
+        self.assertIn(
+            "tests/test_research_reporting.py::test_statistical_assessment_is_read_back_and_displayed_without_recalculation",
+            reporting.command,
+        )
+
+    def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
+        required = """
+class StatisticalControlPolicy: pass
+class TestFamily: pass
+class CampaignTrialCensus: pass
+class SelectionSnapshot: pass
+class PurgeEmbargoEvaluator: pass
+class RawPValueEvidence: pass
+class MultipleTestingService: pass
+class NautilusReturnArtifactReader: pass
+class DeflatedSharpeService: pass
+class StatisticalAssessment: pass
+class StatisticalAssessmentService: pass
+class StatisticalStudyReportPublisher: pass
+WorkspaceClientProtocol = object
+PublishedRecordRef = object
+def use_public(workspace):
+    workspace.get_record('id')
+    workspace.verify_artifact('uri')
+    workspace.read_artifact('uri')
+"""
+        forbidden = {
+            "import sqlite3\n": "state or evidence truth",
+            "import quant_runtime\n": "Runtime",
+            "workspace.list_records(limit=10000)\n": "global record scan",
+            "workspace.submit_run({})\n": "formal runner bypass",
+            "import requests\n": "direct network",
+        }
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "apex-research/src/apex_research"
+                source.mkdir(parents=True)
+                (source / "statistical_control.py").write_text(
+                    required + source_text, encoding="utf-8"
+                )
+                (source / "statistical_reporting.py").write_text("", encoding="utf-8")
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
 
     def test_validation_matrix_rejects_parallel_truth_and_execution_bypasses(self) -> None:
         required = """
