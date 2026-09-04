@@ -92,6 +92,31 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             )
             verifier.scan_sources(root)
 
+    def test_research_engine_adapter_rejects_direct_external_and_owner_seams(self) -> None:
+        forbidden = {
+            "import subprocess\n": "process",
+            "import socket\n": "network",
+            "import httpx\n": "network",
+            "import os\nos.getenv('TOKEN')\n": "host environment",
+            "from strategy_workspace.storage import SQLiteRepository\n": "private Workspace",
+            "workspace.register_package(source)\n": "package registration",
+            "workspace.submit_run(request)\n": "Runtime submission",
+            "orchestrator.advance(campaign)\n": "lifecycle",
+            "workspace.publish_record({'record_type': 'apex-research.decision.v2'})\n": "decision",
+        }
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                adapters = root / "apex-research" / "src" / "apex_research" / "adapters"
+                adapters.mkdir(parents=True)
+                (adapters / "bad_engine.py").write_text(
+                    "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                    "class ResearchEngineAdapter: pass\n"
+                    + source_text
+                )
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
+
     def test_only_dedicated_apex_process_control_files_are_admitted(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

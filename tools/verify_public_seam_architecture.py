@@ -208,6 +208,26 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                 raise ArchitectureViolation(
                     f"apex-research: external adapter bypasses runner interface: {path}"
                 )
+            if external_adapter:
+                forbidden_adapter_seams = (
+                    ("import socket", "network"),
+                    ("from socket", "network"),
+                    ("import httpx", "network"),
+                    ("import requests", "network"),
+                    ("import urllib", "network"),
+                    ("os.getenv", "host environment"),
+                    ("os.environ", "host environment"),
+                    ("register_package(", "package registration"),
+                    ("submit_run(", "Runtime submission"),
+                    ("orchestrator.advance(", "lifecycle"),
+                    ("campaign-transition", "lifecycle"),
+                    ("apex-research.decision", "decision"),
+                )
+                for marker, reason in forbidden_adapter_seams:
+                    if marker in source:
+                        raise ArchitectureViolation(
+                            f"apex-research: external adapter owns forbidden {reason} seam: {path}"
+                        )
     if adapter.is_file():
         source = adapter.read_text(encoding="utf-8")
         for marker in ("ActionGrant", "runtime_resource_scope", "lease_expires_at"):
