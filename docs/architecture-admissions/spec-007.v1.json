@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-007",
+  "canonical_owner": "apex_research",
+  "public_seam": "ResearchEnginePort / ExternalResearchRunner / WorkspaceClient",
+  "identity_impact": "The bounded request identity freezes campaign context, engine, adapter, model, prompt, tool, environment, data and baseline references, capabilities, cancellation and deadline, continuation binding, idempotency, and the call budget ceiling plus usage-unit contract while SPEC-006 remains the canonical budget truth.",
+  "evidence_level": "unpublished typed Candidate and hypothesis proposals plus non-formal discovery observations, bounded failures, usage, and artifact references only; never Candidate publication, formal metrics, decisions, or research qualification.",
+  "fail_closed_behavior": "Reject unknown or unbounded fields, upstream types, free-form Candidate or metadata semantics, formal masquerade, invalid continuation binding, same-key semantic conflicts, missing environment or data identity, and invalid partial items individually without discarding valid normalized items.",
+  "claims": [],
+  "lifecycle_states": []
+}
