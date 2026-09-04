@@ -1,0 +1,31 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-012",
+  "canonical_owner": "apex_research",
+  "public_seam": "ValidationProtocolMatrix / WorkspaceClient publication and query / separately governed quant-runtime CLI preflight and formal run / Strategy Reporting study-report presentation",
+  "identity_impact": "Protocol, cell, eligibility, preflight, formal outcome, stage, early-stop, coverage, comparability, and validation-evidence identities freeze every meaning-bearing package, provenance, dimension, data, Runtime, governance, result, and policy value; publication observations and local paths are excluded.",
+  "evidence_level": "Apex cross-run validation coverage, comparability, gap, early-stop, and bounded claim facts only; Runtime-published single-run metrics remain owner facts and NautilusTrader remains formal truth.",
+  "fail_closed_behavior": "Require canonical owner readback before every step; use EXTERNAL_VALIDATION only for the exact canonical MarketHub preflight and FORMAL_RUN only for the exact canonical Runtime launch with independent grants; reject unavailable, incomparable, drifting, tampered, stale, ungoverned, conflicting, or uncertain inputs as explicit gaps or reconciliation_required without duplicate calls, fallback, denominator shrinkage, metric reconstruction, or qualification inference.",
+  "compatibility": [
+    "spec-002-research-orchestrator",
+    "spec-003-package-intake-v3",
+    "spec-004-markethub-preflight",
+    "spec-005-generated-package-sandbox",
+    "spec-006-governance-external-validation-preflight-mapping",
+    "spec-009-candidate-gate",
+    "spec-010-focused-loop",
+    "spec-011-research-memory",
+    "spec-011a-public-lineage",
+    "spec-028-candidate-ir",
+    "spec-029-external-runner",
+    "factor-model-static-only",
+    "strategy-static-intake-conformance-preflight-formal"
+  ],
+  "governance_mapping": {
+    "canonical_markethub_preflight": "external_validation",
+    "canonical_runtime_launch": "formal_run",
+    "grants_are_interchangeable": false
+  },
+  "claims": [],
+  "lifecycle_states": []
+}
