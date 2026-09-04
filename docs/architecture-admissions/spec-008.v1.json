@@ -9,6 +9,18 @@
   "native_capabilities": ["factor", "model"],
   "conditional_capabilities": ["strategy"],
   "forbidden_operations": ["fin_quant", "factor-model-co-evolution", "upstream-lifecycle"],
+  "pinned_upstream": {
+    "release_tag": "v0.8.0",
+    "commit": "274e274d5dbb72cc2ea139d1a7c93d73ce9b1198",
+    "license": "MIT",
+    "license_notice_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "wheel_sha256": "5914499f7e896d5547d414a51db12332c78b2e4862595a98e895608450e65123",
+    "dependency_lock": "sha256:b96405d3eb516b44e1292eb631177bfcfb6ca1de07a6b5e4b23b89b1f523476a",
+    "oci_image": "sha256:bf85db0dae7f758b903033fdd85c8a28bd2c0fa7b6f38b9a1d1c039851536ac2",
+    "adapter_version": "1",
+    "worker_protocol": "apex-research.rdagent-worker-protocol.v1",
+    "worker_schema_digest": "sha256:b8e17eb6230a5d99f98d076faf94ee5e3af2581551c9bc3c3f8740198086d41a"
+  },
   "compatibility": [
     "spec-003-package-intake",
     "spec-004-markethub-preflight",

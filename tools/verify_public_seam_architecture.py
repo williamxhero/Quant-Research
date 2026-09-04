@@ -182,6 +182,64 @@ def scan_sources(repository_root: Path) -> None:
                         f"{repository}: forbidden production-trading lifecycle term {term!r}: {path}"
                     )
     _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
+    _scan_rdagent_seams(repository_root / "apex-research")
+
+
+def _scan_rdagent_seams(repository: Path) -> None:
+    source_root = repository / "src" / "apex_research"
+    adapter = source_root / "adapters" / "rdagent.py"
+    if not adapter.is_file():
+        return
+    adapter_source = adapter.read_text(encoding="utf-8")
+    for marker, reason in (
+        ("import rdagent", "direct RD-Agent import"),
+        ("from rdagent", "direct RD-Agent import"),
+        ("import subprocess", "parallel runner"),
+        ("import socket", "direct network"),
+        ("os.environ", "host environment"),
+        ("os.getenv", "host environment"),
+        ("credential", "host credential"),
+        ("sqlite3", "parallel ledger"),
+        ("register_package(", "package registry bypass"),
+        ("submit_run(", "Runtime bypass"),
+    ):
+        if marker in adapter_source:
+            raise ArchitectureViolation(f"apex-research: RD-Agent {reason}: {adapter}")
+    for marker in (
+        "RDAgentAdapterConfig",
+        "GovernedExternalResearchRunner",
+        "RunnerBackedResearchEngine",
+        "forbidden_operations",
+    ):
+        if marker not in adapter_source:
+            raise ArchitectureViolation(f"apex-research: RD-Agent adapter lacks {marker}: {adapter}")
+    chain = source_root / "rdagent_strategy_chain.py"
+    if chain.is_file():
+        chain_source = chain.read_text(encoding="utf-8")
+        for marker in (
+            "admit_proposal",
+            "evaluate_strategy_static",
+            ".intake(",
+            ".assess(",
+            "confirmed_preflight_request",
+            ".preflight(",
+            'formal: str = "not_evaluated"',
+        ):
+            if marker not in chain_source:
+                raise ArchitectureViolation(
+                    f"apex-research: RD-Agent Strategy chain lacks canonical stage {marker}: {chain}"
+                )
+        for marker, reason in (
+            ("submit_run(", "formal submission bypass"),
+            ("GovernedAction.FORMAL_RUN", "formal run bypass"),
+            ("import quant_runtime.", "private Runtime import"),
+            ("from quant_runtime.", "private Runtime import"),
+            ("strategy_workspace.", "private Workspace import"),
+        ):
+            if marker in chain_source:
+                raise ArchitectureViolation(
+                    f"apex-research: RD-Agent Strategy chain owns {reason}: {chain}"
+                )
 
 
 def _scan_apex_governance_seams(source_root: Path) -> None:

@@ -194,6 +194,48 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             (runner / "recovery.py").write_text("import shutil\nshutil.copy2('a', 'b')\n")
             verifier.scan_sources(root)
 
+    def test_rdagent_host_adapter_cannot_import_upstream_or_own_parallel_truth(self) -> None:
+        forbidden = {
+            "import rdagent\n": "direct RD-Agent import",
+            "import subprocess\n": "subprocess seam",
+            "import socket\n": "network",
+            "import sqlite3\n": "parallel ledger",
+            "workspace.register_package(source)\n": "package registration",
+            "workspace.submit_run(request)\n": "Runtime submission",
+        }
+        required = (
+            "RDAgentAdapterConfig GovernedExternalResearchRunner "
+            "RunnerBackedResearchEngine forbidden_operations production = True\n"
+        )
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                adapter = root / "apex-research/src/apex_research/adapters/rdagent.py"
+                adapter.parent.mkdir(parents=True)
+                adapter.write_text(required + source_text)
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
+
+    def test_rdagent_strategy_chain_cannot_skip_to_formal_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "apex-research/src/apex_research"
+            adapter = source / "adapters/rdagent.py"
+            adapter.parent.mkdir(parents=True)
+            adapter.write_text(
+                "RDAgentAdapterConfig GovernedExternalResearchRunner "
+                "RunnerBackedResearchEngine forbidden_operations production = True\n"
+            )
+            chain = source / "rdagent_strategy_chain.py"
+            chain.write_text(
+                "admit_proposal evaluate_strategy_static .intake( .assess( "
+                "confirmed_preflight_request .preflight(\n"
+                'formal: str = "not_evaluated"\n'
+                "workspace.submit_run(request)\n"
+            )
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "formal submission"):
+                verifier.scan_sources(root)
+
 
 if __name__ == "__main__":
     unittest.main()
