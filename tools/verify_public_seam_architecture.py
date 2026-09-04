@@ -75,6 +75,9 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_research_engine_contract_matrix.py",
                 "tests/test_focused_loop_e2e.py",
                 "tests/test_focused_stop_resume.py",
+                "tests/test_memory_policy.py",
+                "tests/test_memory_records.py",
+                "tests/test_memory_query.py",
             ),
         ),
         FixtureCheck(
@@ -187,6 +190,51 @@ def scan_sources(repository_root: Path) -> None:
     _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
     _scan_rdagent_seams(repository_root / "apex-research")
     _scan_focused_loop_seams(repository_root / "apex-research")
+    _scan_research_memory_seams(repository_root / "apex-research")
+
+
+def _scan_research_memory_seams(repository: Path) -> None:
+    memory = repository / "src" / "apex_research" / "memory.py"
+    if not memory.is_file():
+        return
+    source = memory.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(memory))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and any(
+            owner in node.name
+            for owner in ("Ledger", "Registry", "Runner", "Backtester", "EvidenceTruth")
+        ):
+            raise ArchitectureViolation(
+                f"apex-research: Research Memory defines forbidden parallel owner {node.name}: {memory}"
+            )
+    for marker, reason in (
+        ("strategy_workspace.storage", "private Workspace access"),
+        ("strategy_workspace.core", "private Workspace access"),
+        ("import sqlite3", "authoritative memory database"),
+        (".list_records(", "bounded global record scan"),
+        ("import subprocess", "parallel runner"),
+        ("import socket", "direct network"),
+        ("register_package(", "package registry bypass"),
+        ("submit_run(", "formal runner bypass"),
+    ):
+        if marker in source:
+            raise ArchitectureViolation(
+                f"apex-research: Research Memory owns forbidden {reason}: {memory}"
+            )
+    for marker in (
+        "ResearchMemoryPolicy",
+        "ResearchMemoryEntry",
+        "ResearchMemoryQuery",
+        "ResearchMemoryDuplicateService",
+        "ResearchMemoryContextBuilder",
+        "ResearchMemoryStep",
+        "WorkspaceClientProtocol",
+        "query_lineage(",
+    ):
+        if marker not in source:
+            raise ArchitectureViolation(
+                f"apex-research: Research Memory lacks public tracer seam {marker}: {memory}"
+            )
 
 
 def _scan_focused_loop_seams(repository: Path) -> None:

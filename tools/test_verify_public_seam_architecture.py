@@ -59,6 +59,32 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_research_engine_contract_matrix.py", apex.command)
         self.assertIn("tests/test_focused_loop_e2e.py", apex.command)
         self.assertIn("tests/test_focused_stop_resume.py", apex.command)
+        self.assertIn("tests/test_memory_policy.py", apex.command)
+        self.assertIn("tests/test_memory_records.py", apex.command)
+        self.assertIn("tests/test_memory_query.py", apex.command)
+
+    def test_research_memory_rejects_private_truth_and_global_scans(self) -> None:
+        required = (
+            "# ResearchMemoryPolicy ResearchMemoryEntry ResearchMemoryQuery "
+            "ResearchMemoryDuplicateService ResearchMemoryContextBuilder "
+            "ResearchMemoryStep WorkspaceClientProtocol query_lineage(\n"
+        )
+        forbidden = {
+            "import sqlite3\n": "database",
+            "workspace.list_records(limit=10000)\n": "global scan",
+            "import subprocess\n": "runner",
+            "workspace.register_package(source)\n": "registry",
+            "workspace.submit_run(request)\n": "formal path",
+            "class MemoryLedger: pass\n": "parallel owner",
+        }
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                memory = root / "apex-research/src/apex_research/memory.py"
+                memory.parent.mkdir(parents=True)
+                memory.write_text(required + source_text, encoding="utf-8")
+                with self.assertRaises(verifier.ArchitectureViolation):
+                    verifier.scan_sources(root)
 
     def test_focused_loop_rejects_private_execution_and_parallel_truth(self) -> None:
         required = (
