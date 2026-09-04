@@ -66,6 +66,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_report_source.py::test_source_round_trips_as_real_workspace_publication_envelope",
                 "tests/test_candidate_closure.py::test_semantic_deduplication_preserves_each_publication_lineage",
                 "tests/test_governance_seams.py",
+                "tests/test_external_runner_governance.py",
+                "tests/test_external_runner_recovery.py",
             ),
         ),
         FixtureCheck(

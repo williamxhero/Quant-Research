@@ -54,6 +54,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             apex.command,
         )
         self.assertIn("tests/test_governance_seams.py", apex.command)
+        self.assertIn("tests/test_external_runner_governance.py", apex.command)
+        self.assertIn("tests/test_external_runner_recovery.py", apex.command)
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
