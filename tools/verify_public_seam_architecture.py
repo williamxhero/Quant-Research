@@ -68,6 +68,10 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_governance_seams.py",
                 "tests/test_external_runner_governance.py",
                 "tests/test_external_runner_recovery.py",
+                "tests/test_research_engine_port.py",
+                "tests/test_research_engine_runner.py",
+                "tests/test_research_engine_orchestration.py",
+                "tests/test_research_engine_contract_matrix.py",
             ),
         ),
         FixtureCheck(
@@ -100,6 +104,9 @@ SOURCE_RULES = {
         ("strategy-candidate", "Workspace must not own Candidate schemas"),
         ("campaignpolicy", "Workspace must not interpret Apex budget policy"),
         ("budgetdimension", "Workspace must not interpret Apex budget dimensions"),
+        ("researchengineport", "Workspace must not own ResearchEnginePort"),
+        ("research-engine-request", "Workspace must not own research-engine contracts"),
+        ("research-engine-result", "Workspace must not own research-engine contracts"),
     ),
     "quant-runtime": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -115,6 +122,9 @@ SOURCE_RULES = {
         ("strategy-candidate", "Runtime must not own Candidate schemas"),
         ("campaignpolicy", "Runtime must not interpret Apex budget policy"),
         ("budgetdimension", "Runtime must not interpret Apex budget dimensions"),
+        ("researchengineport", "Runtime must not own ResearchEnginePort"),
+        ("research-engine-request", "Runtime must not own research-engine contracts"),
+        ("research-engine-result", "Runtime must not own research-engine contracts"),
     ),
     "apex-research": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -135,6 +145,9 @@ SOURCE_RULES = {
         ("subprocess", "Reporting must not invoke upstream tools"),
         ("campaignpolicy", "Reporting must not interpret Apex budget policy"),
         ("budgetdimension", "Reporting must not interpret Apex budget dimensions"),
+        ("researchengineport", "Reporting must not own ResearchEnginePort"),
+        ("research-engine-request", "Reporting must not own research-engine contracts"),
+        ("research-engine-result", "Reporting must not own research-engine contracts"),
     ),
 }
 FORBIDDEN_LIFECYCLE_TERMS = (
@@ -192,15 +205,7 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
             if path.name in {"__init__.py", "tools.py"}:
                 continue
             source = path.read_text(encoding="utf-8")
-            external_adapter = any(
-                marker in source
-                for marker in (
-                    "ResearchEnginePort",
-                    "EmpiricalResearchPort",
-                    "ResearchEngineAdapter",
-                    "EmpiricalResearchAdapter",
-                )
-            )
+            external_adapter = True
             if external_adapter and not any(
                 seam in source
                 for seam in ("GovernedExternalResearchRunner", "ExternalResearchRunner")
@@ -222,6 +227,11 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                     ("orchestrator.advance(", "lifecycle"),
                     ("campaign-transition", "lifecycle"),
                     ("apex-research.decision", "decision"),
+                    ("publish_candidate(", "Candidate publication"),
+                    ("candidate-publication", "Candidate publication"),
+                    ("formal-run", "formal masquerade"),
+                    ("qualification", "qualification"),
+                    ("qualified", "qualification"),
                 )
                 for marker, reason in forbidden_adapter_seams:
                     if marker in source:

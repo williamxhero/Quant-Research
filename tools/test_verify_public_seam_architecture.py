@@ -56,6 +56,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_governance_seams.py", apex.command)
         self.assertIn("tests/test_external_runner_governance.py", apex.command)
         self.assertIn("tests/test_external_runner_recovery.py", apex.command)
+        self.assertIn("tests/test_research_engine_contract_matrix.py", apex.command)
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -114,6 +115,52 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "class ResearchEngineAdapter: pass\n"
                     + source_text
                 )
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
+
+    def test_research_engine_owner_and_future_adapter_guard_matrix(self) -> None:
+        cases = (
+            (
+                "strategy-workspace/src/strategy_workspace/engine.py",
+                "class ResearchEnginePort: pass\n",
+                "Workspace must not own ResearchEnginePort",
+            ),
+            (
+                "quant-runtime/src/quant_runtime/engine.py",
+                "class ResearchEnginePort: pass\n",
+                "Runtime must not own ResearchEnginePort",
+            ),
+            (
+                "strategy-reporting/src/strategy_reporting/engine.py",
+                "class ResearchEnginePort: pass\n",
+                "Reporting must not own ResearchEnginePort",
+            ),
+            (
+                "apex-research/src/apex_research/adapters/rdagent.py",
+                "class RDAgent: pass\n",
+                "bypasses runner",
+            ),
+            (
+                "apex-research/src/apex_research/adapters/qrafti.py",
+                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                "class Qrafti:\n"
+                "    qualification = 'qualified'\n",
+                "qualification",
+            ),
+            (
+                "apex-research/src/apex_research/adapters/future.py",
+                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                "def publish(workspace):\n"
+                "    workspace.publish_candidate({})\n",
+                "Candidate publication",
+            ),
+        )
+        for relative, source, reason in cases:
+            with self.subTest(path=relative), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                path = root / relative
+                path.parent.mkdir(parents=True)
+                path.write_text(source)
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
 
