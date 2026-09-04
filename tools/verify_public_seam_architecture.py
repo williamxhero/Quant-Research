@@ -213,6 +213,12 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                 raise ArchitectureViolation(
                     f"apex-research: external adapter bypasses runner interface: {path}"
                 )
+            if external_adapter and not any(
+                marker in source for marker in ("production = True", "production=True")
+            ):
+                raise ArchitectureViolation(
+                    f"apex-research: external adapter must declare production execution: {path}"
+                )
             if external_adapter:
                 forbidden_adapter_seams = (
                     ("import socket", "network"),

@@ -88,6 +88,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             candidate.write_text(
                 "from apex_research.external_runner import GovernedExternalResearchRunner\n"
                 "class ResearchEngineAdapter:\n"
+                "    production = True\n"
                 "    def __init__(self, runner: GovernedExternalResearchRunner):\n"
                 "        self.runner = runner\n"
             )
@@ -116,7 +117,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 adapters.mkdir(parents=True)
                 (adapters / "bad_engine.py").write_text(
                     "from apex_research.external_runner import GovernedExternalResearchRunner\n"
-                    "class ResearchEngineAdapter: pass\n"
+                    "class ResearchEngineAdapter:\n"
+                    "    production = True\n"
                     + source_text
                 )
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
@@ -148,12 +150,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "apex-research/src/apex_research/adapters/qrafti.py",
                 "from apex_research.external_runner import GovernedExternalResearchRunner\n"
                 "class Qrafti:\n"
+                "    production = True\n"
                 "    qualification = 'qualified'\n",
                 "qualification",
             ),
             (
+                "apex-research/src/apex_research/adapters/fake_production.py",
+                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                "production = False\n",
+                "must declare production execution",
+            ),
+            (
                 "apex-research/src/apex_research/adapters/future.py",
                 "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                "production = True\n"
                 "def publish(workspace):\n"
                 "    workspace.publish_candidate({})\n",
                 "Candidate publication",
