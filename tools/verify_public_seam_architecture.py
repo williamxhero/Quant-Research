@@ -307,6 +307,11 @@ def _scan_apex_public_seam(
         node.module or ""
         for node in nodes
         if isinstance(node, ast.ImportFrom)
+    } | {
+        f"{node.module}.{alias.name}"
+        for node in nodes
+        if isinstance(node, ast.ImportFrom) and node.module
+        for alias in node.names
     }
     calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id

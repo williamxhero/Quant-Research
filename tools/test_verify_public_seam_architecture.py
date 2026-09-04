@@ -78,6 +78,7 @@ def use_lineage(workspace):
 """
         forbidden = {
             "import sqlite3\n": "database",
+            "from strategy_workspace import storage\n": "private Workspace alias",
             "workspace.list_records(limit=10000)\n": "global scan",
             "import subprocess\n": "runner",
             "workspace.register_package(source)\n": "registry",
