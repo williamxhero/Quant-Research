@@ -213,6 +213,32 @@ def _scan_rdagent_seams(repository: Path) -> None:
     ):
         if marker not in adapter_source:
             raise ArchitectureViolation(f"apex-research: RD-Agent adapter lacks {marker}: {adapter}")
+    strategy = source_root / "rdagent_strategy.py"
+    if strategy.is_file():
+        strategy_source = strategy.read_text(encoding="utf-8")
+        for marker, reason in (
+            ("import rdagent", "direct RD-Agent import"),
+            ("from rdagent", "direct RD-Agent import"),
+            ("import subprocess", "parallel runner"),
+            ("import socket", "direct network"),
+            ("os.environ", "host environment"),
+            ("os.getenv", "host environment"),
+            ("sqlite3", "parallel ledger"),
+            ("fin_quant", "forbidden operation"),
+            ("register_package(", "package registry bypass"),
+            ("submit_run(", "Runtime bypass"),
+        ):
+            if marker in strategy_source:
+                raise ArchitectureViolation(f"apex-research: RD-Agent {reason}: {strategy}")
+        for marker in (
+            "GovernedExternalResearchRunner",
+            "readback_strategy_package_draft_artifacts",
+            "StrategyCandidate.create",
+        ):
+            if marker not in strategy_source:
+                raise ArchitectureViolation(
+                    f"apex-research: RD-Agent Strategy normalization lacks {marker}: {strategy}"
+                )
     chain = source_root / "rdagent_strategy_chain.py"
     if chain.is_file():
         chain_source = chain.read_text(encoding="utf-8")

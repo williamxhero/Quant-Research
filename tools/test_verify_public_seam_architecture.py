@@ -236,6 +236,32 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             with self.assertRaisesRegex(verifier.ArchitectureViolation, "formal submission"):
                 verifier.scan_sources(root)
 
+    def test_rdagent_strategy_normalizer_must_use_governed_public_seams(self) -> None:
+        forbidden = {
+            "import rdagent\n": "direct RD-Agent import",
+            "import subprocess\n": "subprocess seam",
+            "import sqlite3\n": "parallel ledger",
+            "fin_quant()\n": "forbidden operation",
+            "workspace.register_package(source)\n": "package registry bypass",
+        }
+        required = (
+            "GovernedExternalResearchRunner readback_strategy_package_draft_artifacts "
+            "StrategyCandidate.create\n"
+        )
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                adapter = root / "apex-research/src/apex_research/adapters/rdagent.py"
+                adapter.parent.mkdir(parents=True)
+                adapter.write_text(
+                    "RDAgentAdapterConfig GovernedExternalResearchRunner "
+                    "RunnerBackedResearchEngine forbidden_operations production = True\n"
+                )
+                strategy = adapter.parents[1] / "rdagent_strategy.py"
+                strategy.write_text(required + source_text)
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
+
 
 if __name__ == "__main__":
     unittest.main()
