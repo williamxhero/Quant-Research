@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import subprocess
@@ -72,6 +73,8 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_research_engine_runner.py",
                 "tests/test_research_engine_orchestration.py",
                 "tests/test_research_engine_contract_matrix.py",
+                "tests/test_focused_loop_e2e.py",
+                "tests/test_focused_stop_resume.py",
             ),
         ),
         FixtureCheck(
@@ -183,6 +186,59 @@ def scan_sources(repository_root: Path) -> None:
                     )
     _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
     _scan_rdagent_seams(repository_root / "apex-research")
+    _scan_focused_loop_seams(repository_root / "apex-research")
+
+
+def _scan_focused_loop_seams(repository: Path) -> None:
+    focused = repository / "src" / "apex_research" / "focused.py"
+    if not focused.is_file():
+        return
+    source = focused.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(focused))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and any(
+            owner in node.name
+            for owner in ("Ledger", "Registry", "Runner", "Backtester", "EvidenceTruth")
+        ):
+            raise ArchitectureViolation(
+                f"apex-research: focused loop defines forbidden parallel owner {node.name}: {focused}"
+            )
+    for marker, reason in (
+        ("strategy_workspace.storage", "private Workspace access"),
+        ("strategy_workspace.core", "private Workspace access"),
+        ("import quant_runtime", "private Runtime execution"),
+        ("from quant_runtime", "private Runtime execution"),
+        ("import subprocess", "parallel runner"),
+        ("from subprocess", "parallel runner"),
+        ("import socket", "direct network"),
+        ("import httpx", "direct network"),
+        ("import requests", "direct network"),
+        ("os.getenv", "host credential"),
+        ("os.environ", "host credential"),
+        ("import keyring", "host credential"),
+        ("import sqlite3", "parallel ledger"),
+        ("register_package(", "package registry bypass"),
+        ("submit_run(", "formal runner bypass"),
+    ):
+        if marker in source:
+            raise ArchitectureViolation(
+                f"apex-research: focused loop owns forbidden {reason}: {focused}"
+            )
+    for marker in (
+        "FocusedCandidateSelector",
+        "FocusedStageRecord",
+        "FocusedPreflightResult",
+        "FocusedFormalRun",
+        "FocusedReflection",
+        "FocusedFeedback",
+        "FocusedDecision",
+        "WorkspaceClientProtocol",
+        "PublishedRecordRef",
+    ):
+        if marker not in source:
+            raise ArchitectureViolation(
+                f"apex-research: focused loop lacks public tracer boundary {marker}: {focused}"
+            )
 
 
 def _scan_rdagent_seams(repository: Path) -> None:

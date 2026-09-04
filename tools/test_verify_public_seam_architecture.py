@@ -57,6 +57,33 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_external_runner_governance.py", apex.command)
         self.assertIn("tests/test_external_runner_recovery.py", apex.command)
         self.assertIn("tests/test_research_engine_contract_matrix.py", apex.command)
+        self.assertIn("tests/test_focused_loop_e2e.py", apex.command)
+        self.assertIn("tests/test_focused_stop_resume.py", apex.command)
+
+    def test_focused_loop_rejects_private_execution_and_parallel_truth(self) -> None:
+        required = (
+            "# FocusedCandidateSelector FocusedStageRecord FocusedPreflightResult "
+            "FocusedFormalRun FocusedReflection FocusedFeedback FocusedDecision "
+            "WorkspaceClientProtocol PublishedRecordRef\n"
+        )
+        forbidden = {
+            "import subprocess\n": "subprocess seam",
+            "import socket\n": "direct network",
+            "import sqlite3\n": "parallel ledger",
+            "import quant_runtime\n": "Runtime",
+            "workspace.register_package(source)\n": "package registry bypass",
+            "workspace.submit_run(request)\n": "formal runner bypass",
+            "os.environ['TOKEN']\n": "host credential",
+            "class FocusedLedger: pass\n": "parallel owner",
+        }
+        for source_text, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                focused = root / "apex-research/src/apex_research/focused.py"
+                focused.parent.mkdir(parents=True)
+                focused.write_text(required + source_text)
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
 
     def test_source_scan_rejects_private_cross_repository_access(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
