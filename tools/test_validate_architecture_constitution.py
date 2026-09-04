@@ -197,6 +197,21 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_011_research_memory_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-011.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("WorkspaceClient", candidate["public_seam"])
+        self.assertIn("ResearchEnginePort", candidate["public_seam"])
+        self.assertIn("ResearchOrchestrator", candidate["public_seam"])
+        self.assertIn("meaning-bearing", candidate["identity_impact"])
+        self.assertIn("reconciliation_required", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
