@@ -1,0 +1,21 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-014",
+  "canonical_owner": "apex_research",
+  "public_seam": "Apex Evidence v2 composer and publisher / WorkspaceClient immutable publication, canonical record readback, registered Strategy Package lookup, lineage, and artifact verification / Strategy Reporting read model",
+  "identity_impact": "Evidence v2 identity hashes the exact campaign, validation protocol revision, closed typed Candidate scope, Strategy Package revision, canonical source set, every four-state section reason and owner reference, comparability axes, forbidden inference declarations, and supersession meaning while excluding publication timestamps, local paths, and storage metadata.",
+  "evidence_level": "Apex-owned cross-run research evidence composition over existing Candidate, gate, Runtime formal, data, cost, validation, statistical-control, failure, warning, limitation, auxiliary, and future optional owner records; it neither recreates Runtime single-run truth nor grants research qualification or production approval.",
+  "fail_closed_behavior": "Require strict typed inputs and complete canonical public readback; enforce mutually exclusive four-state evaluated, not_evaluated, blocked, and incomparable semantics with owner provenance, exact blocker facts, and frozen two-sided incompatibility axes; reject scope drift, source omission, denominator drift, tampering, duck typing, naked metrics or p-values, formal/auxiliary namespace confusion, qualification inference, and production-approval inference.",
+  "compatibility": [
+    "spec-001-campaign-records",
+    "spec-006-governance",
+    "spec-009-candidate-gate",
+    "spec-011a-public-lineage",
+    "spec-012-validation-matrix",
+    "spec-013-statistical-control",
+    "spec-028-candidate-ir",
+    "strategy-static-intake-conformance-preflight-formal"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}
