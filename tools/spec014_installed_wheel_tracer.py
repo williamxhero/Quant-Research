@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import tempfile
 from copy import deepcopy
@@ -17,6 +16,8 @@ from installed_wheel_harness import (
     create_installed_environment,
     installed_distribution_manifest,
     run_command,
+    run_installed_pytest,
+    sanitized_environment,
 )
 
 REPOSITORIES = (
@@ -62,7 +63,7 @@ def _run(
     return run_command(
         command,
         cwd=cwd,
-        environment=environment or dict(os.environ),
+        environment=environment or sanitized_environment(),
         timeout_seconds=900,
     )
 
@@ -74,8 +75,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             raise TracerFailure(f"repository is unavailable: {repository}")
     with tempfile.TemporaryDirectory(prefix="spec014-installed-") as temporary:
         isolated = Path(temporary)
-        environment = dict(os.environ)
-        environment.pop("PYTHONPATH", None)
+        environment = sanitized_environment()
         dist = isolated / "dist"
         dist.mkdir()
         wheels = build_wheels(root, REPOSITORIES, dist, environment)
@@ -86,20 +86,24 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             install_pytest=True,
         )
         for repository, targets in INSTALLED_ACCEPTANCE_TEST_GROUPS:
-            _run(
-                [
-                    str(python),
-                    "-m",
-                    "pytest",
-                    "-q",
-                    *(str(root / repository / target) for target in targets),
-                ],
+            run_installed_pytest(
+                python,
+                (root / repository / target for target in targets),
+                (
+                    "apex_research",
+                    "quant_runtime",
+                    "strategy_reporting",
+                    "strategy_workspace",
+                ),
+                (root / name / "src" for name in REPOSITORIES),
                 cwd=isolated,
                 environment=environment,
+                timeout_seconds=900,
             )
         output = _run(
             [
                 str(python),
+                "-I",
                 str(Path(__file__).resolve()),
                 "--repository-root",
                 str(root),

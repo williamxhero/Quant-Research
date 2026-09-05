@@ -25,6 +25,11 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 "PYTHONPATH": "source",
                 "PYTEST_ADDOPTS": "--ignore=tests",
                 "PYTEST_PLUGINS": "injected",
+                "UV_WORKING_DIR": "elsewhere",
+                "UV_PROJECT": "other-project",
+                "UV_NO_SYNC": "1",
+                "UV_PROJECT_ENVIRONMENT": "other-venv",
+                "VIRTUAL_ENV": "caller-venv",
                 "KEEP": "yes",
             }
         )
@@ -32,6 +37,11 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", environment)
         self.assertNotIn("PYTEST_ADDOPTS", environment)
         self.assertNotIn("PYTEST_PLUGINS", environment)
+        self.assertNotIn("UV_WORKING_DIR", environment)
+        self.assertNotIn("UV_PROJECT", environment)
+        self.assertNotIn("UV_NO_SYNC", environment)
+        self.assertNotIn("UV_PROJECT_ENVIRONMENT", environment)
+        self.assertNotIn("VIRTUAL_ENV", environment)
         self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
         self.assertEqual(environment["KEEP"], "yes")
 
@@ -230,6 +240,30 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             with self.assertRaises(harness.InstalledWheelFailure):
                 harness.verify_source_topology(repository, dict(os.environ))
 
+    def test_source_topology_requires_git_when_attesting_an_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            (repository / "src/package").mkdir(parents=True)
+            (repository / "src/package/__init__.py").write_text("", encoding="utf-8")
+
+            with self.assertRaises(harness.InstalledWheelFailure):
+                harness.verify_source_topology(repository, dict(os.environ))
+
+    def test_source_topology_rejects_skip_worktree_build_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _root, repository, _baseline = self._source_repository(Path(temporary))
+            subprocess.run(
+                ["git", "update-index", "--skip-worktree", "src/package/__init__.py"],
+                cwd=repository,
+                check=True,
+            )
+            (repository / "src/package/__init__.py").unlink()
+
+            with self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "unsafe Git index flags"
+            ):
+                harness.verify_source_topology(repository, dict(os.environ))
+
     def test_source_build_inputs_rejects_links_that_escape_the_source_tree(
         self,
     ) -> None:
@@ -266,6 +300,30 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 harness.InstalledWheelFailure,
                 "source root is a symbolic link or junction",
+            ):
+                harness._source_build_inputs(repository)
+
+    def test_source_build_inputs_mocked_link_detection_is_platform_independent(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            source = repository / "src/package"
+            source.mkdir(parents=True)
+            injected = source / "injected.py"
+            injected.write_text("VALUE = 1\n", encoding="utf-8")
+            original = Path.is_symlink
+
+            with (
+                mock.patch.object(
+                    Path,
+                    "is_symlink",
+                    autospec=True,
+                    side_effect=lambda path: path == injected or original(path),
+                ),
+                self.assertRaisesRegex(
+                    harness.InstalledWheelFailure, "symbolic link or junction"
+                ),
             ):
                 harness._source_build_inputs(repository)
 

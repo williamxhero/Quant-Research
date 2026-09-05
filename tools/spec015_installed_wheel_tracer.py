@@ -189,13 +189,37 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 timeout_seconds=1_200,
                 pytest_args=("-s",),
             )
-            transcript = [
-                json.loads(value)
-                for value in re.findall(
-                    re.escape(IDENTITY_TRANSCRIPT_PREFIX) + r"([^\r\n]+)",
-                    stable_output,
+            encoded_transcript = re.findall(
+                r"(?m)^" + re.escape(IDENTITY_TRANSCRIPT_PREFIX) + r"(\{[^\r\n]*\})$",
+                stable_output,
+            )
+            if stable_output.count(IDENTITY_TRANSCRIPT_PREFIX) != len(
+                encoded_transcript
+            ):
+                raise TracerFailure(
+                    "stable installed identity transcript framing is invalid"
                 )
-            ]
+            try:
+                transcript = [json.loads(value) for value in encoded_transcript]
+            except json.JSONDecodeError as exc:
+                raise TracerFailure(
+                    "stable installed identity transcript JSON is invalid"
+                ) from exc
+            if any(
+                not isinstance(item, dict)
+                or set(item) != {"label", "identities"}
+                or not isinstance(item["label"], str)
+                or not isinstance(item["identities"], dict)
+                or not item["identities"]
+                or any(
+                    not isinstance(key, str) or not isinstance(value, str)
+                    for key, value in item["identities"].items()
+                )
+                for item in transcript
+            ):
+                raise TracerFailure(
+                    "stable installed identity transcript payload is invalid"
+                )
             labels = [item.get("label") for item in transcript]
             expected_labels = {
                 "policy",

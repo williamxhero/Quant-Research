@@ -10,6 +10,8 @@ import os
 import signal
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
@@ -28,7 +30,16 @@ class InstalledWheelFailure(RuntimeError):
 def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str]:
     """Return a deterministic test environment without caller pytest/source injection."""
     environment = dict(os.environ if source is None else source)
-    for name in ("PYTHONPATH", "PYTEST_ADDOPTS", "PYTEST_PLUGINS"):
+    for name in (
+        "PYTHONPATH",
+        "PYTEST_ADDOPTS",
+        "PYTEST_PLUGINS",
+        "UV_WORKING_DIR",
+        "UV_PROJECT",
+        "UV_NO_SYNC",
+        "UV_PROJECT_ENVIRONMENT",
+        "VIRTUAL_ENV",
+    ):
         environment.pop(name, None)
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return environment
@@ -61,12 +72,30 @@ def run_command(
             f"command could not start: {' '.join(command)}: {exc}"
         ) from exc
     job_handle: int | None = None
+    descendant_pids: set[int] = set()
+    tracker_stop: threading.Event | None = None
+    tracker: threading.Thread | None = None
     try:
         job_handle = _assign_windows_kill_job(process)
         _resume_windows_process(process)
+        if os.name != "nt":
+            tracker_stop = threading.Event()
+            tracker = threading.Thread(
+                target=_track_posix_descendants,
+                args=(process.pid, descendant_pids, tracker_stop),
+                daemon=True,
+            )
+            tracker.start()
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        _terminate_process_tree(process, job_handle=job_handle)
+        _stop_descendant_tracker(tracker, tracker_stop)
+        tracker = None
+        tracker_stop = None
+        _terminate_process_tree(
+            process,
+            job_handle=job_handle,
+            descendant_pids=frozenset(descendant_pids),
+        )
         job_handle = None
         try:
             stdout, stderr = process.communicate(timeout=10)
@@ -81,7 +110,14 @@ def run_command(
             f"{stdout}{stderr}"
         ) from exc
     except BaseException:
-        _terminate_process_tree(process, job_handle=job_handle)
+        _stop_descendant_tracker(tracker, tracker_stop)
+        tracker = None
+        tracker_stop = None
+        _terminate_process_tree(
+            process,
+            job_handle=job_handle,
+            descendant_pids=frozenset(descendant_pids),
+        )
         job_handle = None
         try:
             process.communicate(timeout=10)
@@ -92,10 +128,15 @@ def run_command(
                 process.stderr.close()
         raise
     finally:
+        _stop_descendant_tracker(tracker, tracker_stop)
         if job_handle is not None:
             _close_windows_handle(job_handle)
         elif os.name != "nt":
-            _terminate_process_tree(process, job_handle=None)
+            _terminate_process_tree(
+                process,
+                job_handle=None,
+                descendant_pids=frozenset(descendant_pids),
+            )
     if process.returncode:
         raise InstalledWheelFailure(
             f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}",
@@ -208,7 +249,10 @@ def _close_windows_handle(handle: int | None) -> None:
 
 
 def _terminate_process_tree(
-    process: subprocess.Popen[str], *, job_handle: int | None
+    process: subprocess.Popen[str],
+    *,
+    job_handle: int | None,
+    descendant_pids: frozenset[int] = frozenset(),
 ) -> None:
     if os.name == "nt":
         if job_handle is not None:
@@ -226,6 +270,51 @@ def _terminate_process_tree(
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    for pid in descendant_pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def _stop_descendant_tracker(
+    tracker: threading.Thread | None, stop: threading.Event | None
+) -> None:
+    if tracker is None or stop is None:
+        return
+    stop.set()
+    tracker.join(timeout=1)
+
+
+def _track_posix_descendants(
+    root_pid: int, descendants: set[int], stop: threading.Event
+) -> None:
+    """Remember descendants even if they later detach from the original process group."""
+    tracked_parents = {root_pid}
+    while not stop.is_set():
+        parent_by_pid: dict[int, int] = {}
+        try:
+            process_paths = tuple(Path("/proc").iterdir())
+        except OSError:
+            return
+        for process_path in process_paths:
+            if not process_path.name.isdigit():
+                continue
+            try:
+                stat = (process_path / "stat").read_text(encoding="utf-8")
+                fields = stat[stat.rindex(")") + 2 :].split()
+                parent_by_pid[int(process_path.name)] = int(fields[1])
+            except (OSError, ValueError, IndexError):
+                continue
+        changed = True
+        while changed:
+            changed = False
+            for pid, parent in parent_by_pid.items():
+                if parent in tracked_parents and pid not in tracked_parents:
+                    tracked_parents.add(pid)
+                    descendants.add(pid)
+                    changed = True
+        time.sleep(0.005)
 
 
 def build_wheels(
@@ -456,8 +545,32 @@ def verify_source_topology(
         "source_files": source_files,
         "source_fingerprint": _source_fingerprint(repository, source_files),
     }
-    if environment is not None and (repository / ".git").exists():
+    if environment is not None:
         build_roots = _declared_build_roots(repository)
+        inside_work_tree = run_command(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        ).strip()
+        if inside_work_tree != "true":
+            raise InstalledWheelFailure(
+                f"wheel source repository is not a Git work tree: {repository}"
+            )
+        index_lines = run_command(
+            ["git", "ls-files", "-v", "--", *build_roots],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        ).splitlines()
+        special_index_entries = sorted(
+            line[2:] for line in index_lines if len(line) >= 3 and line[0] != "H"
+        )
+        if special_index_entries:
+            raise InstalledWheelFailure(
+                "wheel build inputs use unsafe Git index flags: "
+                + ", ".join(special_index_entries)
+            )
         run_command(
             ["git", "diff", "--quiet", "--", *build_roots],
             cwd=repository,
@@ -478,6 +591,12 @@ def verify_source_topology(
                 timeout_seconds=30,
             ).splitlines()
         )
+        missing = sorted(tracked - set(source_files))
+        if missing:
+            raise InstalledWheelFailure(
+                "tracked wheel build inputs are absent from the work tree: "
+                + ", ".join(missing)
+            )
         untracked = sorted(set(source_files) - tracked)
         if untracked:
             raise InstalledWheelFailure(

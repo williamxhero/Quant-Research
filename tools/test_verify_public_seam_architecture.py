@@ -134,7 +134,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertIn("test_real_workspace_client_publication_round_trip", source)
         self.assertIn("installed_acceptance_tests", source)
-        self.assertIn('environment.pop("PYTHONPATH", None)', source)
+        self.assertIn("environment = sanitized_environment()", source)
+        self.assertIn("run_installed_pytest(", source)
         self.assertIn("build_wheels", source)
         harness = (ROOT / "tools/installed_wheel_harness.py").read_text(
             encoding="utf-8"
@@ -306,6 +307,106 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ["passed", "partial", "skipped"],
         )
 
+    def test_connected_status_distinguishes_launch_timeout_and_test_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "repository"
+            repository.mkdir()
+            plan = tuple(
+                verifier.GateCheck(
+                    owner,
+                    "repository",
+                    category,
+                    ("pytest",),
+                    connected=True,
+                )
+                for owner, category in (
+                    ("unavailable-owner", "unavailable"),
+                    ("timeout-owner", "timeout"),
+                    ("failed-owner", "failed"),
+                )
+            )
+            with (
+                mock.patch.object(verifier, "connected_status_plan", return_value=plan),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command could not start: pytest"
+                        ),
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command timed out after 1s: pytest"
+                        ),
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command failed (1): pytest", returncode=1
+                        ),
+                    ),
+                ),
+            ):
+                statuses = verifier.run_connected_status_checks(root)
+
+        self.assertEqual(
+            [item["status"] for item in statuses],
+            ["unavailable", "timed-out", "failed"],
+        )
+
+    def test_baseline_formatter_waiver_accepts_only_complete_formatter_output(
+        self,
+    ) -> None:
+        baseline = verifier.UNCHANGED_REPOSITORY_BASELINES["strategy-workspace"]
+        check = verifier.GateCheck(
+            "strategy_workspace",
+            "strategy-workspace",
+            "format",
+            ("ruff", "format", "--check", "."),
+            baseline_only=True,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "strategy-workspace").mkdir()
+            with (
+                mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command failed (1): ruff format --check .\n"
+                            "Would reformat: src/example.py\n"
+                            "1 file would be reformatted",
+                            returncode=1,
+                        ),
+                        baseline,
+                        "",
+                    ),
+                ),
+            ):
+                drift = verifier.run_full_gate_checks(root)
+            self.assertEqual(drift[0]["status"], "baseline-only-drift")
+
+            with (
+                mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command failed (1): ruff format --check .\n"
+                            "Would reformat: src/example.py\n"
+                            "warning: unrelated configuration drift",
+                            returncode=1,
+                        ),
+                        baseline,
+                        "",
+                    ),
+                ),
+                self.assertRaises(verifier.ArchitectureViolation),
+            ):
+                verifier.run_full_gate_checks(root)
+
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
         self,
     ) -> None:
@@ -447,7 +548,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    @classmethod\n"
                 "    def create(cls, identity): return cls(policy_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluation:\n"
-                "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str; operational_authority: str\n"
+                "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; supersedes_qualification: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
                 "    def create(cls, identity): return cls(evaluation_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluator:\n"
@@ -468,7 +569,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class QualificationRetirement:\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationSuccessorClaim:\n"
-                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance_reservation: object\n"
+                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance_reservation: object; supersedes: object\n"
                 "    @classmethod\n"
                 "    def create(cls, predecessor): return cls(claim_id=_successor_slot_id(predecessor))\n"
                 "class QualificationHistoryReader: pass\n"
@@ -481,23 +582,40 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
                 "    def _execute_publication(self, *, action, campaign_id, target, preflight, launch, complete):\n"
                 "        def authorize(grant): preflight(); launch(grant); return target\n"
-                "        result = self._governance.execute(action, authorize)\n"
-                "        if result.status != 'committed': return result\n"
-                "        try: complete(None, None)\n"
+                "        governance = self._require_governance()\n"
+                "        result = governance.execute(action, authorize)\n"
+                "        if result.status != 'committed' or result.reason != 'success': return result\n"
+                "        try: complete(result.reservation, result.settlement)\n"
                 "        except Exception: return result\n"
                 "        return result\n"
+                "    def _require_governance(self): return self._governance\n"
                 "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
                 "def _read_policy(workspace):\n"
-                "    raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)\n"
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationPolicy.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n"
+                "    return value\n"
                 "def _read_decision(workspace):\n"
-                "    raw=workspace.get_record('id'); value=QualificationDecision.model_validate_json(raw); verify_publication(raw, value)\n"
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationDecision.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n"
+                "    return value\n"
                 "def _read_held_evaluation(workspace):\n"
-                "    raw=workspace.get_record('id'); value=QualificationEvaluation.model_validate_json(raw); verify_publication(raw, value)\n"
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationEvaluation.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n"
+                "    return value\n"
                 "def _read_retirement(workspace):\n"
-                "    raw=workspace.get_record('id'); value=QualificationRetirement.model_validate_json(raw); verify_publication(raw, value)\n"
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationRetirement.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n"
+                "    return value\n"
                 "def _read_successor_claim(workspace):\n"
-                "    raw=workspace.get_record('id'); value=QualificationSuccessorClaim.model_validate_json(raw); verify_publication(raw, value)\n"
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationSuccessorClaim.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n"
+                "    return value\n"
                 "def _query_lineage_records(workspace):\n"
                 "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
                 "    while True:\n"
@@ -508,11 +626,14 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        if not isinstance(page_token, str) or not page_token: raise RuntimeError('invalid token')\n"
                 "        if snapshot_token is not None and page_token != snapshot_token: raise RuntimeError('drift')\n"
                 "        snapshot_token=page_token\n"
-                "        page_records=page['records']\n"
+                "        page_records=page.get('records')\n"
+                "        if not isinstance(page_records, list): raise RuntimeError('invalid records')\n"
                 "        if len(page_records) > 100: raise RuntimeError('oversized')\n"
-                "        records.extend(page_records)\n"
-                "        next_cursor=page['next_cursor']\n"
+                "        for value in page_records:\n"
+                "            publication=as_mapping(value); record_payload(publication); records.append(publication)\n"
+                "        next_cursor=page.get('next_cursor')\n"
                 "        if next_cursor is None: return tuple(records)\n"
+                "        if not isinstance(next_cursor, str) or not next_cursor: raise RuntimeError('invalid cursor')\n"
                 "        if next_cursor in seen_cursors: raise RuntimeError('cycle')\n"
                 "        seen_cursors.add(next_cursor)\n"
                 "        cursor=next_cursor\n"
@@ -586,8 +707,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             disconnected_readback = accepted.replace(
-                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)",
-                "workspace.get_record('id'); value=QualificationPolicy.model_validate_json('{}'); verify_publication({}, value)",
+                "    raw=workspace.get_record('id')\n"
+                "    value=QualificationPolicy.model_validate_json(raw)\n"
+                "    verify_publication(raw, value)\n",
+                "    workspace.get_record('id')\n"
+                "    value=QualificationPolicy.model_validate_json('{}')\n"
+                "    verify_publication({}, value)\n",
             )
             qualification.write_text(disconnected_readback, encoding="utf-8")
             with self.assertRaisesRegex(
@@ -596,8 +721,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             overwritten_readback = accepted.replace(
-                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)",
-                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); raw={}; value={}; verify_publication(raw, value)",
+                "    verify_publication(raw, value)\n",
+                "    raw={}\n    value={}\n    verify_publication(raw, value)\n",
+                1,
             )
             qualification.write_text(overwritten_readback, encoding="utf-8")
             with self.assertRaisesRegex(
@@ -655,6 +781,130 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier.ArchitectureViolation, "eagerly evaluates"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            eager_default = accepted.replace(
+                "complete=lambda *_: _publish_record(self._workspace)",
+                "complete=lambda eager=_publish_record(self._workspace): eager",
+                1,
+            )
+            qualification.write_text(eager_default, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "eagerly evaluates"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            dead_identity = accepted.replace(
+                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
+                "def create(cls, identity):\n"
+                "        if False: return cls(policy_id=canonical_sha256(identity))\n"
+                "        return cls(policy_id='forged')",
+            )
+            qualification.write_text(dead_identity, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "QualificationPolicy.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            ineffective_status_guard = accepted.replace(
+                "if result.status != 'committed' or result.reason != 'success': return result",
+                "if result.status != 'committed' and False: return result",
+            )
+            qualification.write_text(ineffective_status_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "committed-first"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            dead_readback = accepted.replace(
+                "    verify_publication(raw, value)\n",
+                "    if False: verify_publication(raw, value)\n",
+                1,
+            )
+            qualification.write_text(dead_readback, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "typed canonical readback _read_policy"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            discarded_readback = accepted.replace(
+                "    return value\n", "    return {}\n", 1
+            )
+            qualification.write_text(discarded_readback, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "typed canonical readback _read_policy"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            wrong_cursor_input = accepted.replace(
+                "page_size=100, cursor=cursor, snapshot_token=snapshot_token",
+                "page_size=100, cursor=None, snapshot_token=snapshot_token",
+            )
+            qualification.write_text(wrong_cursor_input, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            discarded_cursor = accepted.replace(
+                "        cursor=next_cursor\n", "        cursor=None\n"
+            )
+            qualification.write_text(discarded_cursor, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            reset_records = accepted.replace(
+                "        page_records=page.get('records')\n",
+                "        records=[]\n        page_records=page.get('records')\n",
+            )
+            qualification.write_text(reset_records, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            append_before_validation = accepted.replace(
+                "publication=as_mapping(value); record_payload(publication); records.append(publication)",
+                "publication=as_mapping(value); records.append(publication); record_payload(publication)",
+            )
+            qualification.write_text(append_before_validation, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            no_enum_base = accepted.replace(
+                "class QualificationState(StrEnum):", "class QualificationState:"
+            )
+            qualification.write_text(no_enum_base, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "maturity states drifted"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            annotated_enum = accepted.replace(
+                "    RETIRED = 'retired'\n", "    RETIRED: str = 'retired'\n"
+            )
+            qualification.write_text(annotated_enum, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "maturity states drifted"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            for hidden_owner in (
+                "\ndef hidden():\n    class QualificationPolicy: pass\n",
+                (
+                    "\nclass AlternateQualificationService:\n"
+                    "    def publish_policy(self): pass\n"
+                ),
+                "\ndef publish_policy(): pass\n",
+            ):
+                qualification.write_text(accepted + hidden_owner, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "parallel qualification owner"
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
 
     def test_spec015_guard_rejects_parallel_qualification_owners(self) -> None:
         forbidden = (
@@ -769,6 +1019,41 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def relay(workspace, record): workspace.publish_record(record)\n"
                 "def save(workspace, value): relay(workspace, QualificationDecision(value))\n"
             ),
+            (
+                "def save(workspace):\n"
+                "    payload={'record_type': 'apex-research.qualification-decision.v1'}\n"
+                "    workspace.publish_record(payload)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "class Box: pass\n"
+                "def save(workspace, value):\n"
+                "    box=Box()\n"
+                "    box.payload: object = QualificationDecision(value)\n"
+                "    workspace.publish_record(box.payload)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    safe, *records = ({}, QualificationDecision(value))\n"
+                "    workspace.publish_record(records)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def outer(workspace, payload):\n"
+                "    def inner(*, publication):\n"
+                "        workspace.publish_record(publication)\n"
+                "    inner(publication=payload)\n"
+                "def save(workspace, value):\n"
+                "    outer(workspace, QualificationDecision(value))\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def final(workspace, payload): workspace.publish_record(payload)\n"
+                "def middle(workspace, payload): final(workspace, payload)\n"
+                "def save(workspace, value):\n"
+                "    middle(workspace, QualificationDecision(value))\n"
+            ),
         ):
             with tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -794,6 +1079,30 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 self.skipTest(f"directory links unavailable: {exc}")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "symbolic link or junction"
+            ):
+                verifier.scan_sources(root)
+
+    def test_source_scan_mocked_junction_detection_is_platform_independent(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_root = root / "quant-runtime/src/quant_runtime"
+            source_root.mkdir(parents=True)
+            injected = source_root / "injected.py"
+            injected.write_text("VALUE = 1\n", encoding="utf-8")
+            original = Path.is_junction
+
+            with (
+                mock.patch.object(
+                    Path,
+                    "is_junction",
+                    autospec=True,
+                    side_effect=lambda path: path == injected or original(path),
+                ),
+                self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "symbolic link or junction"
+                ),
             ):
                 verifier.scan_sources(root)
 
@@ -836,6 +1145,35 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source.write_text("class QualificationReadModel: pass\n", encoding="utf-8")
 
             verifier._scan_spec015_non_owner_repositories(root)
+
+        for source_text in (
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    record=QualificationDecision(value)\n"
+                "    record={}\n"
+                "    workspace.publish_record(record)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    owned, safe=(QualificationDecision(value), {})\n"
+                "    workspace.publish_record(safe)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    sink=workspace.publish_record\n"
+                "    sink=lambda record: record\n"
+                "    sink(QualificationDecision(value))\n"
+            ),
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "strategy-reporting/src/strategy_reporting/safe.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(source_text, encoding="utf-8")
+                verifier._scan_spec015_non_owner_repositories(root)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
