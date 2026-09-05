@@ -19,6 +19,38 @@ SPEC.loader.exec_module(harness)
 
 
 class InstalledWheelHarnessTests(unittest.TestCase):
+    def test_sanitized_environment_removes_pytest_and_source_injection(self) -> None:
+        environment = harness.sanitized_environment(
+            {
+                "PYTHONPATH": "source",
+                "PYTEST_ADDOPTS": "--ignore=tests",
+                "PYTEST_PLUGINS": "injected",
+                "KEEP": "yes",
+            }
+        )
+
+        self.assertNotIn("PYTHONPATH", environment)
+        self.assertNotIn("PYTEST_ADDOPTS", environment)
+        self.assertNotIn("PYTEST_PLUGINS", environment)
+        self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
+        self.assertEqual(environment["KEEP"], "yes")
+
+    def test_run_command_wraps_process_launch_failures(self) -> None:
+        with (
+            mock.patch.object(
+                harness.subprocess, "Popen", side_effect=OSError("missing executable")
+            ),
+            self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "command could not start"
+            ),
+        ):
+            harness.run_command(
+                ["missing-command"],
+                cwd=Path.cwd(),
+                environment=dict(os.environ),
+                timeout_seconds=1,
+            )
+
     def test_source_visibility_detects_paths_below_or_above_source_root(self) -> None:
         source = Path("C:/workspace/package/src").resolve()
 
@@ -39,6 +71,30 @@ class InstalledWheelHarnessTests(unittest.TestCase):
 
             self.assertEqual(topology["source_files"], ["src/package/__init__.py"])
             self.assertEqual(len(topology["source_fingerprint"]), 64)
+
+    def test_source_topology_includes_declared_force_includes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            (repository / "src/package").mkdir(parents=True)
+            (repository / "strategies").mkdir()
+            (repository / "src/package/__init__.py").write_text("", encoding="utf-8")
+            (repository / "strategies/example.py").write_text(
+                "VALUE = 1\n", encoding="utf-8"
+            )
+            (repository / "README.md").write_text("package\n", encoding="utf-8")
+            (repository / "pyproject.toml").write_text(
+                "[project]\nname='package'\nversion='1.0'\nreadme='README.md'\n"
+                "[tool.hatch.build.targets.wheel]\npackages=['src/package']\n"
+                "[tool.hatch.build.targets.wheel.force-include]\n"
+                "'strategies'='package/strategies'\n",
+                encoding="utf-8",
+            )
+
+            topology = harness.verify_source_topology(repository)
+
+            self.assertIn("strategies/example.py", topology["source_files"])
+            self.assertIn("pyproject.toml", topology["source_files"])
+            self.assertIn("README.md", topology["source_files"])
 
     @unittest.skipUnless(os.name == "nt", "Windows Job cleanup contract")
     def test_resume_failure_closes_job_and_reaps_suspended_process(self) -> None:
@@ -163,6 +219,16 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                     {"package": baseline},
                     dict(os.environ),
                 )
+
+    def test_source_topology_rejects_dirty_owner_build_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _root, repository, _baseline = self._source_repository(Path(temporary))
+            (repository / "src/package/__init__.py").write_text(
+                "VALUE = 9\n", encoding="utf-8"
+            )
+
+            with self.assertRaises(harness.InstalledWheelFailure):
+                harness.verify_source_topology(repository, dict(os.environ))
 
     def test_source_build_inputs_rejects_links_that_escape_the_source_tree(
         self,

@@ -7,6 +7,7 @@ import ast
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -20,6 +21,12 @@ HARNESS_SPEC = importlib.util.spec_from_file_location(
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
+
+UNCHANGED_REPOSITORY_BASELINES = {
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "255442a9291ca49a67e05afa0123e10e07aeb754",
+}
 
 
 class ArchitectureViolation(ValueError):
@@ -53,6 +60,7 @@ class ApexSeamPolicy(NamedTuple):
 
 def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
     """Return public-seam fixture tests without creating shared state or evidence."""
+    repository_root = repository_root.resolve()
     return (
         FixtureCheck(
             "strategy_workspace",
@@ -176,6 +184,7 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
 
 def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
     """Return the complete non-connected release gate plan for all five seams."""
+    repository_root = repository_root.resolve()
     commands: list[GateCheck] = []
 
     def add(
@@ -202,6 +211,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "tools/test_installed_wheel_harness.py",
         "tools/test_validate_architecture_constitution.py",
         "tools/test_verify_public_seam_architecture.py",
+        "tools/validate_architecture_constitution.py",
         "tools/verify_public_seam_architecture.py",
     )
     add(
@@ -507,12 +517,18 @@ def _scan_spec015_qualification_seam(
         (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
         for path in subsystem_paths
     )
-    classes = {
-        node.name: node
+    class_entries = [
+        (node.name, node)
         for _, subsystem_tree in subsystem_trees
-        for node in ast.walk(subsystem_tree)
+        for node in subsystem_tree.body
         if isinstance(node, ast.ClassDef)
-    }
+    ]
+    class_names = [name for name, _ in class_entries]
+    if len(class_names) != len(set(class_names)):
+        raise ArchitectureViolation(
+            "apex-research: qualification seam has duplicate module-level public classes"
+        )
+    classes = dict(class_entries)
     forbidden_owner_markers = (
         "Ledger",
         "Registry",
@@ -526,14 +542,30 @@ def _scan_spec015_qualification_seam(
     for path in all_package_paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.ClassDef)
-                and node.name != "QualificationService"
-                and (
-                    node.name == "CandidateTruth"
-                    or "Qualification" in node.name
+            if isinstance(node, ast.ClassDef) and (
+                node.name == "CandidateTruth"
+                or node.name in classes
+                and path not in subsystem_paths
+                or node.name
+                in {
+                    "MaturityService",
+                    "QualificationPublisher",
+                    "QualificationStateStore",
+                    "ResearchQualificationPublisher",
+                }
+                or (
+                    node.name not in classes
+                    and "Qualification" in node.name
                     and any(marker in node.name for marker in forbidden_owner_markers)
                 )
+            ):
+                raise ArchitectureViolation(
+                    f"apex-research: parallel qualification owner {node.name}: {path}"
+                )
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and path not in subsystem_paths
+                and node.name in SPEC015_OWNER_METHODS
             ):
                 raise ArchitectureViolation(
                     f"apex-research: parallel qualification owner {node.name}: {path}"
@@ -644,7 +676,7 @@ def _scan_spec015_qualification_seam(
             "claim_id",
             "predecessor",
             "successor",
-            "governance",
+            "governance_reservation",
         },
     }
     for class_name, expected_fields in required_fields.items():
@@ -894,10 +926,15 @@ def _scan_spec015_qualification_seam(
             "campaign_id",
             "target",
             "preflight",
+            "launch",
             "complete",
         }:
             raise ArchitectureViolation(
                 f"apex-research: {method_name} does not bind the governed publication contract"
+            )
+        if not isinstance(keywords["complete"], (ast.Lambda, ast.Name)):
+            raise ArchitectureViolation(
+                f"apex-research: {method_name} eagerly evaluates publication completion"
             )
 
         def reaches_workspace_publication(function_name: str, seen: set[str]) -> bool:
@@ -1001,20 +1038,41 @@ def _scan_spec015_qualification_seam(
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "publish_record"
     ]
+    result_name = (
+        execute_assignments[0][1].targets[0].id if len(execute_assignments) == 1 else ""
+    )
+
+    def rejects_noncommitted(statement: ast.stmt) -> bool:
+        return (
+            isinstance(statement, ast.If)
+            and any(
+                isinstance(node, ast.Compare)
+                and isinstance(node.left, ast.Attribute)
+                and isinstance(node.left.value, ast.Name)
+                and node.left.value.id == result_name
+                and node.left.attr == "status"
+                and len(node.ops) == 1
+                and isinstance(node.ops[0], ast.NotEq)
+                and len(node.comparators) == 1
+                and isinstance(node.comparators[0], ast.Constant)
+                and node.comparators[0].value == "committed"
+                for node in ast.walk(statement.test)
+            )
+            and any(
+                isinstance(node, ast.Return)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == result_name
+                for node in statement.body
+            )
+        )
+
     if (
         len(execute_assignments) != 1
         or len(completion_statements) != 1
         or execute_assignments[0][0] >= completion_statements[0]
         or not any(
-            isinstance(statement, ast.If)
+            rejects_noncommitted(statement)
             and execute_assignments[0][0] < index < completion_statements[0]
-            and any(
-                isinstance(node, ast.Attribute)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == execute_assignments[0][1].targets[0].id
-                and node.attr == "status"
-                for node in ast.walk(statement.test)
-            )
             for index, statement in enumerate(execute_publication.body)
         )
         or direct_workspace_publications
@@ -1036,74 +1094,97 @@ def _scan_spec015_qualification_seam(
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"
             )
-        assignments = [
-            node
-            for node in ast.walk(reader)
-            if isinstance(node, (ast.Assign, ast.AnnAssign))
-        ]
 
-        def assignment_parts(
-            statement: ast.Assign | ast.AnnAssign,
-        ) -> tuple[set[str], ast.AST | None]:
-            targets = (
-                statement.targets
-                if isinstance(statement, ast.Assign)
-                else (statement.target,)
-            )
-            return (
-                {target.id for target in targets if isinstance(target, ast.Name)},
-                statement.value,
-            )
+        def target_names(value: ast.AST) -> set[str]:
+            if isinstance(value, ast.Name):
+                return {value.id}
+            if isinstance(value, (ast.Tuple, ast.List)):
+                return {
+                    name for element in value.elts for name in target_names(element)
+                }
+            return set()
 
-        def depends_on(value: ast.AST | None, names: set[str]) -> bool:
-            return value is not None and any(
-                isinstance(node, ast.Name) and node.id in names
+        def value_origins(
+            value: ast.AST | None, origins: dict[str, frozenset[str]]
+        ) -> frozenset[str]:
+            if value is None:
+                return frozenset()
+            return frozenset(
+                origin
                 for node in ast.walk(value)
+                if isinstance(node, ast.Name)
+                for origin in origins.get(node.id, ())
             )
 
-        fetched: set[str] = set()
-        for statement in assignments:
-            targets, value = assignment_parts(statement)
-            if value is not None and any(
+        events = sorted(
+            (
+                node
+                for node in ast.walk(reader)
+                if isinstance(node, (ast.Assign, ast.AnnAssign))
+                or (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "verify_publication"
+                )
+            ),
+            key=lambda node: (node.lineno, node.col_offset),
+        )
+        origins: dict[str, frozenset[str]] = {}
+        typed_origins: dict[str, frozenset[str]] = {}
+        saw_fetch = False
+        saw_parse = False
+        verified = False
+        for event in events:
+            if isinstance(event, ast.Call):
+                raw = frozenset(
+                    origin
+                    for argument in event.args
+                    for origin in value_origins(argument, origins)
+                )
+                typed = frozenset(
+                    origin
+                    for argument in event.args
+                    for origin in value_origins(argument, typed_origins)
+                )
+                if raw & typed:
+                    verified = True
+                continue
+            targets = (
+                event.targets if isinstance(event, ast.Assign) else (event.target,)
+            )
+            names = {name for target in targets for name in target_names(target)}
+            value = event.value
+            derived = value_origins(value, origins)
+            typed = value_origins(value, typed_origins)
+            fetch = value is not None and any(
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "get_record"
                 for node in ast.walk(value)
-            ):
-                fetched.update(targets)
-        changed = True
-        while changed:
-            changed = False
-            for statement in assignments:
-                targets, value = assignment_parts(statement)
-                if depends_on(value, fetched) and not targets <= fetched:
-                    fetched.update(targets)
-                    changed = True
-        parsed: set[str] = set()
-        for statement in assignments:
-            targets, value = assignment_parts(statement)
-            if (
-                value is not None
-                and depends_on(value, fetched)
-                and any(
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "model_validate_json"
-                    and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == model_name
-                    for node in ast.walk(value)
-                )
-            ):
-                parsed.update(targets)
-        verified = any(
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "verify_publication"
-            and any(depends_on(argument, fetched) for argument in node.args)
-            and any(depends_on(argument, parsed) for argument in node.args)
-            for node in ast.walk(reader)
-        )
-        if not fetched or not parsed or not verified:
+            )
+            parses_model = value is not None and any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "model_validate_json"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == model_name
+                for node in ast.walk(value)
+            )
+            for name in names:
+                origins.pop(name, None)
+                typed_origins.pop(name, None)
+            if fetch:
+                saw_fetch = True
+                derived = frozenset({f"{reader_name}:{event.lineno}"})
+            for name in names:
+                if derived:
+                    origins[name] = derived
+                if parses_model and derived:
+                    typed_origins[name] = derived
+                    saw_parse = True
+                elif typed:
+                    typed_origins[name] = typed
+        if not saw_fetch or not saw_parse or not verified:
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"
             )
@@ -1360,6 +1441,152 @@ def _scan_spec015_qualification_seam(
         and node.value.id == "page_token"
         for node in bounded_loop.body
     )
+    loop_positions = (
+        {id(statement): index for index, statement in enumerate(bounded_loop.body)}
+        if bounded_loop is not None
+        else {}
+    )
+
+    def containing_position(target: ast.AST | None) -> int:
+        if bounded_loop is None or target is None:
+            return -1
+        return next(
+            (
+                index
+                for index, statement in enumerate(bounded_loop.body)
+                if target is statement or target in ast.walk(statement)
+            ),
+            -1,
+        )
+
+    query_position = containing_position(lineage_call)
+    counter_guard_position = (
+        next(
+            (
+                loop_positions[id(node)]
+                for node in bounded_loop.body
+                if page_counter_bound
+                and direct_guard(
+                    node,
+                    lambda test: (
+                        isinstance(test, ast.Compare)
+                        and isinstance(test.left, ast.Name)
+                        and test.left.id == "page_count"
+                    ),
+                )
+            ),
+            -1,
+        )
+        if bounded_loop is not None
+        else -1
+    )
+    counter_advance_position = (
+        next(
+            (
+                loop_positions[id(node)]
+                for node in bounded_loop.body
+                if isinstance(node, ast.AugAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "page_count"
+            ),
+            -1,
+        )
+        if bounded_loop is not None
+        else -1
+    )
+    token_position = (
+        next(
+            (
+                index
+                for index, node in enumerate(bounded_loop.body)
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "page_token"
+                    for target in node.targets
+                )
+            ),
+            -1,
+        )
+        if bounded_loop is not None
+        else -1
+    )
+    drift_position = (
+        next(
+            (
+                index
+                for index, node in enumerate(bounded_loop.body)
+                if isinstance(node, ast.If)
+                and any(
+                    isinstance(value, ast.Name) and value.id == "snapshot_token"
+                    for value in ast.walk(node.test)
+                )
+                and any(
+                    isinstance(value, ast.Name) and value.id == "page_token"
+                    for value in ast.walk(node.test)
+                )
+            ),
+            -1,
+        )
+        if bounded_loop is not None
+        else -1
+    )
+    advance_position = (
+        next(
+            (
+                index
+                for index, node in enumerate(bounded_loop.body)
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "snapshot_token"
+                    for target in node.targets
+                )
+            ),
+            -1,
+        )
+        if bounded_loop is not None
+        else -1
+    )
+    token_validated = bounded_loop is not None and any(
+        isinstance(node, ast.If)
+        and token_position < index < drift_position
+        and any(
+            isinstance(value, ast.Name) and value.id == "page_token"
+            for value in ast.walk(node.test)
+        )
+        and any(isinstance(value, ast.Raise) for value in node.body)
+        for index, node in enumerate(bounded_loop.body)
+    )
+    records_initialized = (
+        lineage_reader is not None
+        and bounded_loop is not None
+        and any(
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(target, ast.Name) and target.id == "records"
+                for target in (
+                    node.targets if isinstance(node, ast.Assign) else (node.target,)
+                )
+            )
+            and isinstance(node.value, ast.List)
+            for node in lineage_reader.body[: lineage_reader.body.index(bounded_loop)]
+        )
+    )
+    records_accumulated = bounded_loop is not None and any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "records"
+        and node.func.attr in {"append", "extend"}
+        for node in ast.walk(bounded_loop)
+    )
+    returns_accumulated = bounded_loop is not None and any(
+        isinstance(node, ast.Return)
+        and any(
+            isinstance(value, ast.Name) and value.id == "records"
+            for value in ast.walk(node.value)
+        )
+        for node in ast.walk(bounded_loop)
+    )
     if (
         len(lineage_calls) != 1
         or not {"max_depth", "page_size", "cursor", "snapshot_token"}
@@ -1378,6 +1605,19 @@ def _scan_spec015_qualification_seam(
         or not snapshot_captured
         or not snapshot_drift_rejected
         or not snapshot_advanced
+        or not (
+            0
+            <= counter_guard_position
+            < counter_advance_position
+            < query_position
+            < token_position
+            < drift_position
+            < advance_position
+        )
+        or not token_validated
+        or not records_initialized
+        or not records_accumulated
+        or not returns_accumulated
     ):
         raise ArchitectureViolation(
             "apex-research: qualification lineage is not bounded snapshot pagination"
@@ -1471,6 +1711,13 @@ def _scan_spec015_qualification_seam(
         and isinstance(node.value, ast.Constant)
         and isinstance(node.value.value, str)
     }
+    state_names = {
+        target.id
+        for node in state_class.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
     expected_states = {
         "idea",
         "experimental",
@@ -1480,7 +1727,8 @@ def _scan_spec015_qualification_seam(
         "research_qualified",
         "retired",
     }
-    if state_values != expected_states:
+    expected_state_names = {value.upper() for value in expected_states}
+    if state_values != expected_states or state_names != expected_state_names:
         raise ArchitectureViolation(
             "apex-research: qualification maturity states drifted"
         )
@@ -1546,6 +1794,13 @@ SPEC015_MATURITY_OWNER_CLASSES = {
     "MaturityService",
     "MaturityState",
 }
+SPEC015_PARALLEL_OWNER_CLASSES = {
+    *SPEC015_OWNER_CLASSES,
+    *SPEC015_MATURITY_OWNER_CLASSES,
+    "QualificationPublisher",
+    "QualificationStateStore",
+    "ResearchQualificationPublisher",
+}
 SPEC015_OWNER_METHODS = {
     "evaluate_qualification",
     "publish_decision",
@@ -1586,25 +1841,20 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         or node.module.startswith("apex_research.qualification.")
                     )
                 ):
+                    qualification_modules.update(
+                        alias.asname or alias.name
+                        for alias in node.names
+                        if node.module == "apex_research"
+                        and alias.name == "qualification"
+                    )
                     qualification_symbols.update(
                         alias.asname or alias.name
                         for alias in node.names
-                        if alias.name in SPEC015_OWNER_CLASSES
-                        or (
-                            "Qualification" in alias.name
-                            and not alias.name.endswith(
-                                ("ReadModel", "ReadModelBuilder")
-                            )
-                        )
+                        if alias.name in SPEC015_PARALLEL_OWNER_CLASSES
                     )
             owns_qualification = any(
                 isinstance(node, ast.ClassDef)
-                and (
-                    node.name in SPEC015_OWNER_CLASSES
-                    or node.name in SPEC015_MATURITY_OWNER_CLASSES
-                    or "Qualification" in node.name
-                    and not node.name.endswith(("ReadModel", "ReadModelBuilder"))
-                )
+                and node.name in SPEC015_PARALLEL_OWNER_CLASSES
                 or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name in SPEC015_OWNER_METHODS
                 for node in ast.walk(tree)
@@ -1632,11 +1882,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         isinstance(root, ast.Name)
                         and root.id in module_aliases
                         and any(
-                            name in SPEC015_OWNER_CLASSES
-                            or (
-                                "Qualification" in name
-                                and not name.endswith(("ReadModel", "ReadModelBuilder"))
-                            )
+                            name in SPEC015_PARALLEL_OWNER_CLASSES
                             for name in attributes
                         )
                     ):
@@ -1644,19 +1890,39 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 return False
 
             assignments = [
-                node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.Assign, ast.AnnAssign))
             ]
+
+            def assigned_names(node: ast.AST) -> set[str]:
+                if isinstance(node, ast.Name):
+                    return {node.id}
+                if isinstance(node, (ast.Tuple, ast.List)):
+                    return {name for item in node.elts for name in assigned_names(item)}
+                return set()
+
+            def assignment_parts(
+                assignment: ast.Assign | ast.AnnAssign,
+            ) -> tuple[set[str], ast.AST | None]:
+                targets = (
+                    assignment.targets
+                    if isinstance(assignment, ast.Assign)
+                    else (assignment.target,)
+                )
+                return (
+                    {name for target in targets for name in assigned_names(target)},
+                    assignment.value,
+                )
+
             changed = True
             while changed:
                 changed = False
                 for assignment in assignments:
-                    aliases = {
-                        target.id
-                        for target in assignment.targets
-                        if isinstance(target, ast.Name)
-                    }
+                    aliases, value = assignment_parts(assignment)
                     if (
-                        references_qualification_owner(assignment.value)
+                        value is not None
+                        and references_qualification_owner(value)
                         and not aliases <= qualification_symbols
                     ):
                         qualification_symbols.update(aliases)
@@ -1667,17 +1933,12 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
             while changed:
                 changed = False
                 for assignment in assignments:
-                    aliases = {
-                        target.id
-                        for target in assignment.targets
-                        if isinstance(target, ast.Name)
-                    }
+                    aliases, value = assignment_parts(assignment)
                     publication_source = (
-                        isinstance(assignment.value, ast.Attribute)
-                        and assignment.value.attr == "publish_record"
+                        isinstance(value, ast.Attribute)
+                        and value.attr == "publish_record"
                     ) or (
-                        isinstance(assignment.value, ast.Name)
-                        and assignment.value.id in publication_aliases
+                        isinstance(value, ast.Name) and value.id in publication_aliases
                     )
                     if publication_source and not aliases <= publication_aliases:
                         publication_aliases.update(aliases)
@@ -1715,6 +1976,43 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     )
                 )
                 for call in publish_calls
+            )
+            helper_publication_parameters: dict[str, set[int]] = {}
+            for function in (
+                node
+                for node in tree.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ):
+                parameters = [argument.arg for argument in function.args.args]
+                indexes: set[int] = set()
+                for call in (
+                    node
+                    for node in ast.walk(function)
+                    if isinstance(node, ast.Call)
+                    and (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "publish_record"
+                        or isinstance(node.func, ast.Name)
+                        and node.func.id in publication_aliases
+                    )
+                ):
+                    indexes.update(
+                        parameters.index(argument.id)
+                        for argument in call.args
+                        if isinstance(argument, ast.Name) and argument.id in parameters
+                    )
+                if indexes:
+                    helper_publication_parameters[function.name] = indexes
+            publishes_qualification = publishes_qualification or any(
+                isinstance(call.func, ast.Name)
+                and call.func.id in helper_publication_parameters
+                and any(
+                    index < len(call.args)
+                    and contains_qualification_value(call.args[index])
+                    for index in helper_publication_parameters[call.func.id]
+                )
+                for call in ast.walk(tree)
+                if isinstance(call, ast.Call)
             )
             if owns_qualification or publishes_qualification:
                 raise ArchitectureViolation(
@@ -2405,7 +2703,8 @@ def run_full_gate_checks(repository_root: Path) -> list[dict[str, str]]:
     baseline_formatter_drift: list[dict[str, str]] = []
     with tempfile.TemporaryDirectory(prefix="spec014-full-gates-") as temporary:
         dist = Path(temporary).resolve()
-        environment = dict(os.environ)
+        repository_root = repository_root.resolve()
+        environment = HARNESS.sanitized_environment()
         for check in full_gate_plan(repository_root):
             if check.connected:
                 raise ArchitectureViolation(
@@ -2427,7 +2726,29 @@ def run_full_gate_checks(repository_root: Path) -> list[dict[str, str]]:
                     timeout_seconds=1_800,
                 )
             except HARNESS.InstalledWheelFailure as exc:
-                if check.baseline_only:
+                baseline = UNCHANGED_REPOSITORY_BASELINES.get(check.repository)
+                exact_baseline = (
+                    baseline is not None
+                    and HARNESS.run_command(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=repository,
+                        environment=environment,
+                        timeout_seconds=30,
+                    ).strip()
+                    == baseline
+                    and not HARNESS.run_command(
+                        ["git", "status", "--porcelain"],
+                        cwd=repository,
+                        environment=environment,
+                        timeout_seconds=30,
+                    ).strip()
+                )
+                formatter_only = (
+                    exc.returncode == 1
+                    and "Would reformat:" in str(exc)
+                    and "error:" not in str(exc).lower()
+                )
+                if check.baseline_only and exact_baseline and formatter_only:
                     baseline_formatter_drift.append(
                         {
                             "owner": check.owner,
@@ -2445,7 +2766,8 @@ def run_full_gate_checks(repository_root: Path) -> list[dict[str, str]]:
 
 def run_connected_status_checks(repository_root: Path) -> list[dict[str, str]]:
     """Execute connected checks independently and preserve each exact status."""
-    environment = dict(os.environ)
+    repository_root = repository_root.resolve()
+    environment = HARNESS.sanitized_environment()
     statuses: list[dict[str, str]] = []
     for check in connected_status_plan():
         repository = repository_root / check.repository
@@ -2476,11 +2798,29 @@ def run_connected_status_checks(repository_root: Path) -> list[dict[str, str]]:
                 }
             )
         else:
+            counts = {
+                name: sum(
+                    int(value) for value in re.findall(rf"(\d+)\s+{name}", output)
+                )
+                for name in ("passed", "skipped", "failed", "error")
+            }
+            if (
+                counts["failed"]
+                or counts["error"]
+                or not (counts["passed"] or counts["skipped"])
+            ):
+                status = "indeterminate"
+            elif counts["passed"] and counts["skipped"]:
+                status = "partial"
+            elif counts["passed"]:
+                status = "passed"
+            else:
+                status = "skipped"
             statuses.append(
                 {
                     "owner": check.owner,
                     "category": check.category,
-                    "status": "passed",
+                    "status": status,
                     "detail": output,
                 }
             )

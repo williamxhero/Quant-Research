@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).parents[1]
 MODULE_PATH = ROOT / "tools" / "verify_public_seam_architecture.py"
@@ -220,6 +221,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         for changed in (
             "tools/spec014_installed_wheel_tracer.py",
             "tools/test_validate_architecture_constitution.py",
+            "tools/validate_architecture_constitution.py",
         ):
             self.assertIn(changed, root_tokens)
 
@@ -265,6 +267,44 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertTrue(all(item.connected for item in plan))
         self.assertTrue(all("pytest" in item.command for item in plan))
+
+    def test_connected_status_distinguishes_passed_partial_and_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "repository"
+            repository.mkdir()
+            plan = tuple(
+                verifier.GateCheck(
+                    owner,
+                    "repository",
+                    category,
+                    ("pytest",),
+                    connected=True,
+                )
+                for owner, category in (
+                    ("passed-owner", "passed"),
+                    ("partial-owner", "partial"),
+                    ("skipped-owner", "skipped"),
+                )
+            )
+            with (
+                mock.patch.object(verifier, "connected_status_plan", return_value=plan),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        "2 passed in 1.0s\n",
+                        "1 passed, 1 skipped in 1.0s\n",
+                        "2 skipped in 1.0s\n",
+                    ),
+                ),
+            ):
+                statuses = verifier.run_connected_status_checks(root)
+
+        self.assertEqual(
+            [item["status"] for item in statuses],
+            ["passed", "partial", "skipped"],
+        )
 
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
         self,
@@ -428,19 +468,19 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class QualificationRetirement:\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationSuccessorClaim:\n"
-                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance: object\n"
+                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance_reservation: object\n"
                 "    @classmethod\n"
                 "    def create(cls, predecessor): return cls(claim_id=_successor_slot_id(predecessor))\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationPageCursor:\n"
                 "    current: str\n"
                 "class QualificationService:\n"
-                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def _execute_publication(self, *, action, campaign_id, target, preflight, complete):\n"
-                "        def authorize(grant): preflight(); return target\n"
+                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def _execute_publication(self, *, action, campaign_id, target, preflight, launch, complete):\n"
+                "        def authorize(grant): preflight(); launch(grant); return target\n"
                 "        result = self._governance.execute(action, authorize)\n"
                 "        if result.status != 'committed': return result\n"
                 "        try: complete(None, None)\n"
@@ -459,18 +499,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def _read_successor_claim(workspace):\n"
                 "    raw=workspace.get_record('id'); value=QualificationSuccessorClaim.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _query_lineage_records(workspace):\n"
-                "    seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
+                "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
                 "    while True:\n"
                 "        if page_count >= 100: raise RuntimeError('bounded')\n"
                 "        page_count += 1\n"
                 "        page=workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
                 "        page_token=page.get('snapshot_token')\n"
+                "        if not isinstance(page_token, str) or not page_token: raise RuntimeError('invalid token')\n"
                 "        if snapshot_token is not None and page_token != snapshot_token: raise RuntimeError('drift')\n"
                 "        snapshot_token=page_token\n"
                 "        page_records=page['records']\n"
                 "        if len(page_records) > 100: raise RuntimeError('oversized')\n"
+                "        records.extend(page_records)\n"
                 "        next_cursor=page['next_cursor']\n"
-                "        if next_cursor is None: return page_records\n"
+                "        if next_cursor is None: return tuple(records)\n"
                 "        if next_cursor in seen_cursors: raise RuntimeError('cycle')\n"
                 "        seen_cursors.add(next_cursor)\n"
                 "        cursor=next_cursor\n"
@@ -553,6 +595,16 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
+            overwritten_readback = accepted.replace(
+                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)",
+                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); raw={}; value={}; verify_publication(raw, value)",
+            )
+            qualification.write_text(overwritten_readback, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "typed canonical readback _read_policy"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
             no_cycle_guard = accepted.replace(
                 "if next_cursor in seen_cursors: raise RuntimeError('cycle')",
                 "if False: raise RuntimeError('cycle')",
@@ -560,6 +612,47 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             qualification.write_text(no_cycle_guard, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            no_token_validation = accepted.replace(
+                "if not isinstance(page_token, str) or not page_token: raise RuntimeError('invalid token')",
+                "if False: raise RuntimeError('invalid token')",
+            )
+            qualification.write_text(no_token_validation, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            final_page_only = accepted.replace(
+                "if next_cursor is None: return tuple(records)",
+                "if next_cursor is None: return tuple(page_records)",
+            )
+            qualification.write_text(final_page_only, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            enum_alias = accepted.replace(
+                "    RETIRED = 'retired'\n",
+                "    RETIRED = 'retired'\n    APPROVED = 'research_qualified'\n",
+            )
+            qualification.write_text(enum_alias, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "maturity states drifted"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            eager_completion = accepted.replace(
+                "complete=lambda *_: _publish_record(self._workspace)",
+                "complete=_publish_record(self._workspace)",
+                1,
+            )
+            qualification.write_text(eager_completion, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "eagerly evaluates"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -623,6 +716,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "QualificationStateStore",
             "ResearchQualificationPublisher",
             "MaturityState",
+            "MaturityService",
         )
         for symbol in forbidden:
             with (
@@ -664,6 +758,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def save(workspace, value):\n"
                 "    workspace.publish_record(ar.QualificationDecision(value))\n"
             ),
+            (
+                "from apex_research import qualification as q\n"
+                "def save(workspace, value):\n"
+                "    record: object = q.QualificationDecision(value)\n"
+                "    workspace.publish_record(record)\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def relay(workspace, record): workspace.publish_record(record)\n"
+                "def save(workspace, value): relay(workspace, QualificationDecision(value))\n"
+            ),
         ):
             with tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -692,6 +797,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.scan_sources(root)
 
+    def test_spec015_nonowner_publication_aliases_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "strategy-workspace/src/strategy_workspace/records.py"
@@ -728,6 +834,14 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source = root / "strategy-reporting/src/strategy_reporting/qualification.py"
             source.parent.mkdir(parents=True)
             source.write_text("class QualificationReadModel: pass\n", encoding="utf-8")
+
+            verifier._scan_spec015_non_owner_repositories(root)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-reporting/src/strategy_reporting/summary.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("class QualificationSummary: pass\n", encoding="utf-8")
 
             verifier._scan_spec015_non_owner_repositories(root)
 

@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).parents[1]
 POLICY_PATH = ROOT / "docs" / "architecture-constitution.v1.json"
 EXPECTED_FLOW = [
@@ -43,9 +42,13 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def validate_policy(policy: dict[str, Any]) -> None:
     if policy.get("schema") != "quant-research.architecture-constitution.v1":
-        raise ConstitutionError("policy schema must be quant-research.architecture-constitution.v1")
+        raise ConstitutionError(
+            "policy schema must be quant-research.architecture-constitution.v1"
+        )
     if policy.get("canonical_flow") != EXPECTED_FLOW:
-        raise ConstitutionError("policy canonical_flow does not match the constitutional flow")
+        raise ConstitutionError(
+            "policy canonical_flow does not match the constitutional flow"
+        )
 
     owners = policy.get("owners")
     if not isinstance(owners, dict) or set(owners) != {
@@ -57,15 +60,25 @@ def validate_policy(policy: dict[str, Any]) -> None:
     }:
         raise ConstitutionError("policy must declare exactly the five canonical owners")
     for owner, definition in owners.items():
-        if not isinstance(definition, dict) or not definition.get("owns") or not definition.get(
-            "public_seams"
+        if (
+            not isinstance(definition, dict)
+            or not definition.get("owns")
+            or not definition.get("public_seams")
         ):
-            raise ConstitutionError(f"owner {owner} must declare owned capabilities and public seams")
+            raise ConstitutionError(
+                f"owner {owner} must declare owned capabilities and public seams"
+            )
 
     evidence = policy.get("evidence")
-    if not isinstance(evidence, dict) or evidence.get("formal_truth") != "nautilustrader-output":
+    if (
+        not isinstance(evidence, dict)
+        or evidence.get("formal_truth") != "nautilustrader-output"
+    ):
         raise ConstitutionError("NautilusTrader output must remain the formal truth")
-    if evidence.get("discovery_engine") != "qlib" or evidence.get("discovery_is_formal_truth") is not False:
+    if (
+        evidence.get("discovery_engine") != "qlib"
+        or evidence.get("discovery_is_formal_truth") is not False
+    ):
         raise ConstitutionError("Qlib must remain discovery-only")
 
     adoption = policy.get("external_adoption")
@@ -75,16 +88,25 @@ def validate_policy(policy: dict[str, Any]) -> None:
         "benchmark",
         "rejected-dependency",
     }:
-        raise ConstitutionError("policy must define the four external-adoption categories")
-    if set(adoption.get("required_reverification", [])) != {"license", "upstream-interface"}:
-        raise ConstitutionError("external adoption must reverify license and upstream interface")
+        raise ConstitutionError(
+            "policy must define the four external-adoption categories"
+        )
+    if set(adoption.get("required_reverification", [])) != {
+        "license",
+        "upstream-interface",
+    }:
+        raise ConstitutionError(
+            "external adoption must reverify license and upstream interface"
+        )
 
     lifecycle = policy.get("lifecycle")
     if not isinstance(lifecycle, dict) or set(lifecycle.get("terminal_states", [])) != {
         "research_qualified",
         "retired",
     }:
-        raise ConstitutionError("lifecycle must terminate at research_qualified or retired")
+        raise ConstitutionError(
+            "lifecycle must terminate at research_qualified or retired"
+        )
     if not {"approved", "active", "order", "position", "live-trading"} <= set(
         lifecycle.get("forbidden_states", [])
     ):
@@ -103,14 +125,23 @@ def validate_candidate(candidate: dict[str, Any], policy: dict[str, Any]) -> Non
     declarations = policy["future_spec_admission"]["required_declarations"]
     missing = [name for name in declarations if not candidate.get(name)]
     if missing:
-        raise ConstitutionError(f"candidate is missing required declarations: {', '.join(missing)}")
-    if candidate["canonical_owner"] not in policy["future_spec_admission"]["allowed_owners"]:
-        raise ConstitutionError("candidate canonical_owner is not a constitutional owner")
+        raise ConstitutionError(
+            f"candidate is missing required declarations: {', '.join(missing)}"
+        )
+    if (
+        candidate["canonical_owner"]
+        not in policy["future_spec_admission"]["allowed_owners"]
+    ):
+        raise ConstitutionError(
+            "candidate canonical_owner is not a constitutional owner"
+        )
 
     claims = set(candidate.get("claims", []))
     forbidden = claims & set(policy["future_spec_admission"]["forbidden_claims"])
     if forbidden:
-        raise ConstitutionError(f"candidate makes forbidden claims: {', '.join(sorted(forbidden))}")
+        raise ConstitutionError(
+            f"candidate makes forbidden claims: {', '.join(sorted(forbidden))}"
+        )
 
     lifecycle_states = set(candidate.get("lifecycle_states", []))
     forbidden_states = lifecycle_states & set(policy["lifecycle"]["forbidden_states"])

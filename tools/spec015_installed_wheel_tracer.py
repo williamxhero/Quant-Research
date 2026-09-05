@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -27,6 +28,7 @@ run_command = HARNESS.run_command
 run_installed_pytest = HARNESS.run_installed_pytest
 verify_unchanged_sources = HARNESS.verify_unchanged_sources
 verify_source_topology = HARNESS.verify_source_topology
+sanitized_environment = HARNESS.sanitized_environment
 
 PACKAGE_REPOSITORIES = (
     "strategy-workspace",
@@ -107,12 +109,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             raise TracerFailure(f"repository is unavailable: {repository}")
     with tempfile.TemporaryDirectory(prefix="spec015-installed-") as temporary:
         isolated = Path(temporary).resolve()
-        environment = dict(os.environ)
-        environment.pop("PYTHONPATH", None)
+        environment = sanitized_environment()
         dist = isolated / "dist"
         dist.mkdir()
         source_topology = {
-            repository: verify_source_topology(repository_root / repository)
+            repository: verify_source_topology(
+                repository_root / repository, environment
+            )
             for repository in PACKAGE_REPOSITORIES
         }
         unchanged_sources = verify_unchanged_sources(
@@ -127,7 +130,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             environment,
         )
         source_topology_after_build = {
-            repository: verify_source_topology(repository_root / repository)
+            repository: verify_source_topology(
+                repository_root / repository, environment
+            )
             for repository in PACKAGE_REPOSITORIES
         }
         if source_topology_after_build != source_topology:
@@ -184,15 +189,25 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 timeout_seconds=1_200,
                 pytest_args=("-s",),
             )
-            stable_identity_transcripts.append(
-                sorted(
-                    (
-                        json.loads(line.removeprefix(IDENTITY_TRANSCRIPT_PREFIX))
-                        for line in stable_output.splitlines()
-                        if line.startswith(IDENTITY_TRANSCRIPT_PREFIX)
-                    ),
-                    key=lambda item: item["label"],
+            transcript = [
+                json.loads(value)
+                for value in re.findall(
+                    re.escape(IDENTITY_TRANSCRIPT_PREFIX) + r"([^\r\n]+)",
+                    stable_output,
                 )
+            ]
+            labels = [item.get("label") for item in transcript]
+            expected_labels = {
+                "policy",
+                "qualified-chain",
+                "held-successor-retirement",
+            }
+            if len(transcript) != 3 or set(labels) != expected_labels:
+                raise TracerFailure(
+                    "stable installed identity transcript labels are incomplete or duplicated"
+                )
+            stable_identity_transcripts.append(
+                sorted(transcript, key=lambda item: item["label"])
             )
         if not stable_identity_transcripts[0]:
             raise TracerFailure("stable installed tests emitted no identity transcript")

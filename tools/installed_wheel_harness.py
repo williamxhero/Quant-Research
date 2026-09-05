@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import inspect
 import json
 import os
 import signal
@@ -13,9 +14,24 @@ from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
 
+import tomllib
+
 
 class InstalledWheelFailure(RuntimeError):
     """An isolated build, install, or smoke phase failed closed."""
+
+    def __init__(self, message: str, *, returncode: int | None = None) -> None:
+        super().__init__(message)
+        self.returncode = returncode
+
+
+def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str]:
+    """Return a deterministic test environment without caller pytest/source injection."""
+    environment = dict(os.environ if source is None else source)
+    for name in ("PYTHONPATH", "PYTEST_ADDOPTS", "PYTEST_PLUGINS"):
+        environment.pop(name, None)
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    return environment
 
 
 def run_command(
@@ -28,16 +44,22 @@ def run_command(
     creationflags = (
         subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
     )
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=environment,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        creationflags=creationflags,
-        start_new_session=os.name != "nt",
-    )
+    cwd = cwd.resolve()
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=creationflags,
+            start_new_session=os.name != "nt",
+        )
+    except OSError as exc:
+        raise InstalledWheelFailure(
+            f"command could not start: {' '.join(command)}: {exc}"
+        ) from exc
     job_handle: int | None = None
     try:
         job_handle = _assign_windows_kill_job(process)
@@ -72,9 +94,12 @@ def run_command(
     finally:
         if job_handle is not None:
             _close_windows_handle(job_handle)
+        elif os.name != "nt":
+            _terminate_process_tree(process, job_handle=None)
     if process.returncode:
         raise InstalledWheelFailure(
-            f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}"
+            f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}",
+            returncode=process.returncode,
         )
     return stdout
 
@@ -292,6 +317,7 @@ def run_installed_pytest(
         },
         sort_keys=True,
     )
+    visibility_guard = inspect.getsource(path_exposes_source)
     launcher = f"""
 import json
 from pathlib import Path
@@ -301,8 +327,7 @@ import pytest
 payload = json.loads({payload!r})
 prefix = Path(sys.prefix).resolve()
 source_roots = tuple(Path(value).resolve() for value in payload["source_roots"])
-def path_exposes_source(source, candidate):
-    return candidate == source or candidate.is_relative_to(source) or source.is_relative_to(candidate)
+{visibility_guard}
 def assert_no_source_visibility():
     for entry in sys.path:
         if not entry:
@@ -369,31 +394,22 @@ def verify_unchanged_sources(
             environment=environment,
             timeout_seconds=30,
         ).strip()
-        baseline_tree = run_command(
-            ["git", "rev-parse", f"{baseline}:src"],
-            cwd=cwd,
-            environment=environment,
-            timeout_seconds=30,
-        ).strip()
-        head_tree = run_command(
-            ["git", "rev-parse", "HEAD:src"],
-            cwd=cwd,
-            environment=environment,
-            timeout_seconds=30,
-        ).strip()
-        if head_tree != baseline_tree:
-            raise InstalledWheelFailure(
-                f"{repository} production source differs from baseline"
-            )
+        build_roots = _declared_build_roots(cwd)
         run_command(
-            ["git", "diff", "--quiet", "--", "src"],
+            ["git", "diff", "--quiet", baseline, "HEAD", "--", *build_roots],
+            cwd=cwd,
+            environment=environment,
+            timeout_seconds=30,
+        )
+        run_command(
+            ["git", "diff", "--quiet", "--", *build_roots],
             cwd=cwd,
             environment=environment,
             timeout_seconds=30,
         )
         tracked = set(
             run_command(
-                ["git", "ls-files", "--", "src"],
+                ["git", "ls-files", "--", *build_roots],
                 cwd=cwd,
                 environment=environment,
                 timeout_seconds=30,
@@ -406,7 +422,7 @@ def verify_unchanged_sources(
                 f"{repository} has untracked production source: {', '.join(untracked)}"
             )
         run_command(
-            ["git", "diff", "--cached", "--quiet", "--", "src"],
+            ["git", "diff", "--cached", "--quiet", "--", *build_roots],
             cwd=cwd,
             environment=environment,
             timeout_seconds=30,
@@ -414,7 +430,6 @@ def verify_unchanged_sources(
         verified[repository] = {
             "baseline": baseline,
             "head": head,
-            "source_tree": head_tree,
             "source_fingerprint": _source_fingerprint(cwd, source_files),
         }
     return verified
@@ -431,47 +446,117 @@ def path_exposes_source(source: Path, candidate: Path) -> bool:
     )
 
 
-def verify_source_topology(repository: Path) -> dict[str, object]:
+def verify_source_topology(
+    repository: Path, environment: dict[str, str] | None = None
+) -> dict[str, object]:
     """Fail closed on linked build inputs and attest the complete source topology."""
+    repository = repository.resolve()
     source_files = _source_build_inputs(repository)
-    return {
+    result: dict[str, object] = {
         "source_files": source_files,
         "source_fingerprint": _source_fingerprint(repository, source_files),
     }
+    if environment is not None and (repository / ".git").exists():
+        build_roots = _declared_build_roots(repository)
+        run_command(
+            ["git", "diff", "--quiet", "--", *build_roots],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        )
+        run_command(
+            ["git", "diff", "--cached", "--quiet", "--", *build_roots],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        )
+        tracked = set(
+            run_command(
+                ["git", "ls-files", "--", *build_roots],
+                cwd=repository,
+                environment=environment,
+                timeout_seconds=30,
+            ).splitlines()
+        )
+        untracked = sorted(set(source_files) - tracked)
+        if untracked:
+            raise InstalledWheelFailure(
+                "repository has untracked wheel build inputs: " + ", ".join(untracked)
+            )
+        result["head"] = run_command(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        ).strip()
+    return result
 
 
 def _source_build_inputs(repository: Path) -> list[str]:
-    unresolved_source_root = repository / "src"
-    source_root_is_junction = getattr(
-        unresolved_source_root, "is_junction", lambda: False
-    )()
-    if unresolved_source_root.is_symlink() or source_root_is_junction:
-        raise InstalledWheelFailure(
-            f"production source root is a symbolic link or junction: {unresolved_source_root}"
-        )
-    source_root = unresolved_source_root.resolve()
+    repository = repository.resolve()
     inputs: list[str] = []
-    for path in sorted(source_root.rglob("*")):
-        is_junction = getattr(path, "is_junction", lambda: False)()
-        if path.is_symlink() or is_junction:
+    for relative_root in _declared_build_roots(repository):
+        unresolved_root = repository / relative_root
+        if not unresolved_root.exists():
             raise InstalledWheelFailure(
-                f"production source contains a symbolic link or junction: {path}"
+                f"declared wheel build input is missing: {relative_root}"
             )
         if (
-            not path.is_file()
-            or "__pycache__" in path.parts
-            or path.suffix in {".pyc", ".pyo"}
+            unresolved_root.is_symlink()
+            or getattr(unresolved_root, "is_junction", lambda: False)()
         ):
-            continue
-        resolved = path.resolve()
-        try:
-            relative = resolved.relative_to(source_root)
-        except ValueError as exc:
             raise InstalledWheelFailure(
-                f"production source resolves outside its repository: {path}"
-            ) from exc
-        inputs.append("src/" + relative.as_posix())
-    return inputs
+                f"production source root is a symbolic link or junction: {unresolved_root}"
+            )
+        paths = (
+            (unresolved_root,)
+            if unresolved_root.is_file()
+            else tuple(sorted(unresolved_root.rglob("*")))
+        )
+        for path in paths:
+            if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                raise InstalledWheelFailure(
+                    f"production source contains a symbolic link or junction: {path}"
+                )
+            if (
+                not path.is_file()
+                or "__pycache__" in path.parts
+                or path.suffix in {".pyc", ".pyo"}
+            ):
+                continue
+            resolved = path.resolve()
+            try:
+                relative = resolved.relative_to(repository)
+            except ValueError as exc:
+                raise InstalledWheelFailure(
+                    f"production source resolves outside its repository: {path}"
+                ) from exc
+            inputs.append(relative.as_posix())
+    return sorted(set(inputs))
+
+
+def _declared_build_roots(repository: Path) -> list[str]:
+    pyproject_path = repository / "pyproject.toml"
+    roots = {"pyproject.toml", "src"}
+    if not pyproject_path.is_file():
+        return ["src"]
+    document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    project = document.get("project", {})
+    if isinstance(project, dict) and isinstance(project.get("readme"), str):
+        roots.add(str(project["readme"]))
+    tool = document.get("tool", {})
+    hatch = tool.get("hatch", {}) if isinstance(tool, dict) else {}
+    build = hatch.get("build", {}) if isinstance(hatch, dict) else {}
+    targets = build.get("targets", {}) if isinstance(build, dict) else {}
+    wheel = targets.get("wheel", {}) if isinstance(targets, dict) else {}
+    if isinstance(wheel, dict):
+        for package in wheel.get("packages", ()):
+            if isinstance(package, str) and not package.startswith("src/"):
+                roots.add(package)
+        force_include = wheel.get("force-include", {})
+        if isinstance(force_include, dict):
+            roots.update(str(source) for source in force_include)
+    return sorted(roots)
 
 
 def _source_fingerprint(repository: Path, source_files: Iterable[str]) -> str:
