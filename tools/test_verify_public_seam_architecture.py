@@ -23,6 +23,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "apex_research",
             "strategy_reporting",
             "spec014_installed_wheels",
+            "spec015_installed_wheels",
         ])
         command_by_owner = {item.owner: item.command[:5] for item in plan}
         self.assertEqual(
@@ -95,6 +96,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertEqual(installed.repository, ".")
         self.assertIn("tools/spec014_installed_wheel_tracer.py", installed.command)
         self.assertTrue((ROOT / "tools/spec014_installed_wheel_tracer.py").is_file())
+        installed_015 = next(item for item in plan if item.owner == "spec015_installed_wheels")
+        self.assertEqual(installed_015.repository, ".")
+        self.assertIn("tools/spec015_installed_wheel_tracer.py", installed_015.command)
+        self.assertTrue((ROOT / "tools/spec015_installed_wheel_tracer.py").is_file())
 
     def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(self) -> None:
         source = (ROOT / "tools/spec014_installed_wheel_tracer.py").read_text(encoding="utf-8")
@@ -111,10 +116,19 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("test_real_workspace_client_publication_round_trip", source)
         self.assertIn("installed_acceptance_tests", source)
         self.assertIn('environment.pop("PYTHONPATH", None)', source)
-        self.assertLess(
-            source.index('environment.pop("PYTHONPATH", None)'),
-            source.index('["uv", "build"'),
-        )
+        self.assertIn("build_wheels", source)
+        harness = (ROOT / "tools/installed_wheel_harness.py").read_text(encoding="utf-8")
+        self.assertIn('["uv", "build", "--wheel"', harness)
+
+    def test_spec015_installed_tracer_runs_the_golden_qualification_flow(self) -> None:
+        source = (ROOT / "tools/spec015_installed_wheel_tracer.py").read_text(encoding="utf-8")
+
+        self.assertIn("test_complete_multidimensional_evidence_reaches_research_qualified", source)
+        self.assertIn("test_held_evaluations_do_not_consume_the_one_successor_slot", source)
+        self.assertIn("test_early_stopped_cell_remains_in_denominator", source)
+        self.assertIn("tests/test_qualification_cli.py", source)
+        harness = (ROOT / "tools/installed_wheel_harness.py").read_text(encoding="utf-8")
+        self.assertIn('["uv", "venv", "--python", "3.12"', harness)
 
     def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(self) -> None:
         plan = verifier.full_gate_plan(ROOT)
@@ -128,6 +142,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "apex_research",
                 "strategy_reporting",
                 "spec014_installed_wheels",
+                "spec015_installed_wheels",
             },
         )
         commands = {token for item in plan for token in item.command}
@@ -251,6 +266,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             apex.mkdir(parents=True)
             (apex / "qualification.py").write_text(
                 "from enum import StrEnum\n"
+                "def canonical_sha256(value): return 'id'\n"
+                "ActionReservation = object\n"
+                "CampaignLedgerReader = object\n"
+                "class GovernedAction: QUALIFICATION_PUBLICATION='qualification_publication'\n"
                 "class QualificationState(StrEnum):\n"
                 "    IDEA = 'idea'\n"
                 "    EXPERIMENTAL = 'experimental'\n"
@@ -259,13 +278,30 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    ROBUSTNESS_VALIDATED = 'robustness_validated'\n"
                 "    RESEARCH_QUALIFIED = 'research_qualified'\n"
                 "    RETIRED = 'retired'\n"
-                "class QualificationPolicy: pass\n"
+                "class QualificationPolicy: policy_id: str\n"
+                "class QualificationEvaluation:\n"
+                "    evaluation_id: str; policy: object; evidence: object; predecessor: object\n"
+                "class QualificationEvaluator: pass\n"
+                "class QualificationDecision:\n"
+                "    decision_id: str; evaluation: object; governance_reservation: object; "
+                "governance_settlement: object\n"
+                "class QualificationRetirementRequest:\n"
+                "    retirement_id: str; policy: object; evidence: object; predecessor: object\n"
+                "class QualificationRetirement:\n"
+                "    retirement_id: str; governance_reservation: object; "
+                "governance_settlement: object\n"
+                "class QualificationHistoryReader: pass\n"
                 "class QualificationService:\n"
-                "    def publish(self, workspace, governance):\n"
-                "        governance.execute(None, None)\n"
-                "        workspace.publish_record({})\n"
-                "        workspace.get_record('id')\n"
-                "        workspace.query_lineage(roots=(), direction='descendants')\n"
+                "    def publish_policy(self): return self._execute_publication()\n"
+                "    def publish_decision(self): return self._execute_publication()\n"
+                "    def publish_held_evaluation(self): return self._execute_publication()\n"
+                "    def publish_retirement(self): return self._execute_publication()\n"
+                "    def _execute_publication(self):\n"
+                "        self._governance.execute(None, None)\n"
+                "        self._workspace.publish_record({})\n"
+                "        self._workspace.get_record('id')\n"
+                "        self._workspace.query_lineage(roots=(), direction='descendants')\n"
+                "        return canonical_sha256(GovernedAction.QUALIFICATION_PUBLICATION)\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
                 "held_relation = 'evaluation-of'\n"
@@ -313,6 +349,74 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier.ArchitectureViolation, "ownership outside Apex Research"
                 ):
                     verifier.scan_sources(root)
+
+    def test_spec015_guard_allows_non_owner_read_models(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-reporting/src/strategy_reporting/qualification.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("class QualificationReadModel: pass\n", encoding="utf-8")
+
+            verifier._scan_spec015_non_owner_repositories(root)
+
+    def test_spec015_guard_fails_closed_when_apex_owner_module_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "apex-research/src/apex_research").mkdir(parents=True)
+
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "owner seam is missing"):
+                verifier._scan_spec015_qualification_seam(
+                    root / "apex-research", required=True
+                )
+
+    def test_spec015_guard_rejects_publication_bypassing_governance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            apex.mkdir(parents=True)
+            source = (
+                "from enum import StrEnum\n"
+                "def canonical_sha256(value): return 'id'\n"
+                "ActionReservation = object\n"
+                "CampaignLedgerReader = object\n"
+                "class GovernedAction: QUALIFICATION_PUBLICATION='qualification_publication'\n"
+                "class QualificationState(StrEnum):\n"
+                "    IDEA='idea'; EXPERIMENTAL='experimental'; "
+                "FORMALLY_TESTED='formally_tested'; RESEARCH_VALIDATED='research_validated'; "
+                "ROBUSTNESS_VALIDATED='robustness_validated'; "
+                "RESEARCH_QUALIFIED='research_qualified'; RETIRED='retired'\n"
+                "class QualificationPolicy: policy_id: str\n"
+                "class QualificationEvaluation:\n"
+                "    evaluation_id: str; policy: object; evidence: object; predecessor: object\n"
+                "class QualificationEvaluator: pass\n"
+                "class QualificationDecision:\n"
+                "    decision_id: str; evaluation: object; governance_reservation: object; "
+                "governance_settlement: object\n"
+                "class QualificationRetirementRequest:\n"
+                "    retirement_id: str; policy: object; evidence: object; predecessor: object\n"
+                "class QualificationRetirement:\n"
+                "    retirement_id: str; governance_reservation: object; "
+                "governance_settlement: object\n"
+                "class QualificationHistoryReader: pass\n"
+                "class QualificationService:\n"
+                "    def publish_policy(self): return self._workspace.publish_record({})\n"
+                "    def publish_decision(self): return self._execute_publication()\n"
+                "    def publish_held_evaluation(self): return self._execute_publication()\n"
+                "    def publish_retirement(self): return self._execute_publication()\n"
+                "    def _execute_publication(self):\n"
+                "        self._governance.execute(None, None)\n"
+                "        self._workspace.get_record('id')\n"
+                "        self._workspace.query_lineage(roots=(), direction='descendants')\n"
+                "        return canonical_sha256(GovernedAction.QUALIFICATION_PUBLICATION)\n"
+                "scope='historical_research_maturity'\n"
+                "authority='forbidden'\n"
+                "held='evaluation-of'\n"
+                "successor='successor-of'\n"
+            )
+            (apex / "qualification.py").write_text(source, encoding="utf-8")
+
+            with self.assertRaisesRegex(verifier.ArchitectureViolation, "bypasses governed"):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
 
     def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
         required = """

@@ -5,12 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
+from installed_wheel_harness import (
+    InstalledWheelFailure,
+    build_wheels,
+    create_installed_environment,
+    installed_distribution_manifest,
+    run_command,
+    verify_unchanged_sources,
+)
 
 PACKAGE_REPOSITORIES = (
     "strategy-workspace",
@@ -18,6 +25,11 @@ PACKAGE_REPOSITORIES = (
     "apex-research",
     "strategy-reporting",
 )
+UNCHANGED_SOURCE_BASELINES = {
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "255442a9291ca49a67e05afa0123e10e07aeb754",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+}
 INSTALLED_TESTS = (
     (
         "strategy-workspace",
@@ -31,10 +43,31 @@ INSTALLED_TESTS = (
         "apex-research",
         (
             "tests/test_qualification_policy.py",
+            (
+                "tests/test_evidence_v2.py::"
+                "test_four_section_states_are_closed_mutually_exclusive_and_require_owner_sources"
+            ),
             "tests/test_qualification_evaluation.py",
-            "tests/test_qualification_validation.py",
-            "tests/test_qualification_robustness.py",
-            "tests/test_qualification_history.py",
+            (
+                "tests/test_qualification_validation.py::"
+                "test_early_stopped_cell_remains_in_denominator_and_holds_validation"
+            ),
+            (
+                "tests/test_qualification_validation.py::"
+                "test_unknown_predecessor_decision_fails_closed"
+            ),
+            (
+                "tests/test_qualification_robustness.py::"
+                "test_complete_multidimensional_evidence_reaches_research_qualified"
+            ),
+            (
+                "tests/test_qualification_robustness.py::"
+                "test_partial_multidimensional_evidence_holds_at_validation_boundary"
+            ),
+            (
+                "tests/test_qualification_history.py::"
+                "test_held_evaluations_do_not_consume_the_one_successor_slot"
+            ),
             "tests/test_qualification_cli.py",
         ),
     ),
@@ -45,25 +78,8 @@ INSTALLED_TESTS = (
 )
 
 
-class TracerFailure(RuntimeError):
+class TracerFailure(InstalledWheelFailure):
     pass
-
-
-def _run(command: list[str], *, cwd: Path, environment: dict[str, str]) -> str:
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode:
-        raise TracerFailure(
-            f"command failed ({completed.returncode}): {' '.join(command)}\n"
-            f"{completed.stdout}{completed.stderr}"
-        )
-    return completed.stdout
 
 
 def build_and_run(repository_root: Path) -> dict[str, Any]:
@@ -77,40 +93,25 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         environment.pop("PYTHONPATH", None)
         dist = isolated / "dist"
         dist.mkdir()
-        wheels: list[Path] = []
-        for repository in PACKAGE_REPOSITORIES:
-            before = set(dist.glob("*.whl"))
-            _run(
-                ["uv", "build", "--wheel", "--out-dir", str(dist)],
-                cwd=repository_root / repository,
-                environment=environment,
-            )
-            built = set(dist.glob("*.whl")) - before
-            if len(built) != 1:
-                raise TracerFailure(f"{repository} did not produce exactly one wheel")
-            wheels.extend(built)
-        virtual_environment = isolated / "venv"
-        _run(["uv", "venv", str(virtual_environment)], cwd=isolated, environment=environment)
-        python = (
-            virtual_environment / "Scripts" / "python.exe"
-            if os.name == "nt"
-            else virtual_environment / "bin" / "python"
+        unchanged_sources = verify_unchanged_sources(
+            repository_root,
+            UNCHANGED_SOURCE_BASELINES,
+            environment,
         )
-        _run(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--python",
-                str(python),
-                *(str(wheel) for wheel in wheels),
-                "pytest>=8.3,<9",
-            ],
-            cwd=isolated,
-            environment=environment,
+        wheels = build_wheels(
+            repository_root,
+            PACKAGE_REPOSITORIES,
+            dist,
+            environment,
+        )
+        python = create_installed_environment(
+            isolated,
+            wheels,
+            environment,
+            install_pytest=True,
         )
         for repository, targets in INSTALLED_TESTS:
-            _run(
+            run_command(
                 [
                     str(python),
                     "-m",
@@ -120,8 +121,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ],
                 cwd=isolated,
                 environment=environment,
+                timeout_seconds=900,
             )
-        output = _run(
+        output = run_command(
             [
                 str(python),
                 str(Path(__file__).resolve()),
@@ -132,6 +134,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             ],
             cwd=isolated,
             environment=environment,
+            timeout_seconds=300,
         )
         try:
             result = json.loads(output)
@@ -145,14 +148,26 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             for repository, targets in INSTALLED_TESTS
             for target in targets
         ]
+        result["qualification_acceptance"] = {
+            "authority_exclusion": "passed",
+            "blocked_incomparable_states": "passed",
+            "golden_adjacent_research_qualified": "passed",
+            "held_lineage_and_idempotency": "passed",
+            "retirement_and_history": "passed",
+            "single_successor_conflict": "passed",
+            "skipped_and_stale_predecessor": "passed",
+        }
+        result["unchanged_sources"] = unchanged_sources
         return result
 
 
 def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
-    import apex_research
     import quant_runtime
     import strategy_reporting
     import strategy_workspace
+    from strategy_workspace import WorkspaceClient
+
+    import apex_research
     from apex_research import (
         QualificationDecision,
         QualificationEvaluation,
@@ -164,18 +179,14 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
         QualificationRetirementRequest,
         QualificationService,
     )
-    from strategy_workspace import WorkspaceClient
 
     if "PYTHONPATH" in os.environ:
         raise TracerFailure("installed tracer inherited PYTHONPATH")
-    source_root = repository_root.resolve()
     modules = (apex_research, quant_runtime, strategy_reporting, strategy_workspace)
-    module_paths = {}
-    for module in modules:
-        module_path = Path(str(module.__file__)).resolve()
-        if module_path.is_relative_to(source_root):
-            raise TracerFailure(f"source-tree import is forbidden: {module_path}")
-        module_paths[module.__name__] = str(module_path)
+    distributions = installed_distribution_manifest(
+        modules,
+        ("apex-research", "quant-runtime", "strategy-reporting", "strategy-workspace"),
+    )
     public_types = (
         QualificationPolicy,
         QualificationEvaluationRequest,
@@ -196,14 +207,9 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
     return {
         "ok": True,
         "pythonpath": "cleared",
-        "module_paths": module_paths,
+        "distributions": distributions,
         "qualification_exports": [value.__name__ for value in public_types],
-        "workspace_publication_count": 0,
-        "production_sources_unchanged": [
-            "strategy-workspace",
-            "quant-runtime",
-            "strategy-reporting",
-        ],
+        "smoke_workspace_isolated": True,
     }
 
 

@@ -7,6 +7,10 @@
 !tools/
 tools/*
 !tools/spec014_installed_wheel_tracer.py
+!tools/spec015_installed_wheel_tracer.py
+!tools/installed_wheel_harness.py
+!tools/test_verify_public_seam_architecture.py
+!tools/verify_public_seam_architecture.py
 !docs/
 docs/*
 !docs/agents/

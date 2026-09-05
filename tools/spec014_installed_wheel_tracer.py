@@ -5,13 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from installed_wheel_harness import (
+    InstalledWheelFailure,
+    build_wheels,
+    create_installed_environment,
+    installed_distribution_manifest,
+    run_command,
+)
 
 REPOSITORIES = (
     "strategy-workspace",
@@ -46,25 +52,17 @@ INSTALLED_ACCEPTANCE_TEST_GROUPS = (
 )
 
 
-class TracerFailure(RuntimeError):
+class TracerFailure(InstalledWheelFailure):
     """The installed-wheel tracer failed a closed acceptance condition."""
 
 
 def _run(command: list[str], *, cwd: Path, environment: dict[str, str] | None = None) -> str:
-    completed = subprocess.run(
+    return run_command(
         command,
         cwd=cwd,
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
+        environment=environment or dict(os.environ),
+        timeout_seconds=900,
     )
-    if completed.returncode:
-        raise TracerFailure(
-            f"command failed ({completed.returncode}): {' '.join(command)}\n"
-            f"{completed.stdout}{completed.stderr}"
-        )
-    return completed.stdout
 
 
 def build_and_run(repository_root: Path) -> dict[str, Any]:
@@ -78,45 +76,12 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         environment.pop("PYTHONPATH", None)
         dist = isolated / "dist"
         dist.mkdir()
-        wheels: list[Path] = []
-        for repository in REPOSITORIES:
-            before = set(dist.glob("*.whl"))
-            _run(
-                ["uv", "build", "--wheel", "--out-dir", str(dist)],
-                cwd=root / repository,
-                environment=environment,
-            )
-            built = set(dist.glob("*.whl")) - before
-            if len(built) != 1:
-                raise TracerFailure(f"{repository} did not produce exactly one wheel")
-            wheels.extend(built)
-        virtual_environment = isolated / "venv"
-        _run(
-            ["uv", "venv", str(virtual_environment)],
-            cwd=isolated,
-            environment=environment,
-        )
-        python = (
-            virtual_environment / "Scripts" / "python.exe"
-            if os.name == "nt"
-            else virtual_environment / "bin" / "python"
-        )
-        _run(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--python",
-                str(python),
-                *(str(path) for path in wheels),
-            ],
-            cwd=isolated,
-            environment=environment,
-        )
-        _run(
-            ["uv", "pip", "install", "--python", str(python), "pytest>=8.3,<9"],
-            cwd=isolated,
-            environment=environment,
+        wheels = build_wheels(root, REPOSITORIES, dist, environment)
+        python = create_installed_environment(
+            isolated,
+            wheels,
+            environment,
+            install_pytest=True,
         )
         for repository, targets in INSTALLED_ACCEPTANCE_TEST_GROUPS:
             _run(
@@ -202,24 +167,24 @@ def _source_lineage(source: Any) -> list[dict[str, str]]:
 
 
 def smoke(repository_root: Path, workspace_root: Path) -> dict[str, Any]:
-    import apex_research
     import quant_runtime
     import strategy_reporting
     import strategy_workspace
-    from apex_research import EvidenceV2, EvidenceV2StudySource
-    from apex_research.canonical import canonical_sha256
     from strategy_reporting.adapters.evidence_v2 import EvidenceV2ReadModelBuilder
     from strategy_reporting.adapters.workspace import WorkspaceAdapter
     from strategy_reporting.contracts.evidence_v2 import EvidenceV2SourceRef
     from strategy_reporting.errors import ReportingError
     from strategy_workspace import WorkspaceClient
 
-    source_root = repository_root.resolve()
+    import apex_research
+    from apex_research import EvidenceV2, EvidenceV2StudySource
+    from apex_research.canonical import canonical_sha256
+
     modules = (apex_research, quant_runtime, strategy_reporting, strategy_workspace)
-    for module in modules:
-        module_path = Path(str(module.__file__)).resolve()
-        if module_path.is_relative_to(source_root):
-            raise TracerFailure(f"source-tree import is forbidden: {module_path}")
+    distributions = installed_distribution_manifest(
+        modules,
+        ("apex-research", "quant-runtime", "strategy-reporting", "strategy-workspace"),
+    )
 
     workspace = WorkspaceClient(workspace_root)
     workspace.init()
@@ -521,7 +486,7 @@ def smoke(repository_root: Path, workspace_root: Path) -> dict[str, Any]:
 
     return {
         "ok": True,
-        "wheels": [module.__name__ for module in modules],
+        "distributions": distributions,
         "predecessor_evidence_id": predecessor.source.evidence.evidence_id,
         "successor_evidence_id": successor.source.evidence.evidence_id,
         "report_model_schema": successor.schema_id,
