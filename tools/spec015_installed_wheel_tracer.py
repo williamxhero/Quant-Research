@@ -56,22 +56,8 @@ INSTALLED_TESTS = (
                 "test_four_section_states_are_closed_mutually_exclusive_and_require_owner_sources"
             ),
             "tests/test_qualification_evaluation.py",
-            (
-                "tests/test_qualification_validation.py::"
-                "test_early_stopped_cell_remains_in_denominator_and_holds_validation"
-            ),
-            (
-                "tests/test_qualification_validation.py::"
-                "test_unknown_predecessor_decision_fails_closed"
-            ),
-            (
-                "tests/test_qualification_robustness.py::"
-                "test_complete_multidimensional_evidence_reaches_research_qualified"
-            ),
-            (
-                "tests/test_qualification_robustness.py::"
-                "test_partial_multidimensional_evidence_holds_at_validation_boundary"
-            ),
+            "tests/test_qualification_validation.py",
+            "tests/test_qualification_robustness.py",
             (
                 "tests/test_qualification_history.py::"
                 "test_held_evaluations_do_not_consume_the_one_successor_slot"
@@ -82,6 +68,28 @@ INSTALLED_TESTS = (
     (
         "strategy-reporting",
         ("tests/test_workspace_roundtrip.py",),
+    ),
+)
+STABLE_BEHAVIORAL_TESTS = (
+    (
+        "tests/test_qualification_policy.py::"
+        "test_owner_publishes_a_frozen_historical_maturity_policy_through_governance"
+    ),
+    (
+        "tests/test_qualification_validation.py::"
+        "test_blocked_validation_remains_structurally_distinct"
+    ),
+    (
+        "tests/test_qualification_validation.py::"
+        "test_validation_incomparability_remains_structurally_distinct"
+    ),
+    (
+        "tests/test_qualification_robustness.py::"
+        "test_complete_multidimensional_evidence_reaches_research_qualified"
+    ),
+    (
+        "tests/test_qualification_history.py::"
+        "test_held_evaluations_do_not_consume_the_one_successor_slot"
     ),
 )
 
@@ -142,33 +150,44 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 environment=environment,
                 timeout_seconds=900,
             )
-        smoke_results = []
-        for index in range(2):
-            output = run_command(
-                [
-                    str(python),
-                    "-I",
-                    str(Path(__file__).resolve()),
-                    "--repository-root",
-                    str(repository_root),
-                    "--smoke-root",
-                    str(isolated / f"workspace-{index}"),
-                ],
+        for _ in range(2):
+            run_installed_pytest(
+                python,
+                (
+                    repository_root / "apex-research" / target
+                    for target in STABLE_BEHAVIORAL_TESTS
+                ),
+                (
+                    "apex_research",
+                    "quant_runtime",
+                    "strategy_reporting",
+                    "strategy_workspace",
+                ),
+                (repository_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=environment,
-                timeout_seconds=300,
+                timeout_seconds=1_200,
             )
-            try:
-                smoke_results.append(json.loads(output))
-            except json.JSONDecodeError as exc:
-                raise TracerFailure(
-                    f"installed tracer emitted invalid JSON: {output}"
-                ) from exc
-        if smoke_results[0] != smoke_results[1]:
+        output = run_command(
+            [
+                str(python),
+                "-I",
+                str(Path(__file__).resolve()),
+                "--repository-root",
+                str(repository_root),
+                "--smoke-root",
+                str(isolated / "workspace-import-smoke"),
+            ],
+            cwd=isolated,
+            environment=environment,
+            timeout_seconds=300,
+        )
+        try:
+            result = json.loads(output)
+        except json.JSONDecodeError as exc:
             raise TracerFailure(
-                "installed tracer identity output is not stable across processes"
-            )
-        result = smoke_results[0]
+                f"installed tracer emitted invalid JSON: {output}"
+            ) from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
         result["repositories"] = ["quant-research", *PACKAGE_REPOSITORIES]
@@ -177,7 +196,8 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             for repository, targets in INSTALLED_TESTS
             for target in targets
         ]
-        result["stable_smoke_runs"] = 2
+        result["stable_behavioral_runs"] = 2
+        result["stable_behavioral_tests"] = list(STABLE_BEHAVIORAL_TESTS)
         result["wheel_sha256"] = {
             path.name: hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(wheels)
@@ -192,29 +212,14 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
     import strategy_reporting
     import strategy_workspace
     from apex_research import (
-        QualificationDecision,
-        QualificationEvaluation,
         QualificationEvaluationRequest,
         QualificationEvaluator,
         QualificationHistoryReader,
         QualificationPolicy,
-        QualificationPredecessor,
-        QualificationRequirementObservation,
-        QualificationRetirement,
-        QualificationRetirementReason,
         QualificationRetirementRequest,
         QualificationService,
-        QualificationState,
         QualificationValidationMetricRequirement,
     )
-    from apex_research.candidates import StrategyRevisionRef
-    from apex_research.evidence_v2 import (
-        CampaignRecordRef,
-        EvidenceV2RecordRef,
-        ValidationProtocolRecordRef,
-    )
-    from apex_research.models import StrategyPackageRef
-    from apex_research.records import PublishedRecordRef
     from strategy_workspace import WorkspaceClient
 
     if "PYTHONPATH" in os.environ:
@@ -227,16 +232,16 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
     public_types = (
         QualificationPolicy,
         QualificationEvaluationRequest,
-        QualificationEvaluation,
         QualificationEvaluator,
-        QualificationDecision,
         QualificationRetirementRequest,
-        QualificationRetirement,
         QualificationHistoryReader,
         QualificationService,
         QualificationValidationMetricRequirement,
     )
-    if any(value.__module__ != "apex_research.qualification" for value in public_types):
+    if any(
+        not value.__module__.startswith("apex_research.qualification")
+        for value in public_types
+    ):
         raise TracerFailure(
             "qualification public exports do not resolve to the installed owner"
         )
@@ -244,108 +249,11 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
     workspace.init()
     if workspace.list_records(limit=1) != []:
         raise TracerFailure("installed Workspace smoke root is not isolated")
-    candidate = StrategyRevisionRef(
-        record_id="1" * 64,
-        semantic_id="2" * 64,
-        family_id="installed-tracer",
-        revision=1,
-    )
-    predecessor = QualificationPredecessor(
-        state=QualificationState.IDEA, record=candidate
-    )
-    common = {
-        "campaign": CampaignRecordRef(record_id="3" * 64),
-        "candidate": candidate,
-        "strategy_package": StrategyPackageRef(
-            schema="quant-research.strategy-package-ref.v1",
-            strategy_id="installed-tracer",
-            revision=1,
-            package_hash="4" * 64,
-        ),
-        "protocol": ValidationProtocolRecordRef(record_id="5" * 64),
-        "evidence": EvidenceV2RecordRef(record_id="6" * 64),
-        "policy": PublishedRecordRef(
-            record_id="7" * 64,
-            record_type="apex-research.qualification-policy.v1",
-        ),
-        "predecessor": predecessor,
-        "from_state": QualificationState.IDEA,
-        "to_state": QualificationState.EXPERIMENTAL,
-    }
-    advance = QualificationEvaluation.create(
-        **common,
-        requirements=(
-            QualificationRequirementObservation(
-                requirement_id="candidate-gate",
-                status="satisfied",
-                reason="Exact installed identity fixture passed.",
-                sources=(),
-            ),
-        ),
-        disposition="advance",
-        reason="Exact installed identity fixture passed.",
-    )
-    held = QualificationEvaluation.create(
-        **common,
-        requirements=(
-            QualificationRequirementObservation(
-                requirement_id="candidate-gate",
-                status="failed",
-                reason="Exact installed identity fixture held.",
-                sources=(),
-            ),
-        ),
-        disposition="held",
-        reason="Exact installed identity fixture held.",
-    )
-    retirement = QualificationRetirementRequest.create(
-        campaign=common["campaign"],
-        candidate=candidate,
-        policy=common["policy"],
-        evidence=common["evidence"],
-        predecessor=predecessor,
-        reason=QualificationRetirementReason.POLICY_CHANGE,
-    )
-    reproduced = {
-        "advance_evaluation": advance.evaluation_id,
-        "decision": QualificationDecision.target_ref(advance).record_id,
-        "held_evaluation": held.evaluation_id,
-        "retirement": retirement.retirement_id,
-        "scope": advance.scope,
-        "operational_authority": advance.operational_authority,
-    }
-    if reproduced != {
-        "advance_evaluation": QualificationEvaluation.create(
-            **common,
-            requirements=advance.requirements,
-            disposition="advance",
-            reason=advance.reason,
-        ).evaluation_id,
-        "decision": QualificationDecision.target_ref(advance).record_id,
-        "held_evaluation": QualificationEvaluation.create(
-            **common,
-            requirements=held.requirements,
-            disposition="held",
-            reason=held.reason,
-        ).evaluation_id,
-        "retirement": QualificationRetirementRequest.create(
-            campaign=common["campaign"],
-            candidate=candidate,
-            policy=common["policy"],
-            evidence=common["evidence"],
-            predecessor=predecessor,
-            reason=QualificationRetirementReason.POLICY_CHANGE,
-        ).retirement_id,
-        "scope": "historical_research_maturity",
-        "operational_authority": "forbidden",
-    }:
-        raise TracerFailure("installed qualification identities do not reproduce")
     return {
         "ok": True,
         "pythonpath": "cleared",
         "distributions": distributions,
         "qualification_exports": [value.__name__ for value in public_types],
-        "identity_reproduction": reproduced,
         "smoke_workspace_isolated": True,
     }
 

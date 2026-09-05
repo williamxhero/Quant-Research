@@ -56,7 +56,9 @@ class TracerFailure(InstalledWheelFailure):
     """The installed-wheel tracer failed a closed acceptance condition."""
 
 
-def _run(command: list[str], *, cwd: Path, environment: dict[str, str] | None = None) -> str:
+def _run(
+    command: list[str], *, cwd: Path, environment: dict[str, str] | None = None
+) -> str:
     return run_command(
         command,
         cwd=cwd,
@@ -110,7 +112,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         try:
             result = json.loads(output)
         except json.JSONDecodeError as exc:
-            raise TracerFailure(f"installed tracer emitted invalid JSON: {output}") from exc
+            raise TracerFailure(
+                f"installed tracer emitted invalid JSON: {output}"
+            ) from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
         result["installed_acceptance_tests"] = [
@@ -167,18 +171,17 @@ def _source_lineage(source: Any) -> list[dict[str, str]]:
 
 
 def smoke(repository_root: Path, workspace_root: Path) -> dict[str, Any]:
+    import apex_research
     import quant_runtime
     import strategy_reporting
     import strategy_workspace
+    from apex_research import EvidenceV2, EvidenceV2StudySource
+    from apex_research.canonical import canonical_sha256
     from strategy_reporting.adapters.evidence_v2 import EvidenceV2ReadModelBuilder
     from strategy_reporting.adapters.workspace import WorkspaceAdapter
     from strategy_reporting.contracts.evidence_v2 import EvidenceV2SourceRef
     from strategy_reporting.errors import ReportingError
     from strategy_workspace import WorkspaceClient
-
-    import apex_research
-    from apex_research import EvidenceV2, EvidenceV2StudySource
-    from apex_research.canonical import canonical_sha256
 
     modules = (apex_research, quant_runtime, strategy_reporting, strategy_workspace)
     distributions = installed_distribution_manifest(
@@ -435,17 +438,24 @@ def smoke(repository_root: Path, workspace_root: Path) -> dict[str, Any]:
     successor_source = publish_evidence(successor_evidence)
 
     reader = EvidenceV2ReadModelBuilder(WorkspaceAdapter(workspace))
-    predecessor = reader.read(EvidenceV2SourceRef(record_id=predecessor_source.source_id))
+    predecessor = reader.read(
+        EvidenceV2SourceRef(record_id=predecessor_source.source_id)
+    )
     successor = reader.read(EvidenceV2SourceRef(record_id=successor_source.source_id))
     replay = reader.read(EvidenceV2SourceRef(record_id=successor_source.source_id))
     if successor != replay or predecessor.source.evidence.supersedes is not None:
-        raise TracerFailure("installed Evidence/report read-model identity is not deterministic")
+        raise TracerFailure(
+            "installed Evidence/report read-model identity is not deterministic"
+        )
     if successor.source.evidence.supersedes is None or (
         successor.source.evidence.supersedes.record_id
         != predecessor.source.evidence.evidence_id
     ):
         raise TracerFailure("installed supersession identity is incomplete")
-    if workspace.get_record(predecessor_evidence.evidence_id) != predecessor_publication:
+    if (
+        workspace.get_record(predecessor_evidence.evidence_id)
+        != predecessor_publication
+    ):
         raise TracerFailure("supersession mutated predecessor evidence")
     statuses = {
         successor.source.evidence.sections.candidates.strategy.status,
@@ -508,7 +518,7 @@ def main(argv: list[str] | None = None) -> int:
             if arguments.smoke_root is not None
             else build_and_run(arguments.repository_root)
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - fail closed at the tracer CLI boundary
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))

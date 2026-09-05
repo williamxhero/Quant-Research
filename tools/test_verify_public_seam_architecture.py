@@ -158,9 +158,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             for item in verifier.fixture_plan(ROOT)
             if item.owner == "spec015_installed_wheels"
         )
-        self.assertEqual(
-            installed.command[1], "tools/spec015_installed_wheel_tracer.py"
-        )
+        self.assertIn("tools/spec015_installed_wheel_tracer.py", installed.command)
+        source = tracer.read_text(encoding="utf-8")
+        for required in (
+            "test_owner_publishes_a_frozen_historical_maturity_policy_through_governance",
+            "test_validation_incomparability_remains_structurally_distinct",
+            "test_held_evaluations_do_not_consume_the_one_successor_slot",
+            "stable_behavioral_runs",
+        ):
+            self.assertIn(required, source)
 
     def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(
         self,
@@ -196,6 +202,39 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertIn("not connected", " ".join(runtime_pytest.command))
         self.assertIn("not connected", " ".join(reporting_pytest.command))
+        root_checks = [item for item in plan if item.owner == "quant_research"]
+        self.assertEqual(
+            {item.category for item in root_checks},
+            {"format", "lint", "pytest", "diff"},
+        )
+        root_tokens = {token for item in root_checks for token in item.command}
+        for changed in (
+            "tools/spec014_installed_wheel_tracer.py",
+            "tools/test_validate_architecture_constitution.py",
+        ):
+            self.assertIn(changed, root_tokens)
+        root_pytest = next(item for item in root_checks if item.category == "pytest")
+        self.assertIn(
+            "tools/test_validate_architecture_constitution.py", root_pytest.command
+        )
+        self.assertEqual(root_pytest.command[:6], ("uv", "run", "--python", "3.12", "--with", "pytest"))
+        python_launches = [
+            item.command
+            for item in plan
+            if item.owner
+            in {
+                "quant_research",
+                "spec014_installed_wheels",
+                "spec015_installed_wheels",
+            }
+            and item.category in {"pytest", "installed-wheel-smoke"}
+        ]
+        self.assertTrue(
+            all(
+                command[:4] == ("uv", "run", "--python", "3.12")
+                for command in python_launches
+            )
+        )
 
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
         self,
@@ -347,8 +386,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        CandidateRecordReader(self._workspace).read(candidate)\n"
                 "        return EvidenceV2Publisher(self._workspace).read(evidence)\n"
                 "class QualificationDecision:\n"
-                "    schema_id: str; decision_id: str; evaluation: object; governance_reservation: object; "
-                "governance_settlement: object; scope: str; operational_authority: str\n"
+                "    schema_id: str; decision_id: str; evaluation: object; governance: object; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
                 "    def target_ref(cls, identity): return canonical_sha256(identity)\n"
                 "    @classmethod\n"
@@ -358,23 +396,22 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    @classmethod\n"
                 "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationRetirement:\n"
-                "    schema_id: str; retirement_id: str; request: object; governance_reservation: object; "
-                "governance_settlement: object\n"
+                "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationSuccessorClaim:\n"
-                "    schema_id: str; claim_id: str; predecessor: object; successor: object; "
-                "governance_reservation: object; governance_settlement: object\n"
+                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance: object\n"
                 "    @classmethod\n"
                 "    def create(cls, predecessor): return _successor_slot_id(predecessor)\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationService:\n"
-                "    def publish_policy(self): return self._execute_publication()\n"
-                "    def publish_decision(self): return self._execute_publication()\n"
-                "    def publish_held_evaluation(self): return self._execute_publication()\n"
-                "    def publish_retirement(self): return self._execute_publication()\n"
-                "    def _execute_publication(self, complete=lambda: None):\n"
-                "        result = self._governance.execute(None, None)\n"
+                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def _execute_publication(self, *, action, campaign_id, target, preflight, complete):\n"
+                "        def authorize(grant): preflight(); return target\n"
+                "        result = self._governance.execute(action, authorize)\n"
                 "        if result.status != 'committed': return result\n"
-                "        try: complete()\n"
+                "        try: complete(None, None)\n"
                 "        except Exception: return result\n"
                 "        return result\n"
                 "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
@@ -410,6 +447,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             )
 
             verifier.scan_sources(root)
+
+            qualification = apex / "qualification.py"
+            masked = qualification.read_text(encoding="utf-8").replace(
+                "def create(cls, identity): return cls.target_ref(identity)",
+                "def create(cls, identity): return 'nondeterministic'",
+            )
+            qualification.write_text(masked, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "QualificationDecision.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
 
     def test_spec015_guard_rejects_parallel_qualification_owners(self) -> None:
         forbidden = (
@@ -466,6 +514,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "QualificationPublisher",
             "QualificationStateStore",
             "ResearchQualificationPublisher",
+            "MaturityState",
         )
         for symbol in forbidden:
             with (
@@ -493,6 +542,21 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_non_owner_repositories(root)
 
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-workspace/src/strategy_workspace/records.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "def save(workspace):\n"
+                "    workspace.publish_record({'record_type': "
+                "'apex-research.qualification-decision.v1'})\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
+
     def test_spec015_guard_allows_non_owner_read_models(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -512,10 +576,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source.write_text(
                 "def save(workspace): workspace.publish_record({})\n", encoding="utf-8"
             )
-            with self.assertRaisesRegex(
-                verifier.ArchitectureViolation, "ownership outside Apex Research"
-            ):
-                verifier._scan_spec015_non_owner_repositories(root)
+            verifier._scan_spec015_non_owner_repositories(root)
 
     def test_source_scan_allows_lifecycle_words_in_explanations(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

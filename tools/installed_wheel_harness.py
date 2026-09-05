@@ -26,9 +26,7 @@ def run_command(
     timeout_seconds: int,
 ) -> str:
     creationflags = (
-        subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004
-        if os.name == "nt"
-        else 0
+        subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
     )
     process = subprocess.Popen(
         command,
@@ -404,13 +402,28 @@ def verify_unchanged_sources(
 
 def _source_build_inputs(repository: Path) -> list[str]:
     source_root = (repository / "src").resolve()
-    return [
-        "src/" + path.relative_to(source_root).as_posix()
-        for path in sorted(source_root.rglob("*"))
-        if path.is_file()
-        and "__pycache__" not in path.parts
-        and path.suffix not in {".pyc", ".pyo"}
-    ]
+    inputs: list[str] = []
+    for path in sorted(source_root.rglob("*")):
+        is_junction = getattr(path, "is_junction", lambda: False)()
+        if path.is_symlink() or is_junction:
+            raise InstalledWheelFailure(
+                f"production source contains a symbolic link or junction: {path}"
+            )
+        if (
+            not path.is_file()
+            or "__pycache__" in path.parts
+            or path.suffix in {".pyc", ".pyo"}
+        ):
+            continue
+        resolved = path.resolve()
+        try:
+            relative = resolved.relative_to(source_root)
+        except ValueError as exc:
+            raise InstalledWheelFailure(
+                f"production source resolves outside its repository: {path}"
+            ) from exc
+        inputs.append("src/" + relative.as_posix())
+    return inputs
 
 
 def _source_fingerprint(repository: Path, source_files: Iterable[str]) -> str:

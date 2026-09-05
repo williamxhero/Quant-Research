@@ -117,6 +117,27 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                     dict(os.environ),
                 )
 
+    def test_source_build_inputs_rejects_links_that_escape_the_source_tree(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "package"
+            source = repository / "src" / "package"
+            external = root / "external.py"
+            source.mkdir(parents=True)
+            external.write_text("VALUE = 42\n", encoding="utf-8")
+            linked = source / "injected.py"
+            try:
+                linked.symlink_to(external)
+            except OSError as exc:
+                self.skipTest(f"file symlinks unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "symbolic link or junction"
+            ):
+                harness._source_build_inputs(repository)
+
 
 if __name__ == "__main__":
     unittest.main()
