@@ -290,6 +290,7 @@ def scan_sources(repository_root: Path) -> None:
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
     _scan_spec015_qualification_seam(repository_root / "apex-research")
+    _scan_spec015_non_owner_repositories(repository_root)
 
 
 def _scan_spec015_qualification_seam(repository: Path) -> None:
@@ -298,9 +299,19 @@ def _scan_spec015_qualification_seam(repository: Path) -> None:
         return
     tree = ast.parse(qualification.read_text(encoding="utf-8"), filename=str(qualification))
     classes = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    forbidden_owner_markers = (
+        "Ledger",
+        "Registry",
+        "Runner",
+        "Backtester",
+        "ArtifactStore",
+        "EvidenceStore",
+        "FormalEngine",
+        "CandidateTruth",
+    )
     for name in classes:
         if name != "QualificationService" and any(
-            marker in name for marker in ("Ledger", "Registry", "Runner", "Backtester")
+            marker in name for marker in forbidden_owner_markers
         ):
             raise ArchitectureViolation(
                 f"apex-research: parallel qualification owner {name}: {qualification}"
@@ -356,7 +367,7 @@ def _scan_spec015_qualification_seam(repository: Path) -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
     }
-    for required in ("execute", "get_record", "publish_record"):
+    for required in ("execute", "get_record", "publish_record", "query_lineage"):
         if required not in calls:
             raise ArchitectureViolation(
                 f"apex-research: qualification seam lacks {required}: {qualification}"
@@ -387,20 +398,52 @@ def _scan_spec015_qualification_seam(repository: Path) -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
-    if "historical_research_maturity" not in strings or "forbidden" not in strings:
+    if not {
+        "historical_research_maturity",
+        "forbidden",
+        "evaluation-of",
+        "successor-of",
+    } <= strings:
         raise ArchitectureViolation(
             "apex-research: qualification lacks historical maturity-only semantics"
         )
-    policy = classes["QualificationPolicy"]
     field_names = {
         node.target.id
-        for node in policy.body
+        for model in classes.values()
+        for node in model.body
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     }
-    if field_names & {"current", "currency", "approved", "active", "tradable", "live"}:
+    if field_names & {
+        "current",
+        "currency",
+        "approved",
+        "active",
+        "tradable",
+        "live",
+        "production",
+        "order",
+        "position",
+    }:
         raise ArchitectureViolation(
-            "apex-research: qualification policy declares non-historical authority fields"
+            "apex-research: qualification model declares non-historical authority fields"
         )
+
+
+def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
+    for repository in ("strategy-workspace", "quant-runtime", "strategy-reporting"):
+        source_root = repository_root / repository / "src"
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            owns_qualification = path.name == "qualification.py" or any(
+                isinstance(node, ast.ClassDef) and node.name.startswith("Qualification")
+                for node in ast.walk(tree)
+            )
+            if owns_qualification:
+                raise ArchitectureViolation(
+                    f"{repository}: qualification ownership outside Apex Research: {path}"
+                )
 
 
 def _scan_spec014_evidence_seams(repository_root: Path) -> None:

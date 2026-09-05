@@ -265,28 +265,54 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        governance.execute(None, None)\n"
                 "        workspace.publish_record({})\n"
                 "        workspace.get_record('id')\n"
+                "        workspace.query_lineage(roots=(), direction='descendants')\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
+                "held_relation = 'evaluation-of'\n"
+                "state_relation = 'successor-of'\n"
                 "EXPLANATION = 'Active and live are explicitly not granted here.'\n",
                 encoding="utf-8",
             )
 
             verifier.scan_sources(root)
 
-    def test_spec015_guard_rejects_a_second_qualification_ledger(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            apex = root / "apex-research/src/apex_research"
-            apex.mkdir(parents=True)
-            (apex / "qualification.py").write_text(
-                "class QualificationLedger: pass\n",
-                encoding="utf-8",
-            )
+    def test_spec015_guard_rejects_parallel_qualification_owners(self) -> None:
+        forbidden = (
+            "QualificationLedger",
+            "QualificationRegistry",
+            "QualificationRunner",
+            "QualificationBacktester",
+            "QualificationArtifactStore",
+            "QualificationEvidenceStore",
+            "QualificationFormalEngine",
+            "CandidateTruth",
+        )
+        for class_name in forbidden:
+            with self.subTest(class_name=class_name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                apex = root / "apex-research/src/apex_research"
+                apex.mkdir(parents=True)
+                (apex / "qualification.py").write_text(
+                    f"class {class_name}: pass\n",
+                    encoding="utf-8",
+                )
 
-            with self.assertRaisesRegex(
-                verifier.ArchitectureViolation, "parallel qualification owner"
-            ):
-                verifier.scan_sources(root)
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "parallel qualification owner"
+                ):
+                    verifier.scan_sources(root)
+
+    def test_spec015_guard_rejects_qualification_ownership_outside_apex(self) -> None:
+        for repository in ("strategy-workspace", "quant-runtime", "strategy-reporting"):
+            with self.subTest(repository=repository), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / repository / "src" / "owner.py"
+                source.parent.mkdir(parents=True)
+                source.write_text("class QualificationPolicy: pass\n", encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "ownership outside Apex Research"
+                ):
+                    verifier.scan_sources(root)
 
     def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
         required = """
