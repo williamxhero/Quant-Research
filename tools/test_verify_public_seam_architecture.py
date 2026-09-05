@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -119,9 +120,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
     def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(
         self,
     ) -> None:
-        source = (ROOT / "tools/spec014_installed_wheel_tracer.py").read_text(
-            encoding="utf-8"
+        tracer = ROOT / "tools/spec014_installed_wheel_tracer.py"
+        source = tracer.read_text(encoding="utf-8")
+
+        completed = subprocess.run(
+            [sys.executable, "-I", str(tracer), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
         )
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
 
         self.assertIn("tests/test_evidence_v2.py", source)
         self.assertIn(
@@ -295,7 +305,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "run_command",
                     side_effect=(
                         "2 passed in 1.0s\n",
-                        "1 passed, 1 skipped in 1.0s\n",
+                        "setup note: 99 passed\n1 passed, 1 skipped in 1.0s\n",
                         "2 skipped in 1.0s\n",
                     ),
                 ),
@@ -364,6 +374,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ("ruff", "format", "--check", "."),
             baseline_only=True,
         )
+        formatter_json = json.dumps(
+            [
+                {
+                    "code": "unformatted",
+                    "name": "unformatted",
+                    "message": "File would be reformatted",
+                    "severity": "error",
+                    "filename": "src/example.py",
+                }
+            ]
+        )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "strategy-workspace").mkdir()
@@ -375,8 +396,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     side_effect=(
                         verifier.HARNESS.InstalledWheelFailure(
                             "command failed (1): ruff format --check .\n"
-                            "Would reformat: src/example.py\n"
-                            "1 file would be reformatted",
+                            + formatter_json,
                             returncode=1,
                         ),
                         baseline,
@@ -395,8 +415,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     side_effect=(
                         verifier.HARNESS.InstalledWheelFailure(
                             "command failed (1): ruff format --check .\n"
-                            "Would reformat: src/example.py\n"
-                            "warning: unrelated configuration drift",
+                            + formatter_json
+                            + "\nwarning: unrelated configuration drift",
                             returncode=1,
                         ),
                         baseline,
@@ -835,6 +855,67 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
+            for corrupted_readback in (
+                accepted.replace(
+                    "    verify_publication(raw, value)\n",
+                    "    verify_publication(value, value)\n",
+                    1,
+                ),
+                accepted.replace(
+                    "    value=QualificationPolicy.model_validate_json(raw)\n",
+                    "    value=(QualificationPolicy.model_validate_json(raw), {})[1]\n",
+                    1,
+                ),
+                accepted.replace(
+                    "    verify_publication(raw, value)\n",
+                    "    verify_publication(raw, value)\n    if opaque: value={}\n",
+                    1,
+                ),
+            ):
+                qualification.write_text(corrupted_readback, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation,
+                    "typed canonical readback _read_policy",
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            for premature_publication in (
+                accepted.replace(
+                    "def publish_policy(self, action, target): return self._execute_publication(",
+                    "def publish_policy(self, action, target): "
+                    "_publish_record(self._workspace); return self._execute_publication(",
+                    1,
+                ),
+                accepted.replace(
+                    "preflight=lambda: None, launch=lambda *_: None",
+                    "preflight=lambda: _publish_record(self._workspace), "
+                    "launch=lambda *_: None",
+                    1,
+                ),
+                accepted.replace(
+                    "preflight=lambda: None, launch=lambda *_: None",
+                    "preflight=lambda: None, "
+                    "launch=lambda *_: _publish_record(self._workspace)",
+                    1,
+                ),
+            ):
+                qualification.write_text(premature_publication, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "publish|deferred phase"
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            forged_result = accepted.replace(
+                "        if result.status != 'committed' or result.reason != 'success': return result\n",
+                "        result=ForgedResult()\n"
+                "        if result.status != 'committed' or result.reason != 'success': return result\n",
+            )
+            qualification.write_text(forged_result, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "committed-first"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
             wrong_cursor_input = accepted.replace(
                 "page_size=100, cursor=cursor, snapshot_token=snapshot_token",
                 "page_size=100, cursor=None, snapshot_token=snapshot_token",
@@ -864,6 +945,39 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
+            for pagination_corruption in (
+                accepted.replace(
+                    "        page_count += 1\n",
+                    "        page_count += 1\n        page_count=0\n",
+                ),
+                accepted.replace(
+                    "if not isinstance(page_token, str) or not page_token: raise RuntimeError('invalid token')",
+                    "if page_token is None: raise RuntimeError('invalid token')",
+                ),
+                accepted.replace(
+                    "        snapshot_token=page_token\n",
+                    "        snapshot_token=page_token\n        page_token='forged'\n",
+                ),
+                accepted.replace(
+                    "        cursor=next_cursor\n",
+                    "        cursor=next_cursor\n        cursor=None\n",
+                ),
+                accepted.replace(
+                    "if next_cursor is None: return tuple(records)",
+                    "if next_cursor is None: records.clear(); return tuple(records)",
+                ),
+            ):
+                qualification.write_text(pagination_corruption, encoding="utf-8")
+                with (
+                    self.subTest(pagination_corruption=pagination_corruption),
+                    self.assertRaisesRegex(
+                        verifier.ArchitectureViolation,
+                        "bounded snapshot pagination",
+                        msg=pagination_corruption,
+                    ),
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
             append_before_validation = accepted.replace(
                 "publication=as_mapping(value); record_payload(publication); records.append(publication)",
                 "publication=as_mapping(value); records.append(publication); record_payload(publication)",
@@ -891,6 +1005,36 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier.ArchitectureViolation, "maturity states drifted"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            fake_str_enum = accepted.replace(
+                "from enum import StrEnum\n", "class StrEnum: pass\n"
+            )
+            qualification.write_text(fake_str_enum, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "maturity states drifted"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            for rebound_owner in (
+                "\nQualificationService = object\n",
+                "\ndef QualificationPolicy(): pass\n",
+                "\nclass MaturityCoordinator:\n    def publish_policy(self): pass\n",
+            ):
+                qualification.write_text(accepted + rebound_owner, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation,
+                    "canonical owner is rebound|parallel qualification owner",
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            qualification.write_text(
+                accepted + "\nclass _Helper: pass\n", encoding="utf-8"
+            )
+            (apex / "qualification_extra.py").write_text(
+                "class _Helper: pass\n", encoding="utf-8"
+            )
+            verifier._scan_spec015_qualification_seam(root / "apex-research")
+            (apex / "qualification_extra.py").unlink()
 
             for hidden_owner in (
                 "\ndef hidden():\n    class QualificationPolicy: pass\n",
@@ -950,7 +1094,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 source.parent.mkdir(parents=True)
                 source.write_text("class QualificationPolicy: pass\n", encoding="utf-8")
                 with self.assertRaisesRegex(
-                    verifier.ArchitectureViolation, "ownership outside Apex Research"
+                    verifier.ArchitectureViolation,
+                    "ownership outside Apex Research",
                 ):
                     verifier.scan_sources(root)
 
@@ -994,74 +1139,81 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_non_owner_repositories(root)
 
-        for source_text in (
+        for case_index, source_text in enumerate(
             (
-                "from apex_research import QualificationDecision\n"
-                "def save(workspace, value):\n"
-                "    publish = workspace.publish_record\n"
-                "    schema = QualificationDecision\n"
-                "    record = schema(value)\n"
-                "    publish(record)\n"
-            ),
-            (
-                "import apex_research as ar\n"
-                "def save(workspace, value):\n"
-                "    workspace.publish_record(ar.QualificationDecision(value))\n"
-            ),
-            (
-                "from apex_research import qualification as q\n"
-                "def save(workspace, value):\n"
-                "    record: object = q.QualificationDecision(value)\n"
-                "    workspace.publish_record(record)\n"
-            ),
-            (
-                "from apex_research import QualificationDecision\n"
-                "def relay(workspace, record): workspace.publish_record(record)\n"
-                "def save(workspace, value): relay(workspace, QualificationDecision(value))\n"
-            ),
-            (
-                "def save(workspace):\n"
-                "    payload={'record_type': 'apex-research.qualification-decision.v1'}\n"
-                "    workspace.publish_record(payload)\n"
-            ),
-            (
-                "from apex_research import QualificationDecision\n"
-                "class Box: pass\n"
-                "def save(workspace, value):\n"
-                "    box=Box()\n"
-                "    box.payload: object = QualificationDecision(value)\n"
-                "    workspace.publish_record(box.payload)\n"
-            ),
-            (
-                "from apex_research import QualificationDecision\n"
-                "def save(workspace, value):\n"
-                "    safe, *records = ({}, QualificationDecision(value))\n"
-                "    workspace.publish_record(records)\n"
-            ),
-            (
-                "from apex_research import QualificationDecision\n"
-                "def outer(workspace, payload):\n"
-                "    def inner(*, publication):\n"
-                "        workspace.publish_record(publication)\n"
-                "    inner(publication=payload)\n"
-                "def save(workspace, value):\n"
-                "    outer(workspace, QualificationDecision(value))\n"
-            ),
-            (
-                "from apex_research import QualificationDecision\n"
-                "def final(workspace, payload): workspace.publish_record(payload)\n"
-                "def middle(workspace, payload): final(workspace, payload)\n"
-                "def save(workspace, value):\n"
-                "    middle(workspace, QualificationDecision(value))\n"
-            ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    publish = workspace.publish_record\n"
+                    "    schema = QualificationDecision\n"
+                    "    record = schema(value)\n"
+                    "    publish(record)\n"
+                ),
+                (
+                    "import apex_research as ar\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(ar.QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import qualification as q\n"
+                    "def save(workspace, value):\n"
+                    "    record: object = q.QualificationDecision(value)\n"
+                    "    workspace.publish_record(record)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def relay(workspace, record): workspace.publish_record(record)\n"
+                    "def save(workspace, value): relay(workspace, QualificationDecision(value))\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={'record_type': 'apex-research.qualification-decision.v1'}\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "class Box: pass\n"
+                    "def save(workspace, value):\n"
+                    "    box=Box()\n"
+                    "    box.payload: object = QualificationDecision(value)\n"
+                    "    workspace.publish_record(box.payload)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    safe, *records = ({}, QualificationDecision(value))\n"
+                    "    workspace.publish_record(records)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def outer(workspace, payload):\n"
+                    "    def inner(*, publication):\n"
+                    "        workspace.publish_record(publication)\n"
+                    "    inner(publication=payload)\n"
+                    "def save(workspace, value):\n"
+                    "    outer(workspace, QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def final(workspace, payload): workspace.publish_record(payload)\n"
+                    "def middle(workspace, payload): final(workspace, payload)\n"
+                    "def save(workspace, value):\n"
+                    "    middle(workspace, QualificationDecision(value))\n"
+                ),
+            )
         ):
-            with tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(source_text=source_text),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 source = root / "strategy-reporting/src/strategy_reporting/publisher.py"
                 source.parent.mkdir(parents=True)
                 source.write_text(source_text, encoding="utf-8")
                 with self.assertRaisesRegex(
-                    verifier.ArchitectureViolation, "ownership outside Apex Research"
+                    verifier.ArchitectureViolation,
+                    "ownership outside Apex Research",
+                    msg=f"case {case_index}: {source_text}",
                 ):
                     verifier._scan_spec015_non_owner_repositories(root)
 
@@ -1106,6 +1258,28 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.scan_sources(root)
 
+    def test_source_scan_rejects_a_linked_repository_ancestor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "quant-runtime"
+            source_root = repository / "src/quant_runtime"
+            source_root.mkdir(parents=True)
+            (source_root / "injected.py").write_text("VALUE = 1\n", encoding="utf-8")
+            original = Path.is_junction
+
+            with (
+                mock.patch.object(
+                    Path,
+                    "is_junction",
+                    autospec=True,
+                    side_effect=lambda path: path == repository or original(path),
+                ),
+                self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "repository ancestor"
+                ),
+            ):
+                verifier.scan_sources(root)
+
     def test_spec015_nonowner_publication_aliases_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1121,6 +1295,64 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier.ArchitectureViolation, "ownership outside Apex Research"
             ):
                 verifier._scan_spec015_non_owner_repositories(root)
+
+        for case_index, source_text in enumerate(
+            (
+                (
+                    "import apex_research as ar\n"
+                    "q = ar.qualification\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(q.QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import *\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "class Publisher:\n"
+                    "    def relay(self, workspace, record):\n"
+                    "        workspace.publish_record(record)\n"
+                    "    def save(self, workspace, value):\n"
+                    "        alias = self.relay\n"
+                    "        alias(workspace, QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    record = QualificationDecision(value)\n"
+                    "    def inner():\n"
+                    "        workspace.publish_record(record)\n"
+                    "    inner()\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def build(value):\n"
+                    "    return QualificationDecision(value)\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(build(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    box = {}\n"
+                    "    box['record'] = QualificationDecision(value)\n"
+                    "    workspace.publish_record(box['record'])\n"
+                ),
+            )
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "strategy-reporting/src/strategy_reporting/relay.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(source_text, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation,
+                    "ownership outside Apex Research",
+                    msg=f"new case {case_index}: {source_text}",
+                ):
+                    verifier._scan_spec015_non_owner_repositories(root)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1145,6 +1377,31 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source.write_text("class QualificationReadModel: pass\n", encoding="utf-8")
 
             verifier._scan_spec015_non_owner_repositories(root)
+
+        for safe_source in (
+            (
+                "def save(workspace):\n"
+                "    workspace.publish_record({'record_type': 'report-summary.v1', "
+                "'source_schema': 'apex-research.qualification-decision.v1', "
+                "'scope': 'historical_research_maturity'})\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value, flag):\n"
+                "    record = QualificationDecision(value)\n"
+                "    if flag:\n"
+                "        record = {}\n"
+                "    else:\n"
+                "        record = {}\n"
+                "    workspace.publish_record(record)\n"
+            ),
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "strategy-reporting/src/strategy_reporting/safe.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(safe_source, encoding="utf-8")
+                verifier._scan_spec015_non_owner_repositories(root)
 
         for source_text in (
             (

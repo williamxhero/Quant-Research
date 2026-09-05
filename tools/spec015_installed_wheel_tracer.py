@@ -212,7 +212,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 or not isinstance(item["identities"], dict)
                 or not item["identities"]
                 or any(
-                    not isinstance(key, str) or not isinstance(value, str)
+                    not isinstance(key, str)
+                    or not (
+                        isinstance(value, str)
+                        or isinstance(value, list)
+                        and bool(value)
+                        and all(isinstance(member, str) for member in value)
+                    )
                     for key, value in item["identities"].items()
                 )
                 for item in transcript

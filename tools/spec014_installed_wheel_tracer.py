@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 import tempfile
@@ -10,15 +11,20 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from installed_wheel_harness import (
-    InstalledWheelFailure,
-    build_wheels,
-    create_installed_environment,
-    installed_distribution_manifest,
-    run_command,
-    run_installed_pytest,
-    sanitized_environment,
+HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
+HARNESS_SPEC = importlib.util.spec_from_file_location(
+    "installed_wheel_harness", HARNESS_PATH
 )
+assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
+HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
+HARNESS_SPEC.loader.exec_module(HARNESS)
+InstalledWheelFailure = HARNESS.InstalledWheelFailure
+build_wheels = HARNESS.build_wheels
+create_installed_environment = HARNESS.create_installed_environment
+installed_distribution_manifest = HARNESS.installed_distribution_manifest
+run_command = HARNESS.run_command
+run_installed_pytest = HARNESS.run_installed_pytest
+sanitized_environment = HARNESS.sanitized_environment
 
 REPOSITORIES = (
     "strategy-workspace",

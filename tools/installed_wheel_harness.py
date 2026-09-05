@@ -41,6 +41,9 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
         "VIRTUAL_ENV",
     ):
         environment.pop(name, None)
+    for name in tuple(environment):
+        if name.startswith("GIT_"):
+            environment.pop(name)
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return environment
 
@@ -52,6 +55,7 @@ def run_command(
     environment: dict[str, str],
     timeout_seconds: int,
 ) -> str:
+    subreaper_baseline = _prepare_posix_containment()
     creationflags = (
         subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
     )
@@ -88,14 +92,15 @@ def run_command(
             tracker.start()
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        _stop_descendant_tracker(tracker, tracker_stop)
-        tracker = None
-        tracker_stop = None
         _terminate_process_tree(
             process,
             job_handle=job_handle,
             descendant_pids=frozenset(descendant_pids),
+            subreaper_baseline=subreaper_baseline,
         )
+        _stop_descendant_tracker(tracker, tracker_stop)
+        tracker = None
+        tracker_stop = None
         job_handle = None
         try:
             stdout, stderr = process.communicate(timeout=10)
@@ -110,14 +115,15 @@ def run_command(
             f"{stdout}{stderr}"
         ) from exc
     except BaseException:
-        _stop_descendant_tracker(tracker, tracker_stop)
-        tracker = None
-        tracker_stop = None
         _terminate_process_tree(
             process,
             job_handle=job_handle,
             descendant_pids=frozenset(descendant_pids),
+            subreaper_baseline=subreaper_baseline,
         )
+        _stop_descendant_tracker(tracker, tracker_stop)
+        tracker = None
+        tracker_stop = None
         job_handle = None
         try:
             process.communicate(timeout=10)
@@ -128,7 +134,6 @@ def run_command(
                 process.stderr.close()
         raise
     finally:
-        _stop_descendant_tracker(tracker, tracker_stop)
         if job_handle is not None:
             _close_windows_handle(job_handle)
         elif os.name != "nt":
@@ -136,7 +141,9 @@ def run_command(
                 process,
                 job_handle=None,
                 descendant_pids=frozenset(descendant_pids),
+                subreaper_baseline=subreaper_baseline,
             )
+        _stop_descendant_tracker(tracker, tracker_stop)
     if process.returncode:
         raise InstalledWheelFailure(
             f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}",
@@ -253,6 +260,7 @@ def _terminate_process_tree(
     *,
     job_handle: int | None,
     descendant_pids: frozenset[int] = frozenset(),
+    subreaper_baseline: frozenset[int] = frozenset(),
 ) -> None:
     if os.name == "nt":
         if job_handle is not None:
@@ -275,6 +283,68 @@ def _terminate_process_tree(
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+    _kill_new_subreaper_children(subreaper_baseline)
+
+
+def _prepare_posix_containment() -> frozenset[int]:
+    if os.name == "nt":
+        return frozenset()
+    proc = Path("/proc")
+    if not proc.is_dir():
+        raise InstalledWheelFailure(
+            "POSIX installed-wheel commands require /proc process containment"
+        )
+    import ctypes
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    if not hasattr(libc, "prctl") or libc.prctl(36, 1, 0, 0, 0) != 0:
+        raise InstalledWheelFailure(
+            "POSIX installed-wheel commands require child-subreaper containment"
+        )
+    return frozenset(
+        pid for pid, parent in _posix_parent_map().items() if parent == os.getpid()
+    )
+
+
+def _kill_new_subreaper_children(baseline: frozenset[int]) -> None:
+    if os.name == "nt":
+        return
+    for _ in range(4):
+        children = {
+            pid
+            for pid, parent in _posix_parent_map().items()
+            if parent == os.getpid() and pid not in baseline
+        }
+        if not children:
+            return
+        for pid in children:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        for pid in children:
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+
+
+def _posix_parent_map() -> dict[int, int]:
+    parent_by_pid: dict[int, int] = {}
+    try:
+        process_paths = tuple(Path("/proc").iterdir())
+    except OSError:
+        return parent_by_pid
+    for process_path in process_paths:
+        if not process_path.name.isdigit():
+            continue
+        try:
+            stat = (process_path / "stat").read_text(encoding="utf-8")
+            fields = stat[stat.rindex(")") + 2 :].split()
+            parent_by_pid[int(process_path.name)] = int(fields[1])
+        except (OSError, ValueError, IndexError):
+            continue
+    return parent_by_pid
 
 
 def _stop_descendant_tracker(
@@ -292,20 +362,7 @@ def _track_posix_descendants(
     """Remember descendants even if they later detach from the original process group."""
     tracked_parents = {root_pid}
     while not stop.is_set():
-        parent_by_pid: dict[int, int] = {}
-        try:
-            process_paths = tuple(Path("/proc").iterdir())
-        except OSError:
-            return
-        for process_path in process_paths:
-            if not process_path.name.isdigit():
-                continue
-            try:
-                stat = (process_path / "stat").read_text(encoding="utf-8")
-                fields = stat[stat.rindex(")") + 2 :].split()
-                parent_by_pid[int(process_path.name)] = int(fields[1])
-            except (OSError, ValueError, IndexError):
-                continue
+        parent_by_pid = _posix_parent_map()
         changed = True
         while changed:
             changed = False

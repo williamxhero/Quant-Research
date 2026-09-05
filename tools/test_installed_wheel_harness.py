@@ -30,6 +30,9 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 "UV_NO_SYNC": "1",
                 "UV_PROJECT_ENVIRONMENT": "other-venv",
                 "VIRTUAL_ENV": "caller-venv",
+                "GIT_DIR": "elsewhere/.git",
+                "GIT_WORK_TREE": "elsewhere",
+                "GIT_INDEX_FILE": "elsewhere/index",
                 "KEEP": "yes",
             }
         )
@@ -42,6 +45,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         self.assertNotIn("UV_NO_SYNC", environment)
         self.assertNotIn("UV_PROJECT_ENVIRONMENT", environment)
         self.assertNotIn("VIRTUAL_ENV", environment)
+        self.assertFalse(any(name.startswith("GIT_") for name in environment))
         self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
         self.assertEqual(environment["KEEP"], "yes")
 
