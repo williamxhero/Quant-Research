@@ -190,6 +190,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         for required in ("format", "check", "mypy", "pytest", "build", "diff"):
             self.assertTrue(any(required in token for token in commands), required)
         self.assertTrue(all(not item.connected for item in plan))
+        baseline_only = {
+            item.owner
+            for item in plan
+            if item.category == "format" and item.baseline_only
+        }
+        self.assertEqual(
+            baseline_only,
+            {"strategy_workspace", "quant_runtime", "strategy_reporting"},
+        )
         runtime_pytest = next(
             item
             for item in plan
@@ -213,6 +222,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "tools/test_validate_architecture_constitution.py",
         ):
             self.assertIn(changed, root_tokens)
+
         root_pytest = next(item for item in root_checks if item.category == "pytest")
         self.assertIn(
             "tools/test_validate_architecture_constitution.py", root_pytest.command
@@ -238,6 +248,23 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 for command in python_launches
             )
         )
+
+    def test_connected_status_plan_keeps_each_external_dependency_independent(
+        self,
+    ) -> None:
+        plan = verifier.connected_status_plan()
+
+        self.assertEqual(
+            {(item.owner, item.category) for item in plan},
+            {
+                ("quant_runtime", "connected-markethub"),
+                ("quant_runtime", "connected-oci"),
+                ("apex_research", "connected-external-validator"),
+                ("strategy_reporting", "connected-reporting"),
+            },
+        )
+        self.assertTrue(all(item.connected for item in plan))
+        self.assertTrue(all("pytest" in item.command for item in plan))
 
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
         self,
@@ -393,7 +420,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    @classmethod\n"
                 "    def target_ref(cls, identity): return cls(record_id=canonical_sha256(identity))\n"
                 "    @classmethod\n"
-                "    def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation))\n"
+                "    def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation).record_id)\n"
                 "class QualificationRetirementRequest:\n"
                 "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
@@ -405,6 +432,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    @classmethod\n"
                 "    def create(cls, predecessor): return cls(claim_id=_successor_slot_id(predecessor))\n"
                 "class QualificationHistoryReader: pass\n"
+                "class QualificationPageCursor:\n"
+                "    current: str\n"
                 "class QualificationService:\n"
                 "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
                 "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
@@ -420,21 +449,24 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
                 "def _read_policy(workspace):\n"
-                "    value=workspace.get_record('id'); QualificationPolicy.model_validate_json('{}'); verify_publication(value)\n"
+                "    raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _read_decision(workspace):\n"
-                "    value=workspace.get_record('id'); QualificationDecision.model_validate_json('{}'); verify_publication(value)\n"
+                "    raw=workspace.get_record('id'); value=QualificationDecision.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _read_held_evaluation(workspace):\n"
-                "    value=workspace.get_record('id'); QualificationEvaluation.model_validate_json('{}'); verify_publication(value)\n"
+                "    raw=workspace.get_record('id'); value=QualificationEvaluation.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _read_retirement(workspace):\n"
-                "    value=workspace.get_record('id'); QualificationRetirement.model_validate_json('{}'); verify_publication(value)\n"
+                "    raw=workspace.get_record('id'); value=QualificationRetirement.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _read_successor_claim(workspace):\n"
-                "    value=workspace.get_record('id'); QualificationSuccessorClaim.model_validate_json('{}'); verify_publication(value)\n"
+                "    raw=workspace.get_record('id'); value=QualificationSuccessorClaim.model_validate_json(raw); verify_publication(raw, value)\n"
                 "def _query_lineage_records(workspace):\n"
                 "    seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
                 "    while True:\n"
                 "        if page_count >= 100: raise RuntimeError('bounded')\n"
                 "        page_count += 1\n"
                 "        page=workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
+                "        page_token=page.get('snapshot_token')\n"
+                "        if snapshot_token is not None and page_token != snapshot_token: raise RuntimeError('drift')\n"
+                "        snapshot_token=page_token\n"
                 "        page_records=page['records']\n"
                 "        if len(page_records) > 100: raise RuntimeError('oversized')\n"
                 "        next_cursor=page['next_cursor']\n"
@@ -474,8 +506,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
+            forged_descendant = accepted.replace(
+                "policy_id=canonical_sha256(identity)",
+                "policy_id=(canonical_sha256(identity), 'forged')[1]",
+            )
+            qualification.write_text(forged_descendant, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "QualificationPolicy.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
             masked = accepted.replace(
-                "def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation))",
+                "def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation).record_id)",
                 "def create(cls, evaluation): return cls(decision_id='nondeterministic')",
             )
             qualification.write_text(masked, encoding="utf-8")
@@ -488,6 +530,26 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             qualification.write_text(unbounded, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            no_snapshot_guard = accepted.replace(
+                "if snapshot_token is not None and page_token != snapshot_token: raise RuntimeError('drift')",
+                "if False: raise RuntimeError('drift')",
+            )
+            qualification.write_text(no_snapshot_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            disconnected_readback = accepted.replace(
+                "raw=workspace.get_record('id'); value=QualificationPolicy.model_validate_json(raw); verify_publication(raw, value)",
+                "workspace.get_record('id'); value=QualificationPolicy.model_validate_json('{}'); verify_publication({}, value)",
+            )
+            qualification.write_text(disconnected_readback, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "typed canonical readback _read_policy"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -521,6 +583,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 apex = root / "apex-research/src/apex_research"
                 apex.mkdir(parents=True)
                 (apex / "qualification.py").write_text(
+                    "# qualification package marker\n",
+                    encoding="utf-8",
+                )
+                (apex / "unrelated_owner.py").write_text(
                     f"class {class_name}: pass\n",
                     encoding="utf-8",
                 )
@@ -583,6 +649,48 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier.ArchitectureViolation, "ownership outside Apex Research"
             ):
                 verifier._scan_spec015_non_owner_repositories(root)
+
+        for source_text in (
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    publish = workspace.publish_record\n"
+                "    schema = QualificationDecision\n"
+                "    record = schema(value)\n"
+                "    publish(record)\n"
+            ),
+            (
+                "import apex_research as ar\n"
+                "def save(workspace, value):\n"
+                "    workspace.publish_record(ar.QualificationDecision(value))\n"
+            ),
+        ):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "strategy-reporting/src/strategy_reporting/publisher.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(source_text, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "ownership outside Apex Research"
+                ):
+                    verifier._scan_spec015_non_owner_repositories(root)
+
+    def test_source_scan_rejects_linked_python_before_following_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_root = root / "quant-runtime/src/quant_runtime"
+            external = root / "external"
+            source_root.mkdir(parents=True)
+            external.mkdir()
+            (external / "injected.py").write_text("VALUE = 1\n", encoding="utf-8")
+            try:
+                (source_root / "linked").symlink_to(external, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory links unavailable: {exc}")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "symbolic link or junction"
+            ):
+                verifier.scan_sources(root)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

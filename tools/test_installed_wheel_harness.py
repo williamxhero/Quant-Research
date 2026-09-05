@@ -19,6 +19,27 @@ SPEC.loader.exec_module(harness)
 
 
 class InstalledWheelHarnessTests(unittest.TestCase):
+    def test_source_visibility_detects_paths_below_or_above_source_root(self) -> None:
+        source = Path("C:/workspace/package/src").resolve()
+
+        self.assertTrue(harness.path_exposes_source(source, source / "package"))
+        self.assertTrue(harness.path_exposes_source(source, source.parent))
+        self.assertFalse(harness.path_exposes_source(source, Path("C:/venv").resolve()))
+
+    def test_verify_source_topology_covers_changed_owner_without_git_baseline(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / "package"
+            source = repository / "src" / "package"
+            source.mkdir(parents=True)
+            (source / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+            topology = harness.verify_source_topology(repository)
+
+            self.assertEqual(topology["source_files"], ["src/package/__init__.py"])
+            self.assertEqual(len(topology["source_fingerprint"]), 64)
+
     @unittest.skipUnless(os.name == "nt", "Windows Job cleanup contract")
     def test_resume_failure_closes_job_and_reaps_suspended_process(self) -> None:
         process = mock.Mock()

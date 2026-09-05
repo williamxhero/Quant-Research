@@ -281,12 +281,14 @@ def run_installed_pytest(
     cwd: Path,
     environment: dict[str, str],
     timeout_seconds: int,
+    pytest_args: Iterable[str] = (),
 ) -> str:
     payload = json.dumps(
         {
             "targets": [str(path.resolve()) for path in targets],
             "packages": sorted(package_names),
             "source_roots": [str(path.resolve()) for path in source_roots],
+            "pytest_args": list(pytest_args),
         },
         sort_keys=True,
     )
@@ -299,13 +301,18 @@ import pytest
 payload = json.loads({payload!r})
 prefix = Path(sys.prefix).resolve()
 source_roots = tuple(Path(value).resolve() for value in payload["source_roots"])
-for entry in sys.path:
-    if not entry:
-        continue
-    resolved = Path(entry).resolve()
-    if any(resolved == source or source.is_relative_to(resolved) for source in source_roots):
-        raise RuntimeError(f"source root is import-visible: {{resolved}}")
-exit_code = pytest.main(["-q", "-p", "no:cacheprovider", *payload["targets"]])
+def path_exposes_source(source, candidate):
+    return candidate == source or candidate.is_relative_to(source) or source.is_relative_to(candidate)
+def assert_no_source_visibility():
+    for entry in sys.path:
+        if not entry:
+            continue
+        resolved = Path(entry).resolve()
+        if any(path_exposes_source(source, resolved) for source in source_roots):
+            raise RuntimeError(f"source root is import-visible: {{resolved}}")
+assert_no_source_visibility()
+exit_code = pytest.main(["-q", "-p", "no:cacheprovider", *payload["pytest_args"], *payload["targets"]])
+assert_no_source_visibility()
 loaded = {{}}
 for name, module in sorted(sys.modules.items()):
     if not any(name == package or name.startswith(package + ".") for package in payload["packages"]):
@@ -411,6 +418,26 @@ def verify_unchanged_sources(
             "source_fingerprint": _source_fingerprint(cwd, source_files),
         }
     return verified
+
+
+def path_exposes_source(source: Path, candidate: Path) -> bool:
+    """Return whether a sys.path entry can expose any part of a source tree."""
+    source = source.resolve()
+    candidate = candidate.resolve()
+    return (
+        candidate == source
+        or candidate.is_relative_to(source)
+        or source.is_relative_to(candidate)
+    )
+
+
+def verify_source_topology(repository: Path) -> dict[str, object]:
+    """Fail closed on linked build inputs and attest the complete source topology."""
+    source_files = _source_build_inputs(repository)
+    return {
+        "source_files": source_files,
+        "source_fingerprint": _source_fingerprint(repository, source_files),
+    }
 
 
 def _source_build_inputs(repository: Path) -> list[str]:

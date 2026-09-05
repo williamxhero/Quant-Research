@@ -26,6 +26,7 @@ installed_distribution_manifest = HARNESS.installed_distribution_manifest
 run_command = HARNESS.run_command
 run_installed_pytest = HARNESS.run_installed_pytest
 verify_unchanged_sources = HARNESS.verify_unchanged_sources
+verify_source_topology = HARNESS.verify_source_topology
 
 PACKAGE_REPOSITORIES = (
     "strategy-workspace",
@@ -92,6 +93,7 @@ STABLE_BEHAVIORAL_TESTS = (
         "test_held_evaluations_do_not_consume_the_one_successor_slot"
     ),
 )
+IDENTITY_TRANSCRIPT_PREFIX = "SPEC015_IDENTITY_TRANSCRIPT="
 
 
 class TracerFailure(InstalledWheelFailure):
@@ -109,6 +111,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         environment.pop("PYTHONPATH", None)
         dist = isolated / "dist"
         dist.mkdir()
+        source_topology = {
+            repository: verify_source_topology(repository_root / repository)
+            for repository in PACKAGE_REPOSITORIES
+        }
         unchanged_sources = verify_unchanged_sources(
             repository_root,
             UNCHANGED_SOURCE_BASELINES,
@@ -120,6 +126,12 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             dist,
             environment,
         )
+        source_topology_after_build = {
+            repository: verify_source_topology(repository_root / repository)
+            for repository in PACKAGE_REPOSITORIES
+        }
+        if source_topology_after_build != source_topology:
+            raise TracerFailure("repository source topology raced during wheel build")
         unchanged_after_build = verify_unchanged_sources(
             repository_root,
             UNCHANGED_SOURCE_BASELINES,
@@ -150,8 +162,11 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 environment=environment,
                 timeout_seconds=900,
             )
+        stable_identity_transcripts: list[list[dict[str, Any]]] = []
+        transcript_environment = dict(environment)
+        transcript_environment["SPEC015_IDENTITY_TRANSCRIPT"] = "1"
         for _ in range(2):
-            run_installed_pytest(
+            stable_output = run_installed_pytest(
                 python,
                 (
                     repository_root / "apex-research" / target
@@ -165,9 +180,24 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ),
                 (repository_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
-                environment=environment,
+                environment=transcript_environment,
                 timeout_seconds=1_200,
+                pytest_args=("-s",),
             )
+            stable_identity_transcripts.append(
+                sorted(
+                    (
+                        json.loads(line.removeprefix(IDENTITY_TRANSCRIPT_PREFIX))
+                        for line in stable_output.splitlines()
+                        if line.startswith(IDENTITY_TRANSCRIPT_PREFIX)
+                    ),
+                    key=lambda item: item["label"],
+                )
+            )
+        if not stable_identity_transcripts[0]:
+            raise TracerFailure("stable installed tests emitted no identity transcript")
+        if stable_identity_transcripts[0] != stable_identity_transcripts[1]:
+            raise TracerFailure("stable installed identity transcripts drifted")
         output = run_command(
             [
                 str(python),
@@ -198,11 +228,21 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         ]
         result["stable_behavioral_runs"] = 2
         result["stable_behavioral_tests"] = list(STABLE_BEHAVIORAL_TESTS)
+        result["stable_identity_transcript"] = stable_identity_transcripts[0]
+        result["stable_identity_transcript_sha256"] = hashlib.sha256(
+            json.dumps(
+                stable_identity_transcripts[0],
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
         result["wheel_sha256"] = {
             path.name: hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(wheels)
         }
         result["unchanged_sources"] = unchanged_sources
+        result["source_topology"] = source_topology
         return result
 
 
