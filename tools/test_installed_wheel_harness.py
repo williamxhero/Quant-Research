@@ -29,6 +29,8 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 "UV_PROJECT": "other-project",
                 "UV_NO_SYNC": "1",
                 "UV_PROJECT_ENVIRONMENT": "other-venv",
+                "UV_CACHE_DIR": "poisoned-cache",
+                "UV_INDEX_URL": "https://example.invalid/simple",
                 "VIRTUAL_ENV": "caller-venv",
                 "GIT_DIR": "elsewhere/.git",
                 "GIT_WORK_TREE": "elsewhere",
@@ -44,6 +46,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         self.assertNotIn("UV_PROJECT", environment)
         self.assertNotIn("UV_NO_SYNC", environment)
         self.assertNotIn("UV_PROJECT_ENVIRONMENT", environment)
+        self.assertFalse(any(name.startswith("UV_") for name in environment))
         self.assertNotIn("VIRTUAL_ENV", environment)
         self.assertFalse(any(name.startswith("GIT_") for name in environment))
         self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
@@ -91,13 +94,27 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             repository = Path(temporary)
             (repository / "src/package").mkdir(parents=True)
             (repository / "strategies").mkdir()
+            (repository / "build_backend").mkdir()
+            (repository / "licenses").mkdir()
+            (repository / "hooks").mkdir()
+            (repository / "assets").mkdir()
             (repository / "src/package/__init__.py").write_text("", encoding="utf-8")
             (repository / "strategies/example.py").write_text(
                 "VALUE = 1\n", encoding="utf-8"
             )
             (repository / "README.md").write_text("package\n", encoding="utf-8")
+            (repository / "licenses/LICENSE.txt").write_text(
+                "license\n", encoding="utf-8"
+            )
+            (repository / "hooks/build.py").write_text("", encoding="utf-8")
+            (repository / "assets/data.json").write_text("{}\n", encoding="utf-8")
             (repository / "pyproject.toml").write_text(
-                "[project]\nname='package'\nversion='1.0'\nreadme='README.md'\n"
+                "[build-system]\nbackend-path=['build_backend']\n"
+                "[project]\nname='package'\nversion='1.0'\n"
+                "readme={file='README.md'}\nlicense={file='licenses/LICENSE.txt'}\n"
+                "[tool.hatch.build]\nartifacts=['assets/*.json']\n"
+                "[tool.hatch.build.force-include]\n'assets'='package/assets'\n"
+                "[tool.hatch.build.hooks.custom]\npath='hooks/build.py'\n"
                 "[tool.hatch.build.targets.wheel]\npackages=['src/package']\n"
                 "[tool.hatch.build.targets.wheel.force-include]\n"
                 "'strategies'='package/strategies'\n",
@@ -109,6 +126,9 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             self.assertIn("strategies/example.py", topology["source_files"])
             self.assertIn("pyproject.toml", topology["source_files"])
             self.assertIn("README.md", topology["source_files"])
+            self.assertIn("licenses/LICENSE.txt", topology["source_files"])
+            self.assertIn("hooks/build.py", topology["source_files"])
+            self.assertIn("assets/data.json", topology["source_files"])
 
     @unittest.skipUnless(os.name == "nt", "Windows Job cleanup contract")
     def test_resume_failure_closes_job_and_reaps_suspended_process(self) -> None:
@@ -159,6 +179,28 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             child_pid = int(pid_path.read_text(encoding="utf-8"))
             with self.assertRaises(OSError):
                 os.kill(child_pid, 0)
+
+    def test_posix_cleanup_does_not_kill_a_reused_pid(self) -> None:
+        process = mock.Mock(pid=100)
+        with (
+            mock.patch.object(harness.os, "name", "posix"),
+            mock.patch.object(harness.os, "killpg", create=True),
+            mock.patch.object(harness.os, "kill") as kill,
+            mock.patch.object(harness.signal, "SIGKILL", 9, create=True),
+            mock.patch.object(
+                harness,
+                "_posix_process_map",
+                return_value={200: (1, 22), 201: (1, 33)},
+            ),
+            mock.patch.object(harness, "_kill_new_subreaper_children"),
+        ):
+            harness._terminate_process_tree(
+                process,
+                job_handle=None,
+                descendant_pids={200: 11, 201: 33},
+            )
+
+        kill.assert_called_once_with(201, 9)
 
     def test_unchanged_source_check_rejects_ignored_build_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

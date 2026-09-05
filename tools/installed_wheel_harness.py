@@ -34,15 +34,11 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
         "PYTHONPATH",
         "PYTEST_ADDOPTS",
         "PYTEST_PLUGINS",
-        "UV_WORKING_DIR",
-        "UV_PROJECT",
-        "UV_NO_SYNC",
-        "UV_PROJECT_ENVIRONMENT",
         "VIRTUAL_ENV",
     ):
         environment.pop(name, None)
     for name in tuple(environment):
-        if name.startswith("GIT_"):
+        if name.startswith(("GIT_", "UV_")):
             environment.pop(name)
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return environment
@@ -59,7 +55,7 @@ def run_command(
     creationflags = (
         subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
     )
-    cwd = cwd.resolve()
+    cwd = Path(os.path.abspath(cwd))
     try:
         process = subprocess.Popen(
             command,
@@ -76,7 +72,7 @@ def run_command(
             f"command could not start: {' '.join(command)}: {exc}"
         ) from exc
     job_handle: int | None = None
-    descendant_pids: set[int] = set()
+    descendant_pids: dict[int, int] = {}
     tracker_stop: threading.Event | None = None
     tracker: threading.Thread | None = None
     try:
@@ -95,7 +91,7 @@ def run_command(
         _terminate_process_tree(
             process,
             job_handle=job_handle,
-            descendant_pids=frozenset(descendant_pids),
+            descendant_pids=dict(descendant_pids),
             subreaper_baseline=subreaper_baseline,
         )
         _stop_descendant_tracker(tracker, tracker_stop)
@@ -118,7 +114,7 @@ def run_command(
         _terminate_process_tree(
             process,
             job_handle=job_handle,
-            descendant_pids=frozenset(descendant_pids),
+            descendant_pids=dict(descendant_pids),
             subreaper_baseline=subreaper_baseline,
         )
         _stop_descendant_tracker(tracker, tracker_stop)
@@ -140,7 +136,7 @@ def run_command(
             _terminate_process_tree(
                 process,
                 job_handle=None,
-                descendant_pids=frozenset(descendant_pids),
+                descendant_pids=dict(descendant_pids),
                 subreaper_baseline=subreaper_baseline,
             )
         _stop_descendant_tracker(tracker, tracker_stop)
@@ -259,8 +255,8 @@ def _terminate_process_tree(
     process: subprocess.Popen[str],
     *,
     job_handle: int | None,
-    descendant_pids: frozenset[int] = frozenset(),
-    subreaper_baseline: frozenset[int] = frozenset(),
+    descendant_pids: dict[int, int] | None = None,
+    subreaper_baseline: dict[int, int] | None = None,
 ) -> None:
     if os.name == "nt":
         if job_handle is not None:
@@ -278,17 +274,20 @@ def _terminate_process_tree(
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    for pid in descendant_pids:
+    process_map = _posix_process_map()
+    for pid, start_time in (descendant_pids or {}).items():
+        if process_map.get(pid, (None, None))[1] != start_time:
+            continue
         try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-    _kill_new_subreaper_children(subreaper_baseline)
+    _kill_new_subreaper_children(subreaper_baseline or {})
 
 
-def _prepare_posix_containment() -> frozenset[int]:
+def _prepare_posix_containment() -> dict[int, int]:
     if os.name == "nt":
-        return frozenset()
+        return {}
     proc = Path("/proc")
     if not proc.is_dir():
         raise InstalledWheelFailure(
@@ -301,19 +300,22 @@ def _prepare_posix_containment() -> frozenset[int]:
         raise InstalledWheelFailure(
             "POSIX installed-wheel commands require child-subreaper containment"
         )
-    return frozenset(
-        pid for pid, parent in _posix_parent_map().items() if parent == os.getpid()
-    )
+    return {
+        pid: start_time
+        for pid, (parent, start_time) in _posix_process_map().items()
+        if parent == os.getpid()
+    }
 
 
-def _kill_new_subreaper_children(baseline: frozenset[int]) -> None:
+def _kill_new_subreaper_children(baseline: dict[int, int]) -> None:
     if os.name == "nt":
         return
     for _ in range(4):
+        process_map = _posix_process_map()
         children = {
             pid
-            for pid, parent in _posix_parent_map().items()
-            if parent == os.getpid() and pid not in baseline
+            for pid, (parent, start_time) in process_map.items()
+            if parent == os.getpid() and baseline.get(pid) != start_time
         }
         if not children:
             return
@@ -330,21 +332,25 @@ def _kill_new_subreaper_children(baseline: frozenset[int]) -> None:
 
 
 def _posix_parent_map() -> dict[int, int]:
-    parent_by_pid: dict[int, int] = {}
+    return {pid: parent for pid, (parent, _start) in _posix_process_map().items()}
+
+
+def _posix_process_map() -> dict[int, tuple[int, int]]:
+    process_by_pid: dict[int, tuple[int, int]] = {}
     try:
         process_paths = tuple(Path("/proc").iterdir())
     except OSError:
-        return parent_by_pid
+        return process_by_pid
     for process_path in process_paths:
         if not process_path.name.isdigit():
             continue
         try:
             stat = (process_path / "stat").read_text(encoding="utf-8")
             fields = stat[stat.rindex(")") + 2 :].split()
-            parent_by_pid[int(process_path.name)] = int(fields[1])
+            process_by_pid[int(process_path.name)] = (int(fields[1]), int(fields[19]))
         except (OSError, ValueError, IndexError):
             continue
-    return parent_by_pid
+    return process_by_pid
 
 
 def _stop_descendant_tracker(
@@ -357,19 +363,19 @@ def _stop_descendant_tracker(
 
 
 def _track_posix_descendants(
-    root_pid: int, descendants: set[int], stop: threading.Event
+    root_pid: int, descendants: dict[int, int], stop: threading.Event
 ) -> None:
     """Remember descendants even if they later detach from the original process group."""
     tracked_parents = {root_pid}
     while not stop.is_set():
-        parent_by_pid = _posix_parent_map()
+        process_map = _posix_process_map()
         changed = True
         while changed:
             changed = False
-            for pid, parent in parent_by_pid.items():
+            for pid, (parent, start_time) in process_map.items():
                 if parent in tracked_parents and pid not in tracked_parents:
                     tracked_parents.add(pid)
-                    descendants.add(pid)
+                    descendants[pid] = start_time
                     changed = True
         time.sleep(0.005)
 
@@ -382,10 +388,11 @@ def build_wheels(
 ) -> tuple[Path, ...]:
     wheels: list[Path] = []
     for repository in repositories:
+        build_repository = _validated_repository_path(repository_root / repository)
         before = set(dist.glob("*.whl"))
         run_command(
             ["uv", "build", "--wheel", "--out-dir", str(dist)],
-            cwd=repository_root / repository,
+            cwd=build_repository,
             environment=environment,
             timeout_seconds=300,
         )
@@ -533,7 +540,7 @@ def verify_unchanged_sources(
 ) -> dict[str, dict[str, str]]:
     verified: dict[str, dict[str, str]] = {}
     for repository, baseline in sorted(baselines.items()):
-        cwd = repository_root / repository
+        cwd = _validated_repository_path(repository_root / repository)
         head = run_command(
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
@@ -596,7 +603,7 @@ def verify_source_topology(
     repository: Path, environment: dict[str, str] | None = None
 ) -> dict[str, object]:
     """Fail closed on linked build inputs and attest the complete source topology."""
-    repository = repository.resolve()
+    repository = _validated_repository_path(repository)
     source_files = _source_build_inputs(repository)
     result: dict[str, object] = {
         "source_files": source_files,
@@ -668,6 +675,50 @@ def verify_source_topology(
     return result
 
 
+def _validated_repository_path(repository: Path) -> Path:
+    """Resolve only ordinary directories or verified sibling Git worktree links."""
+    unresolved = Path(os.path.abspath(repository))
+    linked = (
+        unresolved.is_symlink() or getattr(unresolved, "is_junction", lambda: False)()
+    )
+    resolved = unresolved.resolve(strict=True)
+    if not linked:
+        return resolved
+    worktree_pool = unresolved.parent.parent.resolve()
+    marker = resolved / ".git"
+    if (
+        worktree_pool.name != ".worktrees"
+        or resolved.parent != worktree_pool
+        or not marker.is_file()
+    ):
+        raise InstalledWheelFailure(
+            f"repository link is not a verified sibling Git worktree: {unresolved}"
+        )
+    marker_text = marker.read_text(encoding="utf-8").strip()
+    if not marker_text.startswith("gitdir:"):
+        raise InstalledWheelFailure(
+            f"repository worktree marker is invalid: {unresolved}"
+        )
+    git_dir = Path(marker_text.split(":", 1)[1].strip()).resolve(strict=True)
+    backpointer = git_dir / "gitdir"
+    common_pointer = git_dir / "commondir"
+    if not backpointer.is_file() or not common_pointer.is_file():
+        raise InstalledWheelFailure(
+            f"repository worktree metadata is incomplete: {unresolved}"
+        )
+    linked_marker = Path(backpointer.read_text(encoding="utf-8").strip()).resolve(
+        strict=True
+    )
+    common_dir = (git_dir / common_pointer.read_text(encoding="utf-8").strip()).resolve(
+        strict=True
+    )
+    if linked_marker != marker.resolve(strict=True) or not common_dir.is_dir():
+        raise InstalledWheelFailure(
+            f"repository worktree metadata does not point back to its link: {unresolved}"
+        )
+    return unresolved
+
+
 def _source_build_inputs(repository: Path) -> list[str]:
     repository = repository.resolve()
     inputs: list[str] = []
@@ -718,14 +769,60 @@ def _declared_build_roots(repository: Path) -> list[str]:
         return ["src"]
     document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     project = document.get("project", {})
-    if isinstance(project, dict) and isinstance(project.get("readme"), str):
-        roots.add(str(project["readme"]))
+    if isinstance(project, dict):
+        for field in ("readme", "license"):
+            value = project.get(field)
+            if isinstance(value, str):
+                roots.add(value)
+            elif isinstance(value, dict) and isinstance(value.get("file"), str):
+                roots.add(str(value["file"]))
+        license_files = project.get("license-files", ())
+        if isinstance(license_files, list):
+            for pattern in license_files:
+                if isinstance(pattern, str):
+                    roots.update(
+                        path.relative_to(repository).as_posix()
+                        for path in repository.glob(pattern)
+                        if path.is_file()
+                    )
+    build_system = document.get("build-system", {})
+    if isinstance(build_system, dict):
+        backend_paths = build_system.get("backend-path", ())
+        if isinstance(backend_paths, list):
+            roots.update(path for path in backend_paths if isinstance(path, str))
     tool = document.get("tool", {})
     hatch = tool.get("hatch", {}) if isinstance(tool, dict) else {}
     build = hatch.get("build", {}) if isinstance(hatch, dict) else {}
     targets = build.get("targets", {}) if isinstance(build, dict) else {}
     wheel = targets.get("wheel", {}) if isinstance(targets, dict) else {}
+    if isinstance(build, dict):
+        artifacts = build.get("artifacts", ())
+        if isinstance(artifacts, list):
+            for pattern in artifacts:
+                if isinstance(pattern, str):
+                    roots.update(
+                        path.relative_to(repository).as_posix()
+                        for path in repository.glob(pattern.lstrip("/"))
+                        if path.is_file()
+                    )
+        force_include = build.get("force-include", {})
+        if isinstance(force_include, dict):
+            roots.update(str(source) for source in force_include)
+        hooks = build.get("hooks", {})
+        if isinstance(hooks, dict):
+            for hook in hooks.values():
+                if isinstance(hook, dict) and isinstance(hook.get("path"), str):
+                    roots.add(str(hook["path"]))
     if isinstance(wheel, dict):
+        wheel_artifacts = wheel.get("artifacts", ())
+        if isinstance(wheel_artifacts, list):
+            for pattern in wheel_artifacts:
+                if isinstance(pattern, str):
+                    roots.update(
+                        path.relative_to(repository).as_posix()
+                        for path in repository.glob(pattern.lstrip("/"))
+                        if path.is_file()
+                    )
         for package in wheel.get("packages", ()):
             if isinstance(package, str) and not package.startswith("src/"):
                 roots.add(package)

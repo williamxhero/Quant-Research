@@ -304,9 +304,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier.HARNESS,
                     "run_command",
                     side_effect=(
-                        "2 passed in 1.0s\n",
-                        "setup note: 99 passed\n1 passed, 1 skipped in 1.0s\n",
-                        "2 skipped in 1.0s\n",
+                        "2 passed, 1 warning in 1.0s\n",
+                        "setup note: 99 passed\n1 passed, 1 deselected in 1.0s\n",
+                        "1 skipped, 1 xfailed in 1.0s\n",
                     ),
                 ),
             ):
@@ -316,6 +316,22 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             [item["status"] for item in statuses],
             ["passed", "partial", "skipped"],
         )
+
+    def test_pytest_terminal_counts_accepts_all_terminal_summary_categories(
+        self,
+    ) -> None:
+        counts = verifier._pytest_terminal_counts(
+            "= 2 passed, 1 skipped, 3 xfailed, 1 xpassed, 4 deselected, "
+            "2 warnings in 1.25s =\n"
+        )
+
+        self.assertIsNotNone(counts)
+        assert counts is not None
+        self.assertEqual(counts["passed"], 2)
+        self.assertEqual(counts["xfailed"], 3)
+        self.assertEqual(counts["xpassed"], 1)
+        self.assertEqual(counts["deselected"], 4)
+        self.assertEqual(counts["warning"], 2)
 
     def test_connected_status_distinguishes_launch_timeout_and_test_failure(
         self,
@@ -424,6 +440,33 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                 ),
                 self.assertRaises(verifier.ArchitectureViolation),
+            ):
+                verifier.run_full_gate_checks(root)
+
+    def test_baseline_probe_failure_is_wrapped_as_architecture_violation(self) -> None:
+        check = verifier.GateCheck(
+            "strategy_workspace",
+            "strategy-workspace",
+            "format",
+            ("ruff", "format", "--check", "."),
+            baseline_only=True,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "strategy-workspace").mkdir()
+            with (
+                mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        verifier.HARNESS.InstalledWheelFailure("format failed"),
+                        verifier.HARNESS.InstalledWheelFailure("git unavailable"),
+                    ),
+                ),
+                self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "baseline probe failed"
+                ),
             ):
                 verifier.run_full_gate_checks(root)
 
@@ -867,8 +910,24 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     1,
                 ),
                 accepted.replace(
+                    "    value=QualificationPolicy.model_validate_json(raw)\n",
+                    "    value=QualificationPolicy.model_validate_json((raw, '{}')[1])\n",
+                    1,
+                ),
+                accepted.replace(
+                    "    verify_publication(raw, value)\n",
+                    "    verify_publication(raw, (value, object())[1])\n",
+                    1,
+                ),
+                accepted.replace(
                     "    verify_publication(raw, value)\n",
                     "    verify_publication(raw, value)\n    if opaque: value={}\n",
+                    1,
+                ),
+                accepted.replace(
+                    "    verify_publication(raw, value)\n",
+                    "    raw, value = {}, object()\n"
+                    "    verify_publication(raw, value)\n",
                     1,
                 ),
             ):
@@ -911,6 +970,44 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        if result.status != 'committed' or result.reason != 'success': return result\n",
             )
             qualification.write_text(forged_result, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "committed-first"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            for forged_mutation in (
+                "        result.status='committed'; result.reason='success'\n",
+                "        (result,)=(ForgedResult(),)\n",
+            ):
+                source = accepted.replace(
+                    "        if result.status != 'committed' or result.reason != 'success': return result\n",
+                    forged_mutation
+                    + "        if result.status != 'committed' or result.reason != 'success': return result\n",
+                )
+                qualification.write_text(source, encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "committed-first"
+                ):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            named_eager_default = accepted.replace(
+                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n",
+                "    def publish_policy(self, action, target):\n"
+                "        def done(eager=_publish_record(self._workspace)): return eager\n"
+                "        return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=done)\n",
+            )
+            qualification.write_text(named_eager_default, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "eagerly evaluates"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            premature_complete = accepted.replace(
+                "        result = governance.execute(action, authorize)\n",
+                "        complete(None, None)\n"
+                "        result = governance.execute(action, authorize)\n",
+            )
+            qualification.write_text(premature_complete, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "committed-first"
             ):
@@ -966,6 +1063,29 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "if next_cursor is None: return tuple(records)",
                     "if next_cursor is None: records.clear(); return tuple(records)",
                 ),
+                accepted.replace(
+                    "if next_cursor is None: return tuple(records)",
+                    "if next_cursor is None: return (records, page_records)[1]",
+                ),
+                accepted.replace(
+                    "if next_cursor is None: return tuple(records)",
+                    "if next_cursor is None: alias=records; alias.clear(); return tuple(records)",
+                ),
+                accepted.replace(
+                    "        page_token=page.get('snapshot_token')\n",
+                    "        page_token=page.get('snapshot_token')\n"
+                    "        page_token, safe = ('forged', None)\n",
+                ),
+                accepted.replace(
+                    "def _query_lineage_records(workspace):\n",
+                    "def _unbounded(workspace):\n"
+                    "    return workspace.query_lineage(page_size=1000000)\n"
+                    "def _query_lineage_records(workspace):\n",
+                ).replace(
+                    "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n",
+                    "    records=[]; records.extend(_unbounded(workspace)); "
+                    "seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n",
+                ),
             ):
                 qualification.write_text(pagination_corruption, encoding="utf-8")
                 with (
@@ -1015,8 +1135,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
+            extra_enum_member = accepted.replace(
+                "    RETIRED = 'retired'\n",
+                "    RETIRED = 'retired'\n    APPROVED = RESEARCH_QUALIFIED\n",
+            )
+            qualification.write_text(extra_enum_member, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "maturity states drifted"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
             for rebound_owner in (
                 "\nQualificationService = object\n",
+                "\nQualificationService, safe = object, object\n",
+                "\nfrom replacement import value as QualificationService\n",
                 "\ndef QualificationPolicy(): pass\n",
                 "\nclass MaturityCoordinator:\n    def publish_policy(self): pass\n",
             ):
@@ -1042,11 +1174,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "\nclass AlternateQualificationService:\n"
                     "    def publish_policy(self): pass\n"
                 ),
+                "\nclass Mirror(QualificationService): pass\n",
+                "\nQualificationService = type('Mirror', (), {})\n",
+                "\nclass Mirror:\n    publish_policy = lambda self: None\n",
                 "\ndef publish_policy(): pass\n",
             ):
                 qualification.write_text(accepted + hidden_owner, encoding="utf-8")
                 with self.assertRaisesRegex(
-                    verifier.ArchitectureViolation, "parallel qualification owner"
+                    verifier.ArchitectureViolation,
+                    "parallel qualification owner|canonical owner is rebound",
                 ):
                     verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -1134,10 +1270,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source = root / "quant-runtime/src/quant_runtime/qualification.py"
             source.parent.mkdir(parents=True)
             source.write_text("def publish_policy(): pass\n", encoding="utf-8")
-            with self.assertRaisesRegex(
-                verifier.ArchitectureViolation, "ownership outside Apex Research"
-            ):
-                verifier._scan_spec015_non_owner_repositories(root)
+            verifier._scan_spec015_non_owner_repositories(root)
 
         for case_index, source_text in enumerate(
             (
@@ -1305,6 +1438,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "    workspace.publish_record(q.QualificationDecision(value))\n"
                 ),
                 (
+                    "import apex_research as ar\n"
+                    "q, safe = ar.qualification, None\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(q.QualificationDecision(value))\n"
+                ),
+                (
                     "from apex_research import *\n"
                     "def save(workspace, value):\n"
                     "    workspace.publish_record(QualificationDecision(value))\n"
@@ -1335,10 +1474,45 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     "from apex_research import QualificationDecision\n"
+                    "def publish_helper(workspace, record):\n"
+                    "    workspace.publish_record(record)\n"
+                    "def relay(workspace, record):\n"
+                    "    sink = publish_helper\n"
+                    "    sink(workspace, record)\n"
+                    "def save(workspace, value):\n"
+                    "    relay(workspace, QualificationDecision(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
                     "def save(workspace, value):\n"
                     "    box = {}\n"
                     "    box['record'] = QualificationDecision(value)\n"
                     "    workspace.publish_record(box['record'])\n"
+                ),
+                (
+                    "import importlib\n"
+                    "q = importlib.import_module('apex_research.' + 'qualification')\n"
+                    "def save(workspace, value):\n"
+                    "    workspace.publish_record(q.QualificationDecision(value))\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={'record_type': 'apex-research.' + "
+                    "'qualification-decision.v1'}\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    sink=lambda record: workspace.publish_record(record)\n"
+                    "    sink(QualificationDecision(value))\n"
+                ),
+                (
+                    "from functools import partial\n"
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    sink=partial(workspace.publish_record)\n"
+                    "    sink(QualificationDecision(value))\n"
                 ),
             )
         ):
@@ -1384,6 +1558,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    workspace.publish_record({'record_type': 'report-summary.v1', "
                 "'source_schema': 'apex-research.qualification-decision.v1', "
                 "'scope': 'historical_research_maturity'})\n"
+            ),
+            (
+                "from apex_research import QualificationDecision\n"
+                "def save(workspace, value):\n"
+                "    payload = {'record_type': 'report-summary.v1', "
+                "'source': QualificationDecision(value)}\n"
+                "    workspace.publish_record(payload)\n"
             ),
             (
                 "from apex_research import QualificationDecision\n"
@@ -1458,11 +1639,25 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source = root / "quant-runtime/src/quant_runtime/explanation.py"
             source.parent.mkdir(parents=True)
             source.write_text(
-                "MESSAGE = 'This does not grant production approval or live trading.'\n",
+                "# import apex_research and sqlite3 are forbidden implementation choices.\n"
+                "MESSAGE = 'This does not grant production approval or live trading; "
+                "do not import apex_research.'\n",
                 encoding="utf-8",
             )
 
             verifier.scan_sources(root)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "quant-runtime/src/quant_runtime/dynamic_import.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "module = __import__('apex_' + 'research')\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "research orchestration"
+            ):
+                verifier.scan_sources(root)
 
     def test_spec015_guard_fails_closed_when_apex_owner_module_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1894,8 +2089,8 @@ def use_lineage(workspace):
             "workspace.submit_run(request)\n": "Runtime submission",
         }
         required = (
-            "RDAgentAdapterConfig GovernedExternalResearchRunner "
-            "RunnerBackedResearchEngine forbidden_operations production = True\n"
+            "MARKERS = 'RDAgentAdapterConfig GovernedExternalResearchRunner "
+            "RunnerBackedResearchEngine forbidden_operations production = True'\n"
         )
         for source_text, reason in forbidden.items():
             with (
@@ -1916,13 +2111,13 @@ def use_lineage(workspace):
             adapter = source / "adapters/rdagent.py"
             adapter.parent.mkdir(parents=True)
             adapter.write_text(
-                "RDAgentAdapterConfig GovernedExternalResearchRunner "
-                "RunnerBackedResearchEngine forbidden_operations production = True\n"
+                "MARKERS = 'RDAgentAdapterConfig GovernedExternalResearchRunner "
+                "RunnerBackedResearchEngine forbidden_operations production = True'\n"
             )
             chain = source / "rdagent_strategy_chain.py"
             chain.write_text(
-                "admit_proposal evaluate_strategy_static .intake( .assess( "
-                "confirmed_preflight_request .preflight(\n"
+                "MARKERS = 'admit_proposal evaluate_strategy_static .intake( .assess( "
+                "confirmed_preflight_request .preflight('\n"
                 'formal: str = "not_evaluated"\n'
                 "workspace.submit_run(request)\n"
             )
@@ -1940,8 +2135,8 @@ def use_lineage(workspace):
             "workspace.register_package(source)\n": "package registry bypass",
         }
         required = (
-            "GovernedExternalResearchRunner readback_strategy_package_draft_artifacts "
-            "StrategyCandidate.create\n"
+            "MARKERS = 'GovernedExternalResearchRunner "
+            "readback_strategy_package_draft_artifacts StrategyCandidate.create'\n"
         )
         for source_text, reason in forbidden.items():
             with (
@@ -1952,8 +2147,8 @@ def use_lineage(workspace):
                 adapter = root / "apex-research/src/apex_research/adapters/rdagent.py"
                 adapter.parent.mkdir(parents=True)
                 adapter.write_text(
-                    "RDAgentAdapterConfig GovernedExternalResearchRunner "
-                    "RunnerBackedResearchEngine forbidden_operations production = True\n"
+                    "MARKERS = 'RDAgentAdapterConfig GovernedExternalResearchRunner "
+                    "RunnerBackedResearchEngine forbidden_operations production = True'\n"
                 )
                 strategy = adapter.parents[1] / "rdagent_strategy.py"
                 strategy.write_text(required + source_text)

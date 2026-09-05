@@ -96,10 +96,90 @@ STABLE_BEHAVIORAL_TESTS = (
     ),
 )
 IDENTITY_TRANSCRIPT_PREFIX = "SPEC015_IDENTITY_TRANSCRIPT="
+HEX_ID = re.compile(r"[0-9a-f]{64}\Z")
+IDENTITY_TRANSCRIPT_FIELDS = {
+    "policy": {"campaign_id", "policy_id"},
+    "qualified-chain": {
+        "candidate_id",
+        "evidence_id",
+        "policy_id",
+        "decision_ids",
+        "terminal_state",
+    },
+    "held-successor-retirement": {
+        "candidate_id",
+        "policy_id",
+        "held_evaluation_id",
+        "revised_held_evaluation_id",
+        "decision_id",
+        "retirement_id",
+        "terminal_state",
+    },
+}
 
 
 class TracerFailure(InstalledWheelFailure):
     pass
+
+
+def _validated_identity_transcript(
+    transcript: list[object],
+) -> list[dict[str, Any]]:
+    if len(transcript) != len(IDENTITY_TRANSCRIPT_FIELDS):
+        raise TracerFailure(
+            "stable installed identity transcript labels are incomplete or duplicated"
+        )
+    validated: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in transcript:
+        if not isinstance(item, dict) or set(item) != {"label", "identities"}:
+            raise TracerFailure(
+                "stable installed identity transcript payload is invalid"
+            )
+        label = item["label"]
+        identities = item["identities"]
+        if (
+            not isinstance(label, str)
+            or label in seen
+            or label not in IDENTITY_TRANSCRIPT_FIELDS
+            or not isinstance(identities, dict)
+            or set(identities) != IDENTITY_TRANSCRIPT_FIELDS[label]
+        ):
+            raise TracerFailure(
+                "stable installed identity transcript payload is invalid"
+            )
+        seen.add(label)
+        terminal = identities.get("terminal_state")
+        expected_terminal = {
+            "qualified-chain": "research_qualified",
+            "held-successor-retirement": "retired",
+        }.get(label)
+        if expected_terminal is not None and terminal != expected_terminal:
+            raise TracerFailure(
+                "stable installed identity transcript payload is invalid"
+            )
+        for key, value in identities.items():
+            if key == "terminal_state":
+                continue
+            if key == "decision_ids":
+                if (
+                    not isinstance(value, list)
+                    or len(value) != 5
+                    or len(set(value)) != 5
+                    or any(
+                        not isinstance(member, str) or HEX_ID.fullmatch(member) is None
+                        for member in value
+                    )
+                ):
+                    raise TracerFailure(
+                        "stable installed identity transcript payload is invalid"
+                    )
+            elif not isinstance(value, str) or HEX_ID.fullmatch(value) is None:
+                raise TracerFailure(
+                    "stable installed identity transcript payload is invalid"
+                )
+        validated.append({"label": label, "identities": identities})
+    return sorted(validated, key=lambda value: str(value["label"]))
 
 
 def build_and_run(repository_root: Path) -> dict[str, Any]:
@@ -205,39 +285,8 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 raise TracerFailure(
                     "stable installed identity transcript JSON is invalid"
                 ) from exc
-            if any(
-                not isinstance(item, dict)
-                or set(item) != {"label", "identities"}
-                or not isinstance(item["label"], str)
-                or not isinstance(item["identities"], dict)
-                or not item["identities"]
-                or any(
-                    not isinstance(key, str)
-                    or not (
-                        isinstance(value, str)
-                        or isinstance(value, list)
-                        and bool(value)
-                        and all(isinstance(member, str) for member in value)
-                    )
-                    for key, value in item["identities"].items()
-                )
-                for item in transcript
-            ):
-                raise TracerFailure(
-                    "stable installed identity transcript payload is invalid"
-                )
-            labels = [item.get("label") for item in transcript]
-            expected_labels = {
-                "policy",
-                "qualified-chain",
-                "held-successor-retirement",
-            }
-            if len(transcript) != 3 or set(labels) != expected_labels:
-                raise TracerFailure(
-                    "stable installed identity transcript labels are incomplete or duplicated"
-                )
             stable_identity_transcripts.append(
-                sorted(transcript, key=lambda item: item["label"])
+                _validated_identity_transcript(transcript)
             )
         if not stable_identity_transcripts[0]:
             raise TracerFailure("stable installed tests emitted no identity transcript")
