@@ -35,7 +35,7 @@ class ApexSeamPolicy(NamedTuple):
     required_calls: tuple[str, ...]
 
 
-def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
+def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
     """Return public-seam fixture tests without creating shared state or evidence."""
     return (
         FixtureCheck(
@@ -101,6 +101,7 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_validation_evidence.py",
                 "tests/test_validation_reporting.py",
                 "tests/test_statistical_control.py",
+                "tests/test_evidence_v2.py",
             ),
         ),
         FixtureCheck(
@@ -117,6 +118,17 @@ def fixture_plan(_: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_research_reporting.py::test_validation_external_readback_tamper_fails_closed",
                 "tests/test_research_reporting.py::test_statistical_assessment_is_read_back_and_displayed_without_recalculation",
                 "tests/test_research_reporting.py::test_statistical_external_readback_tamper_fails_closed",
+                "tests/test_evidence_v2_read_model.py",
+            ),
+        ),
+        FixtureCheck(
+            "spec014_installed_wheels",
+            ".",
+            (
+                "python",
+                "tools/spec014_installed_wheel_tracer.py",
+                "--repository-root",
+                str(repository_root),
             ),
         ),
     )
@@ -220,6 +232,182 @@ def scan_sources(repository_root: Path) -> None:
     _scan_research_memory_seams(repository_root / "apex-research")
     _scan_validation_matrix_seams(repository_root / "apex-research")
     _scan_statistical_control_seams(repository_root / "apex-research")
+    _scan_spec014_evidence_seams(repository_root)
+
+
+def _scan_spec014_evidence_seams(repository_root: Path) -> None:
+    apex_root = repository_root / "apex-research" / "src" / "apex_research"
+    reporting_root = (
+        repository_root / "strategy-reporting" / "src" / "strategy_reporting"
+    )
+    apex_paths = tuple(
+        apex_root / name
+        for name in (
+            "evidence_v2.py",
+            "evidence_backfill.py",
+            "evidence_extensions.py",
+            "report_models.py",
+        )
+        if (apex_root / name).is_file()
+    )
+    reporting_paths = tuple(sorted(reporting_root.rglob("evidence_v2.py")))
+    if not apex_paths and not reporting_paths:
+        return
+    _reject_spec014_forbidden(apex_paths, owner="apex-research")
+    _reject_spec014_forbidden(reporting_paths, owner="strategy-reporting")
+
+    apex_by_name = {path.name: path for path in apex_paths}
+    if apex_paths:
+        required_files = {
+            "evidence_v2.py",
+            "evidence_backfill.py",
+            "evidence_extensions.py",
+            "report_models.py",
+        }
+        if set(apex_by_name) != required_files:
+            raise ArchitectureViolation(
+                "apex-research: Evidence v2 acceptance seam is incomplete"
+            )
+        evidence_source = apex_by_name["evidence_v2.py"].read_text(encoding="utf-8")
+        for marker in (
+            "EvidenceV2",
+            "EvidenceSection",
+            "EvidenceSourceRef",
+            "EvidenceV2Publisher",
+            "WorkspaceClientProtocol",
+            "qualification_inference",
+            "production_approval_inference",
+            "get_record",
+            "get_run",
+            "get_result",
+            "verify_artifact",
+            "query_lineage",
+        ):
+            if marker not in evidence_source:
+                raise ArchitectureViolation(
+                    f"apex-research: Evidence v2 lacks public seam {marker}"
+                )
+        backfill_source = apex_by_name["evidence_backfill.py"].read_text(
+            encoding="utf-8"
+        )
+        for marker in (
+            "EvidenceV2BackfillService",
+            "EvidenceV2StudySourcePublisher",
+            "query_lineage",
+            "snapshot_token",
+            "max_depth",
+            "page_size",
+        ):
+            if marker not in backfill_source:
+                raise ArchitectureViolation(
+                    f"apex-research: Evidence v2 backfill lacks bounded seam {marker}"
+                )
+        extension_source = apex_by_name["evidence_extensions.py"].read_text(
+            encoding="utf-8"
+        )
+        for marker in ("AuxiliaryValidationRecord", "FutureOptionalEvidenceRecord"):
+            if marker not in extension_source:
+                raise ArchitectureViolation(
+                    f"apex-research: Evidence v2 extensions lack strict record {marker}"
+                )
+        report_source = apex_by_name["report_models.py"].read_text(encoding="utf-8")
+        if "EvidenceV2StudySource" not in report_source:
+            raise ArchitectureViolation(
+                "apex-research: Evidence v2 study-source contract is missing"
+            )
+
+    if reporting_paths:
+        reporting_source = "\n".join(
+            path.read_text(encoding="utf-8") for path in reporting_paths
+        )
+        for marker in (
+            "EvidenceV2ReadModelBuilder",
+            "EvidenceV2ReadModel",
+            "qualification_inference",
+            "production_approval_inference",
+            "get_record",
+            "get_run",
+            "get_result",
+        ):
+            if marker not in reporting_source:
+                raise ArchitectureViolation(
+                    f"strategy-reporting: Evidence v2 read model lacks public seam {marker}"
+                )
+        if not any(
+            marker in reporting_source
+            for marker in ("WorkspaceAdapter", "WorkspaceClientPort")
+        ):
+            raise ArchitectureViolation(
+                "strategy-reporting: Evidence v2 read model lacks Workspace public port"
+            )
+        if not any(
+            marker in reporting_source for marker in ("verify_ref", "verify_artifact")
+        ):
+            raise ArchitectureViolation(
+                "strategy-reporting: Evidence v2 read model lacks artifact verification"
+            )
+
+
+def _reject_spec014_forbidden(paths: tuple[Path, ...], *, owner: str) -> None:
+    forbidden_imports = {
+        "strategy_workspace.storage": "private Workspace access",
+        "strategy_workspace.core": "private Workspace access",
+        "quant_runtime": "private Runtime execution",
+        "apex_research": "private Apex import",
+        "sqlite3": "parallel state or evidence truth",
+        "subprocess": "parallel runner",
+        "requests": "direct network",
+        "httpx": "direct network",
+        "socket": "direct network",
+    }
+    forbidden_calls = {
+        "list_records": "global record scan",
+        "register_package": "package registry bypass",
+        "submit_run": "formal runner bypass",
+    }
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                modules = [node.module or ""]
+            else:
+                modules = []
+            for module in modules:
+                for prefix, reason in forbidden_imports.items():
+                    if module == prefix or module.startswith(prefix + "."):
+                        if owner == "apex-research" and prefix == "apex_research":
+                            continue
+                        raise ArchitectureViolation(f"{owner}: {reason}: {path}")
+            if isinstance(node, ast.Call):
+                name = (
+                    node.func.attr
+                    if isinstance(node.func, ast.Attribute)
+                    else node.func.id
+                    if isinstance(node.func, ast.Name)
+                    else ""
+                )
+                if name in forbidden_calls:
+                    raise ArchitectureViolation(
+                        f"{owner}: {forbidden_calls[name]}: {path}"
+                    )
+            if isinstance(node, ast.ClassDef) and any(
+                term in node.name
+                for term in ("Registry", "Ledger", "Runner", "Backtester", "EvidenceTruth")
+            ):
+                raise ArchitectureViolation(f"{owner}: parallel owner: {path}")
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                names = {target.id for target in targets if isinstance(target, ast.Name)}
+                if "qualification" in names:
+                    raise ArchitectureViolation(
+                        f"{owner}: qualification masquerade: {path}"
+                    )
+                if "production_approval" in names:
+                    raise ArchitectureViolation(
+                        f"{owner}: production-approval masquerade: {path}"
+                    )
 
 
 def _scan_statistical_control_seams(repository: Path) -> None:

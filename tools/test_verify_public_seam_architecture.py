@@ -22,6 +22,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "quant_runtime",
             "apex_research",
             "strategy_reporting",
+            "spec014_installed_wheels",
         ])
         command_by_owner = {item.owner: item.command[:5] for item in plan}
         self.assertEqual(
@@ -79,6 +80,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_validation_evidence.py", apex.command)
         self.assertIn("tests/test_validation_reporting.py", apex.command)
         self.assertIn("tests/test_statistical_control.py", apex.command)
+        self.assertIn("tests/test_evidence_v2.py", apex.command)
         reporting = next(item for item in plan if item.owner == "strategy_reporting")
         self.assertIn(
             "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
@@ -88,6 +90,108 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "tests/test_research_reporting.py::test_statistical_assessment_is_read_back_and_displayed_without_recalculation",
             reporting.command,
         )
+        self.assertIn("tests/test_evidence_v2_read_model.py", reporting.command)
+        installed = next(item for item in plan if item.owner == "spec014_installed_wheels")
+        self.assertEqual(installed.repository, ".")
+        self.assertIn("tools/spec014_installed_wheel_tracer.py", installed.command)
+        self.assertTrue((ROOT / "tools/spec014_installed_wheel_tracer.py").is_file())
+
+    def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            reporting = root / "strategy-reporting/src/strategy_reporting"
+            apex.mkdir(parents=True)
+            reporting.mkdir(parents=True)
+            (apex / "evidence_v2.py").write_text(
+                "class EvidenceV2: pass\n"
+                "class EvidenceSection: pass\n"
+                "class EvidenceSourceRef: pass\n"
+                "class EvidenceV2Publisher: pass\n"
+                "WorkspaceClientProtocol = object\n"
+                "qualification_inference = 'forbidden'\n"
+                "production_approval_inference = 'forbidden'\n"
+                "def read(workspace):\n"
+                "    workspace.get_record('id')\n"
+                "    workspace.get_run('run')\n"
+                "    workspace.get_result('run')\n"
+                "    workspace.verify_artifact('uri')\n"
+                "    workspace.query_lineage(snapshot_token='frozen')\n",
+                encoding="utf-8",
+            )
+            (apex / "evidence_backfill.py").write_text(
+                "class EvidenceV2BackfillService: pass\n"
+                "class EvidenceV2StudySourcePublisher: pass\n"
+                "max_depth = 4\n"
+                "page_size = 100\n"
+                "snapshot_token = 'frozen'\n"
+                "def read(workspace):\n"
+                "    workspace.query_lineage(snapshot_token=snapshot_token)\n"
+                "    workspace.get_record('id')\n",
+                encoding="utf-8",
+            )
+            (apex / "evidence_extensions.py").write_text(
+                "class AuxiliaryValidationRecord: pass\n"
+                "class FutureOptionalEvidenceRecord: pass\n"
+                "qualification_inference = 'forbidden'\n"
+                "production_approval_inference = 'forbidden'\n",
+                encoding="utf-8",
+            )
+            (apex / "report_models.py").write_text(
+                "class EvidenceV2StudySource: pass\n"
+                "qualification_inference = 'forbidden'\n"
+                "production_approval_inference = 'forbidden'\n",
+                encoding="utf-8",
+            )
+            (reporting / "evidence_v2.py").write_text(
+                "class EvidenceV2ReadModelBuilder: pass\n"
+                "class EvidenceV2ReadModel: pass\n"
+                "WorkspaceClientPort = object\n"
+                "qualification_inference = 'forbidden'\n"
+                "production_approval_inference = 'forbidden'\n"
+                "def read(workspace):\n"
+                "    workspace.get_record('id')\n"
+                "    workspace.get_run('run')\n"
+                "    workspace.get_result('run')\n"
+                "    workspace.verify_artifact('uri')\n",
+                encoding="utf-8",
+            )
+
+            verifier.scan_sources(root)
+
+    def test_spec014_source_guard_rejects_parallel_truth_scans_and_masquerade(self) -> None:
+        required = (
+            "class EvidenceV2: pass\n"
+            "class EvidenceSection: pass\n"
+            "class EvidenceSourceRef: pass\n"
+            "class EvidenceV2Publisher: pass\n"
+            "WorkspaceClientProtocol = object\n"
+            "qualification_inference = 'forbidden'\n"
+            "production_approval_inference = 'forbidden'\n"
+            "def read(workspace):\n"
+            "    workspace.get_record('id')\n"
+            "    workspace.get_run('run')\n"
+            "    workspace.get_result('run')\n"
+            "    workspace.verify_artifact('uri')\n"
+            "    workspace.query_lineage(snapshot_token='frozen')\n"
+        )
+        forbidden = {
+            "workspace.list_records(limit=10000)\n": "global record scan",
+            "import sqlite3\n": "parallel state or evidence truth",
+            "class CandidateRegistry: pass\n": "parallel owner",
+            "class EvidenceTruth: pass\n": "parallel owner",
+            "workspace.submit_run({})\n": "formal runner bypass",
+            "qualification = 'passed'\n": "qualification masquerade",
+            "production_approval = 'approved'\n": "production-approval masquerade",
+        }
+        for addition, reason in forbidden.items():
+            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                apex = root / "apex-research/src/apex_research"
+                apex.mkdir(parents=True)
+                (apex / "evidence_v2.py").write_text(required + addition, encoding="utf-8")
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
+                    verifier.scan_sources(root)
 
     def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
         required = """

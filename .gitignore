@@ -4,6 +4,9 @@
 !.gitignore
 !README.md
 !AGENTS.md
+!tools/
+tools/*
+!tools/spec014_installed_wheel_tracer.py
 !docs/
 docs/*
 !docs/agents/
