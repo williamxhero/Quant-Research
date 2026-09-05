@@ -14,7 +14,9 @@ from typing import NamedTuple
 
 ROOT = Path(__file__).parents[1]
 HARNESS_PATH = ROOT / "tools" / "installed_wheel_harness.py"
-HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
+HARNESS_SPEC = importlib.util.spec_from_file_location(
+    "installed_wheel_harness", HARNESS_PATH
+)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -115,6 +117,12 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_validation_reporting.py",
                 "tests/test_statistical_control.py",
                 "tests/test_evidence_v2.py",
+                "tests/test_qualification_policy.py",
+                "tests/test_qualification_evaluation.py",
+                "tests/test_qualification_validation.py",
+                "tests/test_qualification_robustness.py",
+                "tests/test_qualification_history.py",
+                "tests/test_qualification_cli.py",
             ),
         ),
         FixtureCheck(
@@ -164,13 +172,57 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
     def add(owner: str, repository: str, category: str, *command: str) -> None:
         commands.append(GateCheck(owner, repository, category, command))
 
+    add(
+        "quant_research",
+        ".",
+        "lint",
+        "ruff",
+        "check",
+        "tools/installed_wheel_harness.py",
+        "tools/spec015_installed_wheel_tracer.py",
+        "tools/verify_public_seam_architecture.py",
+        "tools/test_installed_wheel_harness.py",
+        "tools/test_verify_public_seam_architecture.py",
+    )
+    add(
+        "quant_research",
+        ".",
+        "pytest",
+        "python",
+        "-m",
+        "pytest",
+        "tools/test_installed_wheel_harness.py",
+        "tools/test_verify_public_seam_architecture.py",
+        "-q",
+    )
+    add(
+        "quant_research",
+        ".",
+        "diff",
+        "git",
+        "diff",
+        "--check",
+        "5a514b6084f55cbf3206acb020acbbdcdbf882a4...HEAD",
+    )
+
     for owner, repository, dev_switch in (
         ("strategy_workspace", "strategy-workspace", ("--extra", "dev")),
         ("quant_runtime", "quant-runtime", ("--extra", "dev")),
         ("apex_research", "apex-research", ("--group", "dev")),
         ("strategy_reporting", "strategy-reporting", ("--extra", "dev")),
     ):
-        add(owner, repository, "format", "uv", "run", *dev_switch, "ruff", "format", "--check", ".")
+        add(
+            owner,
+            repository,
+            "format",
+            "uv",
+            "run",
+            *dev_switch,
+            "ruff",
+            "format",
+            "--check",
+            ".",
+        )
         add(owner, repository, "lint", "uv", "run", *dev_switch, "ruff", "check", ".")
         if owner in {"apex_research", "strategy_reporting"}:
             add(owner, repository, "typing", "uv", "run", *dev_switch, "mypy")
@@ -274,6 +326,8 @@ SOURCE_RULES = {
         ("research-engine-result", "Reporting must not own research-engine contracts"),
     ),
 }
+
+
 def scan_sources(repository_root: Path) -> None:
     """Reject structural ownership and private cross-repository access violations."""
     for repository, rules in SOURCE_RULES.items():
@@ -291,7 +345,9 @@ def scan_sources(repository_root: Path) -> None:
                     continue
                 if forbidden in source:
                     raise ArchitectureViolation(f"{repository}: {reason}: {path}")
-    _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
+    _scan_apex_governance_seams(
+        repository_root / "apex-research" / "src" / "apex_research"
+    )
     _scan_rdagent_seams(repository_root / "apex-research")
     _scan_focused_loop_seams(repository_root / "apex-research")
     _scan_research_memory_seams(repository_root / "apex-research")
@@ -307,17 +363,24 @@ def scan_sources(repository_root: Path) -> None:
     _scan_spec015_non_owner_repositories(repository_root)
 
 
-def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False) -> None:
+def _scan_spec015_qualification_seam(
+    repository: Path, *, required: bool = False
+) -> None:
     package = repository / "src" / "apex_research"
     qualification = package / "qualification.py"
     if not qualification.is_file():
         if required:
             raise ArchitectureViolation(
-                "apex-research: qualification owner seam is missing: " + str(qualification)
+                "apex-research: qualification owner seam is missing: "
+                + str(qualification)
             )
         return
-    tree = ast.parse(qualification.read_text(encoding="utf-8"), filename=str(qualification))
-    classes = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    tree = ast.parse(
+        qualification.read_text(encoding="utf-8"), filename=str(qualification)
+    )
+    classes = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
     forbidden_owner_markers = (
         "Ledger",
         "Registry",
@@ -380,26 +443,66 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             + ", ".join(sorted(missing))
         )
     required_fields = {
-        "QualificationPolicy": {"policy_id"},
-        "QualificationEvaluation": {"evaluation_id", "policy", "evidence", "predecessor"},
+        "QualificationPolicy": {
+            "schema_id",
+            "policy_id",
+            "campaign",
+            "strategy_class",
+            "revision",
+            "transitions",
+            "scope",
+            "operational_authority",
+            "supersedes",
+        },
+        "QualificationEvaluation": {
+            "schema_id",
+            "evaluation_id",
+            "campaign",
+            "candidate",
+            "strategy_package",
+            "protocol",
+            "evidence",
+            "policy",
+            "predecessor",
+            "from_state",
+            "to_state",
+            "requirements",
+            "blockers",
+            "disposition",
+            "reason",
+            "scope",
+            "operational_authority",
+        },
         "QualificationDecision": {
+            "schema_id",
             "decision_id",
             "evaluation",
             "governance_reservation",
             "governance_settlement",
+            "scope",
+            "operational_authority",
         },
         "QualificationRetirementRequest": {
+            "schema_id",
             "retirement_id",
+            "campaign",
+            "candidate",
             "policy",
             "evidence",
             "predecessor",
+            "reason",
+            "scope",
+            "operational_authority",
         },
         "QualificationRetirement": {
+            "schema_id",
             "retirement_id",
+            "request",
             "governance_reservation",
             "governance_settlement",
         },
         "QualificationSuccessorClaim": {
+            "schema_id",
             "claim_id",
             "predecessor",
             "successor",
@@ -413,10 +516,10 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             for node in classes[class_name].body
             if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
         }
-        if not expected_fields <= declared:
+        if declared != expected_fields:
             raise ArchitectureViolation(
-                f"apex-research: {class_name} lacks immutable identity fields "
-                + ", ".join(sorted(expected_fields - declared))
+                f"apex-research: {class_name} immutable identity fields drifted: "
+                + ", ".join(sorted(declared ^ expected_fields))
             )
 
     service_methods = {
@@ -472,7 +575,11 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             for node in ast.walk(methods_by_name[method_name])
             if isinstance(node, ast.Call)
         }
-        if not identity_calls & {"canonical_sha256", "_successor_slot_id", "target_ref"}:
+        if not identity_calls & {
+            "canonical_sha256",
+            "_successor_slot_id",
+            "target_ref",
+        }:
             raise ArchitectureViolation(
                 f"apex-research: {class_name} identity does not use a canonical digest"
             )
@@ -484,7 +591,15 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         "strategy_workspace.core": "private Workspace access",
         "strategy_workspace.storage": "private Workspace access",
     }
-    subsystem_paths = tuple(sorted(package.glob("qualification*.py")))
+    qualification_package = package / "qualification"
+    qualification_package_paths = (
+        tuple(qualification_package.rglob("*.py"))
+        if qualification_package.is_dir()
+        else ()
+    )
+    subsystem_paths = tuple(
+        sorted({*package.glob("qualification*.py"), *qualification_package_paths})
+    )
     subsystem_trees = tuple(
         (
             path,
@@ -493,12 +608,14 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         for path in subsystem_paths
     )
     subsystem_nodes = tuple(
-        node for _, subsystem_tree in subsystem_trees for node in ast.walk(subsystem_tree)
+        node
+        for _, subsystem_tree in subsystem_trees
+        for node in ast.walk(subsystem_tree)
     )
     functions = {
         node.name: node
         for _, subsystem_tree in subsystem_trees
-        for node in ast.walk(subsystem_tree)
+        for node in subsystem_tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     names = {
@@ -627,21 +744,26 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         raise ArchitectureViolation(
             "apex-research: qualification publication bypasses existing governance coordinator"
         )
-    execute_calls = [
-        node
-        for statement in execute_publication.body
-        for node in ast.walk(statement)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "execute"
+    execute_assignments = [
+        (index, statement)
+        for index, statement in enumerate(execute_publication.body)
+        if isinstance(statement, ast.Assign)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Attribute)
+        and statement.value.func.attr == "execute"
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
     ]
-    completion_calls = [
-        node
-        for statement in execute_publication.body
-        for node in ast.walk(statement)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "complete"
+    completion_statements = [
+        index
+        for index, statement in enumerate(execute_publication.body)
+        if isinstance(statement, ast.Try)
+        and any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "complete"
+            for node in ast.walk(statement)
+        )
     ]
     direct_workspace_publications = [
         node
@@ -652,9 +774,21 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         and node.func.attr == "publish_record"
     ]
     if (
-        len(execute_calls) != 1
-        or len(completion_calls) != 1
-        or execute_calls[0].lineno >= completion_calls[0].lineno
+        len(execute_assignments) != 1
+        or len(completion_statements) != 1
+        or execute_assignments[0][0] >= completion_statements[0]
+        or not any(
+            isinstance(statement, ast.If)
+            and execute_assignments[0][0] < index < completion_statements[0]
+            and any(
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == execute_assignments[0][1].targets[0].id
+                and node.attr == "status"
+                for node in ast.walk(statement.test)
+            )
+            for index, statement in enumerate(execute_publication.body)
+        )
         or direct_workspace_publications
     ):
         raise ArchitectureViolation(
@@ -669,40 +803,54 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         "_read_successor_claim",
     ):
         reader = functions.get(reader_name)
-        reader_calls = {
-            node.func.attr
-            if isinstance(node.func, ast.Attribute)
-            else node.func.id
-            if isinstance(node.func, ast.Name)
-            else ""
-            for node in ast.walk(reader)
-            if isinstance(node, ast.Call)
-        } if reader is not None else set()
-        if not {"get_record", "model_validate_json", "verify_publication"} <= reader_calls:
+        reader_calls = (
+            {
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else node.func.id
+                if isinstance(node.func, ast.Name)
+                else ""
+                for node in ast.walk(reader)
+                if isinstance(node, ast.Call)
+            }
+            if reader is not None
+            else set()
+        )
+        if (
+            not {"get_record", "model_validate_json", "verify_publication"}
+            <= reader_calls
+        ):
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"
             )
 
     lineage_reader = functions.get("_query_lineage_records")
-    lineage_calls = [
-        node
-        for node in ast.walk(lineage_reader)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "query_lineage"
-    ] if lineage_reader is not None else []
+    lineage_calls = (
+        [
+            node
+            for node in ast.walk(lineage_reader)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "query_lineage"
+        ]
+        if lineage_reader is not None
+        else []
+    )
     lineage_keywords = {
         keyword.arg
         for call in lineage_calls
         for keyword in call.keywords
         if keyword.arg is not None
     }
-    lineage_names = {
-        node.id for node in ast.walk(lineage_reader) if isinstance(node, ast.Name)
-    } if lineage_reader is not None else set()
+    lineage_names = (
+        {node.id for node in ast.walk(lineage_reader) if isinstance(node, ast.Name)}
+        if lineage_reader is not None
+        else set()
+    )
     if (
         len(lineage_calls) != 1
-        or not {"max_depth", "page_size", "cursor", "snapshot_token"} <= lineage_keywords
+        or not {"max_depth", "page_size", "cursor", "snapshot_token"}
+        <= lineage_keywords
         or not {"seen_cursors", "page_count"} <= lineage_names
     ):
         raise ArchitectureViolation(
@@ -724,10 +872,13 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         )
 
     dependency_calls = {
-        package / "package_intake.py": "get_registered_package",
-        package / "candidates.py": "verify_artifact",
+        package / "package_intake.py": (
+            "StrategyPackageIntakeService",
+            "get_registered_package",
+        ),
+        package / "candidates.py": ("_verify_artifact", "verify_artifact"),
     }
-    for dependency, required_call in dependency_calls.items():
+    for dependency, (owner_name, required_call) in dependency_calls.items():
         if not dependency.is_file():
             raise ArchitectureViolation(
                 f"apex-research: qualification owner dependency is missing: {dependency}"
@@ -735,11 +886,17 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         dependency_tree = ast.parse(
             dependency.read_text(encoding="utf-8"), filename=str(dependency)
         )
-        if not any(
+        owners = [
+            node
+            for node in dependency_tree.body
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == owner_name
+        ]
+        if len(owners) != 1 or not any(
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == required_call
-            for node in ast.walk(dependency_tree)
+            for node in ast.walk(owners[0])
         ):
             raise ArchitectureViolation(
                 f"apex-research: qualification dependency lacks {required_call}: {dependency}"
@@ -798,19 +955,24 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         "retired",
     }
     if state_values != expected_states:
-        raise ArchitectureViolation("apex-research: qualification maturity states drifted")
+        raise ArchitectureViolation(
+            "apex-research: qualification maturity states drifted"
+        )
 
     strings = {
         node.value
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
-    if not {
-        "historical_research_maturity",
-        "forbidden",
-        "evaluation-of",
-        "successor-of",
-    } <= strings:
+    if (
+        not {
+            "historical_research_maturity",
+            "forbidden",
+            "evaluation-of",
+            "successor-of",
+        }
+        <= strings
+    ):
         raise ArchitectureViolation(
             "apex-research: qualification lacks historical maturity-only semantics"
         )
@@ -837,27 +999,27 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
 
 
 SPEC015_OWNER_CLASSES = {
-        "QualificationDecision",
-        "QualificationEvaluation",
-        "QualificationEvaluator",
-        "QualificationHistoryReader",
-        "QualificationLedger",
-        "QualificationPolicy",
-        "QualificationRegistry",
-        "QualificationRetirement",
-        "QualificationRetirementRequest",
-        "QualificationService",
-        "QualificationState",
-        "QualificationSuccessorClaim",
+    "QualificationDecision",
+    "QualificationEvaluation",
+    "QualificationEvaluator",
+    "QualificationHistoryReader",
+    "QualificationLedger",
+    "QualificationPolicy",
+    "QualificationRegistry",
+    "QualificationRetirement",
+    "QualificationRetirementRequest",
+    "QualificationService",
+    "QualificationState",
+    "QualificationSuccessorClaim",
 }
 SPEC015_OWNER_METHODS = {
-        "evaluate_qualification",
-        "publish_decision",
-        "publish_held_evaluation",
-        "publish_policy",
-        "publish_qualification",
-        "publish_qualification_policy",
-        "publish_retirement",
+    "evaluate_qualification",
+    "publish_decision",
+    "publish_held_evaluation",
+    "publish_policy",
+    "publish_qualification",
+    "publish_qualification_policy",
+    "publish_retirement",
 }
 
 
@@ -872,14 +1034,23 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 isinstance(node, ast.ClassDef)
                 and (
                     node.name in SPEC015_OWNER_CLASSES
-                    or node.name.startswith("Qualification")
-                    and node.name.endswith("Publisher")
+                    or "Qualification" in node.name
+                    and not node.name.endswith(("ReadModel", "ReadModelBuilder"))
                 )
                 or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name in SPEC015_OWNER_METHODS
                 for node in ast.walk(tree)
             )
-            if owns_qualification:
+            publishes_qualification = (
+                "qualification" in path.as_posix().lower()
+                and any(
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "publish_record"
+                    for node in ast.walk(tree)
+                )
+            )
+            if owns_qualification or publishes_qualification:
                 raise ArchitectureViolation(
                     f"{repository}: qualification ownership outside Apex Research: {path}"
                 )
@@ -1047,12 +1218,22 @@ def _reject_spec014_forbidden(paths: tuple[Path, ...], *, owner: str) -> None:
                     )
             if isinstance(node, ast.ClassDef) and any(
                 term in node.name
-                for term in ("Registry", "Ledger", "Runner", "Backtester", "EvidenceTruth")
+                for term in (
+                    "Registry",
+                    "Ledger",
+                    "Runner",
+                    "Backtester",
+                    "EvidenceTruth",
+                )
             ):
                 raise ArchitectureViolation(f"{owner}: parallel owner: {path}")
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                names = {target.id for target in targets if isinstance(target, ast.Name)}
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                names = {
+                    target.id for target in targets if isinstance(target, ast.Name)
+                }
                 if "qualification" in names:
                     raise ArchitectureViolation(
                         f"{owner}: qualification masquerade: {path}"
@@ -1167,8 +1348,8 @@ def _scan_research_memory_seams(repository: Path) -> None:
         ApexSeamPolicy(
             component="Research Memory",
             forbidden_imports=(
-            ("strategy_workspace.storage", "private Workspace access"),
-            ("strategy_workspace.core", "private Workspace access"),
+                ("strategy_workspace.storage", "private Workspace access"),
+                ("strategy_workspace.core", "private Workspace access"),
                 ("sqlite3", "authoritative memory database"),
                 ("subprocess", "parallel runner"),
                 ("socket", "direct network"),
@@ -1195,7 +1376,9 @@ def _scan_research_memory_seams(repository: Path) -> None:
         ),
     )
     query_path = source_root / "memory_query.py"
-    query_source = query_path.read_text(encoding="utf-8") if query_path.is_file() else ""
+    query_source = (
+        query_path.read_text(encoding="utf-8") if query_path.is_file() else ""
+    )
     if "snapshot_token" not in query_source:
         raise ArchitectureViolation(
             "apex-research: Research Memory lacks reusable Workspace snapshot token"
@@ -1262,25 +1445,26 @@ def _scan_apex_public_seam(
     nodes = tuple(node for _, tree in trees for node in ast.walk(tree))
     classes = {node.name for node in nodes if isinstance(node, ast.ClassDef)}
     names = {node.id for node in nodes if isinstance(node, ast.Name)}
-    imports = {
-        alias.name
-        for node in nodes
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    } | {
-        node.module or ""
-        for node in nodes
-        if isinstance(node, ast.ImportFrom)
-    } | {
-        f"{node.module}.{alias.name}"
-        for node in nodes
-        if isinstance(node, ast.ImportFrom) and node.module
-        for alias in node.names
-    }
+    imports = (
+        {
+            alias.name
+            for node in nodes
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        | {node.module or "" for node in nodes if isinstance(node, ast.ImportFrom)}
+        | {
+            f"{node.module}.{alias.name}"
+            for node in nodes
+            if isinstance(node, ast.ImportFrom) and node.module
+            for alias in node.names
+        }
+    )
     calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
         for node in nodes
-        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Attribute, ast.Name))
     }
     attributes = {
         f"{node.value.id}.{node.attr}"
@@ -1350,7 +1534,9 @@ def _scan_rdagent_seams(repository: Path) -> None:
         "forbidden_operations",
     ):
         if marker not in adapter_source:
-            raise ArchitectureViolation(f"apex-research: RD-Agent adapter lacks {marker}: {adapter}")
+            raise ArchitectureViolation(
+                f"apex-research: RD-Agent adapter lacks {marker}: {adapter}"
+            )
     strategy = source_root / "rdagent_strategy.py"
     if strategy.is_file():
         strategy_source = strategy.read_text(encoding="utf-8")
@@ -1367,7 +1553,9 @@ def _scan_rdagent_seams(repository: Path) -> None:
             ("submit_run(", "Runtime bypass"),
         ):
             if marker in strategy_source:
-                raise ArchitectureViolation(f"apex-research: RD-Agent {reason}: {strategy}")
+                raise ArchitectureViolation(
+                    f"apex-research: RD-Agent {reason}: {strategy}"
+                )
         for marker in (
             "GovernedExternalResearchRunner",
             "readback_strategy_package_draft_artifacts",
@@ -1418,9 +1606,13 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
     application = source_root / "application.py"
     for path in source_root.rglob("*.py"):
         source = path.read_text(encoding="utf-8")
-        owns_process_control = "import subprocess" in source or "from subprocess" in source
+        owns_process_control = (
+            "import subprocess" in source or "from subprocess" in source
+        )
         if owns_process_control and path not in allowed_process_seams:
-            raise ArchitectureViolation(f"apex-research: ungoverned subprocess seam: {path}")
+            raise ArchitectureViolation(
+                f"apex-research: ungoverned subprocess seam: {path}"
+            )
     adapters = source_root / "adapters"
     if adapters.is_dir():
         for path in adapters.rglob("*.py"):
@@ -1493,7 +1685,9 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
     if application.is_file():
         source = application.read_text(encoding="utf-8")
         if "workspace.submit_run(" in source:
-            raise ArchitectureViolation("apex-research: run submitted before Runtime preflight")
+            raise ArchitectureViolation(
+                "apex-research: run submitted before Runtime preflight"
+            )
         for marker in (
             "governance.execute(",
             "GovernedAction.CANDIDATE_PACKAGE_INTAKE",
@@ -1508,11 +1702,15 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
 
 def validate_constitution() -> None:
     module_path = ROOT / "tools" / "validate_architecture_constitution.py"
-    specification = importlib.util.spec_from_file_location("constitution_validator", module_path)
+    specification = importlib.util.spec_from_file_location(
+        "constitution_validator", module_path
+    )
     assert specification is not None and specification.loader is not None
     validator = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(validator)
-    validator.validate_policy(validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json"))
+    validator.validate_policy(
+        validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
+    )
 
 
 def run_fixture_checks(repository_root: Path) -> None:
@@ -1520,7 +1718,9 @@ def run_fixture_checks(repository_root: Path) -> None:
     for check in fixture_plan(repository_root):
         repository = repository_root / check.repository
         if not repository.is_dir():
-            raise ArchitectureViolation(f"fixture repository is unavailable: {repository}")
+            raise ArchitectureViolation(
+                f"fixture repository is unavailable: {repository}"
+            )
         try:
             HARNESS.run_command(
                 list(check.command),
@@ -1541,11 +1741,17 @@ def run_full_gate_checks(repository_root: Path) -> None:
         environment = dict(os.environ)
         for check in full_gate_plan(repository_root):
             if check.connected:
-                raise ArchitectureViolation("connected checks must not enter the full gate plan")
+                raise ArchitectureViolation(
+                    "connected checks must not enter the full gate plan"
+                )
             repository = repository_root / check.repository
             if not repository.is_dir():
-                raise ArchitectureViolation(f"gate repository is unavailable: {repository}")
-            command = tuple(token.replace("{dist}", str(dist)) for token in check.command)
+                raise ArchitectureViolation(
+                    f"gate repository is unavailable: {repository}"
+                )
+            command = tuple(
+                token.replace("{dist}", str(dist)) for token in check.command
+            )
             try:
                 HARNESS.run_command(
                     list(command),

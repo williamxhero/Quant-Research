@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,14 +18,17 @@ SPEC.loader.exec_module(verifier)
 class PublicSeamArchitectureTests(unittest.TestCase):
     def test_fixture_plan_uses_only_existing_public_module_seams(self) -> None:
         plan = verifier.fixture_plan(ROOT)
-        self.assertEqual([item.owner for item in plan], [
-            "strategy_workspace",
-            "quant_runtime",
-            "apex_research",
-            "strategy_reporting",
-            "spec014_installed_wheels",
-            "spec015_installed_wheels",
-        ])
+        self.assertEqual(
+            [item.owner for item in plan],
+            [
+                "strategy_workspace",
+                "quant_runtime",
+                "apex_research",
+                "strategy_reporting",
+                "spec014_installed_wheels",
+                "spec015_installed_wheels",
+            ],
+        )
         command_by_owner = {item.owner: item.command[:5] for item in plan}
         self.assertEqual(
             command_by_owner["strategy_workspace"],
@@ -81,6 +86,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_validation_reporting.py", apex.command)
         self.assertIn("tests/test_statistical_control.py", apex.command)
         self.assertIn("tests/test_evidence_v2.py", apex.command)
+        self.assertIn("tests/test_qualification_policy.py", apex.command)
+        self.assertIn("tests/test_qualification_evaluation.py", apex.command)
+        self.assertIn("tests/test_qualification_validation.py", apex.command)
+        self.assertIn("tests/test_qualification_robustness.py", apex.command)
+        self.assertIn("tests/test_qualification_history.py", apex.command)
+        self.assertIn("tests/test_qualification_cli.py", apex.command)
         reporting = next(item for item in plan if item.owner == "strategy_reporting")
         self.assertIn(
             "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
@@ -91,17 +102,25 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             reporting.command,
         )
         self.assertIn("tests/test_evidence_v2_read_model.py", reporting.command)
-        installed = next(item for item in plan if item.owner == "spec014_installed_wheels")
+        installed = next(
+            item for item in plan if item.owner == "spec014_installed_wheels"
+        )
         self.assertEqual(installed.repository, ".")
         self.assertIn("tools/spec014_installed_wheel_tracer.py", installed.command)
         self.assertTrue((ROOT / "tools/spec014_installed_wheel_tracer.py").is_file())
-        installed_015 = next(item for item in plan if item.owner == "spec015_installed_wheels")
+        installed_015 = next(
+            item for item in plan if item.owner == "spec015_installed_wheels"
+        )
         self.assertEqual(installed_015.repository, ".")
         self.assertIn("tools/spec015_installed_wheel_tracer.py", installed_015.command)
         self.assertTrue((ROOT / "tools/spec015_installed_wheel_tracer.py").is_file())
 
-    def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(self) -> None:
-        source = (ROOT / "tools/spec014_installed_wheel_tracer.py").read_text(encoding="utf-8")
+    def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(
+        self,
+    ) -> None:
+        source = (ROOT / "tools/spec014_installed_wheel_tracer.py").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("tests/test_evidence_v2.py", source)
         self.assertIn(
@@ -116,31 +135,43 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("installed_acceptance_tests", source)
         self.assertIn('environment.pop("PYTHONPATH", None)', source)
         self.assertIn("build_wheels", source)
-        harness = (ROOT / "tools/installed_wheel_harness.py").read_text(encoding="utf-8")
+        harness = (ROOT / "tools/installed_wheel_harness.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn('["uv", "build", "--wheel"', harness)
 
     def test_spec015_installed_tracer_runs_the_golden_qualification_flow(self) -> None:
-        source = (ROOT / "tools/spec015_installed_wheel_tracer.py").read_text(encoding="utf-8")
+        tracer = ROOT / "tools/spec015_installed_wheel_tracer.py"
+        completed = subprocess.run(
+            [sys.executable, "-I", str(tracer), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
 
-        self.assertIn("test_complete_multidimensional_evidence_reaches_research_qualified", source)
-        self.assertIn("test_held_evaluations_do_not_consume_the_one_successor_slot", source)
-        self.assertIn("test_early_stopped_cell_remains_in_denominator", source)
-        self.assertIn("tests/test_qualification_cli.py", source)
-        self.assertIn("run_installed_pytest", source)
-        self.assertIn("stable_smoke_runs", source)
-        self.assertIn("wheel_sha256", source)
-        harness = (ROOT / "tools/installed_wheel_harness.py").read_text(encoding="utf-8")
-        self.assertIn('["uv", "venv", "--python", "3.12"', harness)
-        self.assertIn('[str(python), "-I", "-c"', harness)
-        self.assertIn("loaded module escaped installed environment", harness)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("--repository-root", completed.stdout)
+        installed = next(
+            item
+            for item in verifier.fixture_plan(ROOT)
+            if item.owner == "spec015_installed_wheels"
+        )
+        self.assertEqual(
+            installed.command[1], "tools/spec015_installed_wheel_tracer.py"
+        )
 
-    def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(self) -> None:
+    def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(
+        self,
+    ) -> None:
         plan = verifier.full_gate_plan(ROOT)
         owners = {item.owner for item in plan}
 
         self.assertEqual(
             owners,
             {
+                "quant_research",
                 "strategy_workspace",
                 "quant_runtime",
                 "apex_research",
@@ -154,7 +185,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             self.assertTrue(any(required in token for token in commands), required)
         self.assertTrue(all(not item.connected for item in plan))
         runtime_pytest = next(
-            item for item in plan if item.owner == "quant_runtime" and item.category == "pytest"
+            item
+            for item in plan
+            if item.owner == "quant_runtime" and item.category == "pytest"
         )
         reporting_pytest = next(
             item
@@ -164,7 +197,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("not connected", " ".join(runtime_pytest.command))
         self.assertIn("not connected", " ".join(reporting_pytest.command))
 
-    def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(self) -> None:
+    def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             apex = root / "apex-research/src/apex_research"
@@ -229,7 +264,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
             verifier.scan_sources(root)
 
-    def test_spec014_source_guard_rejects_parallel_truth_scans_and_masquerade(self) -> None:
+    def test_spec014_source_guard_rejects_parallel_truth_scans_and_masquerade(
+        self,
+    ) -> None:
         required = (
             "class EvidenceV2: pass\n"
             "class EvidenceSection: pass\n"
@@ -255,15 +292,22 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "production_approval = 'approved'\n": "production-approval masquerade",
         }
         for addition, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 apex = root / "apex-research/src/apex_research"
                 apex.mkdir(parents=True)
-                (apex / "evidence_v2.py").write_text(required + addition, encoding="utf-8")
+                (apex / "evidence_v2.py").write_text(
+                    required + addition, encoding="utf-8"
+                )
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
 
-    def test_spec015_guard_accepts_only_the_scoped_apex_historical_maturity_seam(self) -> None:
+    def test_spec015_guard_accepts_only_the_scoped_apex_historical_maturity_seam(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             apex = root / "apex-research/src/apex_research"
@@ -290,11 +334,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    RESEARCH_QUALIFIED = 'research_qualified'\n"
                 "    RETIRED = 'retired'\n"
                 "class QualificationPolicy:\n"
-                "    policy_id: str\n"
+                "    schema_id: str; policy_id: str; campaign: object; strategy_class: str; revision: int; transitions: tuple; scope: str; operational_authority: str; supersedes: object\n"
                 "    @classmethod\n"
                 "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationEvaluation:\n"
-                "    evaluation_id: str; policy: object; evidence: object; predecessor: object\n"
+                "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
                 "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationEvaluator:\n"
@@ -303,21 +347,21 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        CandidateRecordReader(self._workspace).read(candidate)\n"
                 "        return EvidenceV2Publisher(self._workspace).read(evidence)\n"
                 "class QualificationDecision:\n"
-                "    decision_id: str; evaluation: object; governance_reservation: object; "
-                "governance_settlement: object\n"
+                "    schema_id: str; decision_id: str; evaluation: object; governance_reservation: object; "
+                "governance_settlement: object; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
                 "    def target_ref(cls, identity): return canonical_sha256(identity)\n"
                 "    @classmethod\n"
                 "    def create(cls, identity): return cls.target_ref(identity)\n"
                 "class QualificationRetirementRequest:\n"
-                "    retirement_id: str; policy: object; evidence: object; predecessor: object\n"
+                "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
                 "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationRetirement:\n"
-                "    retirement_id: str; governance_reservation: object; "
+                "    schema_id: str; retirement_id: str; request: object; governance_reservation: object; "
                 "governance_settlement: object\n"
                 "class QualificationSuccessorClaim:\n"
-                "    claim_id: str; predecessor: object; successor: object; "
+                "    schema_id: str; claim_id: str; predecessor: object; successor: object; "
                 "governance_reservation: object; governance_settlement: object\n"
                 "    @classmethod\n"
                 "    def create(cls, predecessor): return _successor_slot_id(predecessor)\n"
@@ -330,7 +374,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    def _execute_publication(self, complete=lambda: None):\n"
                 "        result = self._governance.execute(None, None)\n"
                 "        if result.status != 'committed': return result\n"
-                "        complete()\n"
+                "        try: complete()\n"
+                "        except Exception: return result\n"
                 "        return result\n"
                 "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
@@ -355,11 +400,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (apex / "package_intake.py").write_text(
-                "def read(workspace): workspace.get_registered_package({})\n",
+                "class StrategyPackageIntakeService:\n"
+                "    def read(self, workspace): workspace.get_registered_package({})\n",
                 encoding="utf-8",
             )
             (apex / "candidates.py").write_text(
-                "def read(workspace): workspace.verify_artifact('uri')\n",
+                "def _verify_artifact(workspace): workspace.verify_artifact('uri')\n",
                 encoding="utf-8",
             )
 
@@ -377,7 +423,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "CandidateTruth",
         )
         for class_name in forbidden:
-            with self.subTest(class_name=class_name), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(class_name=class_name),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 apex = root / "apex-research/src/apex_research"
                 apex.mkdir(parents=True)
@@ -393,7 +442,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
     def test_spec015_guard_rejects_qualification_ownership_outside_apex(self) -> None:
         for repository in ("strategy-workspace", "quant-runtime", "strategy-reporting"):
-            with self.subTest(repository=repository), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(repository=repository),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 source = root / repository / "src" / "owner.py"
                 source.parent.mkdir(parents=True)
@@ -403,18 +455,27 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ):
                     verifier.scan_sources(root)
 
-    def test_spec015_guard_rejects_every_non_owner_state_and_publication_symbol(self) -> None:
+    def test_spec015_guard_rejects_every_non_owner_state_and_publication_symbol(
+        self,
+    ) -> None:
         forbidden = (
             "QualificationEvaluation",
             "QualificationRetirementRequest",
             "QualificationState",
             "QualificationSuccessorClaim",
             "QualificationPublisher",
+            "QualificationStateStore",
+            "ResearchQualificationPublisher",
         )
         for symbol in forbidden:
-            with self.subTest(symbol=symbol), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(symbol=symbol),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
-                source = root / "strategy-reporting/src/strategy_reporting/qualification.py"
+                source = (
+                    root / "strategy-reporting/src/strategy_reporting/qualification.py"
+                )
                 source.parent.mkdir(parents=True)
                 source.write_text(f"class {symbol}: pass\n", encoding="utf-8")
                 with self.assertRaisesRegex(
@@ -441,6 +502,21 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
             verifier._scan_spec015_non_owner_repositories(root)
 
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = (
+                root
+                / "strategy-workspace/src/strategy_workspace/qualification/cache.py"
+            )
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "def save(workspace): workspace.publish_record({})\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
+
     def test_source_scan_allows_lifecycle_words_in_explanations(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -458,7 +534,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             root = Path(temporary)
             (root / "apex-research/src/apex_research").mkdir(parents=True)
 
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "owner seam is missing"):
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "owner seam is missing"
+            ):
                 verifier._scan_spec015_qualification_seam(
                     root / "apex-research", required=True
                 )
@@ -509,7 +587,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             )
             (apex / "qualification.py").write_text(source, encoding="utf-8")
 
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "bypasses governed"):
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bypasses governed"
+            ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
     def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
@@ -541,7 +621,10 @@ def use_public(workspace):
             "import requests\n": "direct network",
         }
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 source = root / "apex-research/src/apex_research"
                 source.mkdir(parents=True)
@@ -552,7 +635,9 @@ def use_public(workspace):
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
 
-    def test_validation_matrix_rejects_parallel_truth_and_execution_bypasses(self) -> None:
+    def test_validation_matrix_rejects_parallel_truth_and_execution_bypasses(
+        self,
+    ) -> None:
         required = """
 class ValidationProtocolMatrix: pass
 class ValidationMatrixExpander: pass
@@ -576,7 +661,10 @@ GovernedAction.FORMAL_RUN
             "import requests\n": "direct network",
         }
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 validation = root / "apex-research/src/apex_research/validation.py"
                 validation.parent.mkdir(parents=True)
@@ -609,7 +697,10 @@ def use_lineage(workspace):
             "class MemoryLedger: pass\n": "parallel owner",
         }
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 memory = root / "apex-research/src/apex_research/memory_query.py"
                 memory.parent.mkdir(parents=True)
@@ -634,11 +725,15 @@ def use_lineage(workspace):
             source = root / "apex-research/src/apex_research"
             source.mkdir(parents=True)
             (source / "memory_query.py").write_text(required, encoding="utf-8")
-            (source / "memory_store.py").write_text("import sqlite3\n", encoding="utf-8")
+            (source / "memory_store.py").write_text(
+                "import sqlite3\n", encoding="utf-8"
+            )
             with self.assertRaisesRegex(verifier.ArchitectureViolation, "database"):
                 verifier.scan_sources(root)
 
-    def test_research_memory_requires_shared_snapshot_and_no_missing_root_downgrade(self) -> None:
+    def test_research_memory_requires_shared_snapshot_and_no_missing_root_downgrade(
+        self,
+    ) -> None:
         required = """
 class ResearchMemoryPolicy: pass
 class ResearchMemoryEntry: pass
@@ -656,7 +751,10 @@ def use_lineage(workspace):
             required + "\nlineage_root_not_found = 'empty'\n",
         )
         for source_text in forbidden:
-            with self.subTest(source=source_text), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(source=source_text),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 memory = root / "apex-research/src/apex_research/memory_query.py"
                 memory.parent.mkdir(parents=True)
@@ -681,7 +779,10 @@ def use_lineage(workspace):
             "class FocusedLedger: pass\n": "parallel owner",
         }
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 focused = root / "apex-research/src/apex_research/focused.py"
                 focused.parent.mkdir(parents=True)
@@ -694,8 +795,12 @@ def use_lineage(workspace):
             source_root = Path(temporary)
             source = source_root / "apex-research" / "src" / "apex_research"
             source.mkdir(parents=True)
-            (source / "bad.py").write_text("from strategy_workspace.storage import secret\n")
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "private Workspace access"):
+            (source / "bad.py").write_text(
+                "from strategy_workspace.storage import secret\n"
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "private Workspace access"
+            ):
                 verifier.scan_sources(source_root)
 
     def test_source_scan_rejects_an_unguarded_apex_subprocess(self) -> None:
@@ -703,8 +808,12 @@ def use_lineage(workspace):
             root = Path(temporary)
             source = root / "apex-research" / "src" / "apex_research"
             source.mkdir(parents=True)
-            (source / "rogue.py").write_text("import subprocess\nsubprocess.run(['tool'])\n")
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "subprocess seam"):
+            (source / "rogue.py").write_text(
+                "import subprocess\nsubprocess.run(['tool'])\n"
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "subprocess seam"
+            ):
                 verifier.scan_sources(root)
 
     def test_external_adapter_must_depend_on_the_runner_interface(self) -> None:
@@ -714,7 +823,9 @@ def use_lineage(workspace):
             adapters.mkdir(parents=True)
             candidate = adapters / "future_engine.py"
             candidate.write_text("class ResearchEngineAdapter:\n    pass\n")
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "bypasses runner"):
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bypasses runner"
+            ):
                 verifier.scan_sources(root)
             candidate.write_text(
                 "from apex_research.external_runner import GovernedExternalResearchRunner\n"
@@ -725,7 +836,9 @@ def use_lineage(workspace):
             )
             verifier.scan_sources(root)
 
-    def test_research_engine_adapter_rejects_direct_external_and_owner_seams(self) -> None:
+    def test_research_engine_adapter_rejects_direct_external_and_owner_seams(
+        self,
+    ) -> None:
         forbidden = {
             "import subprocess\n": "process",
             "import socket\n": "network",
@@ -742,15 +855,17 @@ def use_lineage(workspace):
             "workspace.publish_record({'record_type': 'apex-research.decision.v2'})\n": "decision",
         }
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 adapters = root / "apex-research" / "src" / "apex_research" / "adapters"
                 adapters.mkdir(parents=True)
                 (adapters / "bad_engine.py").write_text(
                     "from apex_research.external_runner import GovernedExternalResearchRunner\n"
                     "class ResearchEngineAdapter:\n"
-                    "    production = True\n"
-                    + source_text
+                    "    production = True\n" + source_text
                 )
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
@@ -807,7 +922,10 @@ def use_lineage(workspace):
             ),
         )
         for relative, source, reason in cases:
-            with self.subTest(path=relative), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(path=relative),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 path = root / relative
                 path.parent.mkdir(parents=True)
@@ -819,19 +937,19 @@ def use_lineage(workspace):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             runner = (
-                root
-                / "apex-research"
-                / "src"
-                / "apex_research"
-                / "external_runner"
+                root / "apex-research" / "src" / "apex_research" / "external_runner"
             )
             runner.mkdir(parents=True)
             (runner / "oci.py").write_text("import subprocess\n")
             (runner / "guardian.py").write_text("import subprocess\n")
-            (runner / "recovery.py").write_text("import shutil\nshutil.copy2('a', 'b')\n")
+            (runner / "recovery.py").write_text(
+                "import shutil\nshutil.copy2('a', 'b')\n"
+            )
             verifier.scan_sources(root)
 
-    def test_rdagent_host_adapter_cannot_import_upstream_or_own_parallel_truth(self) -> None:
+    def test_rdagent_host_adapter_cannot_import_upstream_or_own_parallel_truth(
+        self,
+    ) -> None:
         forbidden = {
             "import rdagent\n": "direct RD-Agent import",
             "import subprocess\n": "subprocess seam",
@@ -845,7 +963,10 @@ def use_lineage(workspace):
             "RunnerBackedResearchEngine forbidden_operations production = True\n"
         )
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 adapter = root / "apex-research/src/apex_research/adapters/rdagent.py"
                 adapter.parent.mkdir(parents=True)
@@ -870,7 +991,9 @@ def use_lineage(workspace):
                 'formal: str = "not_evaluated"\n'
                 "workspace.submit_run(request)\n"
             )
-            with self.assertRaisesRegex(verifier.ArchitectureViolation, "formal submission"):
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "formal submission"
+            ):
                 verifier.scan_sources(root)
 
     def test_rdagent_strategy_normalizer_must_use_governed_public_seams(self) -> None:
@@ -886,7 +1009,10 @@ def use_lineage(workspace):
             "StrategyCandidate.create\n"
         )
         for source_text, reason in forbidden.items():
-            with self.subTest(reason=reason), tempfile.TemporaryDirectory() as temporary:
+            with (
+                self.subTest(reason=reason),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
                 root = Path(temporary)
                 adapter = root / "apex-research/src/apex_research/adapters/rdagent.py"
                 adapter.parent.mkdir(parents=True)

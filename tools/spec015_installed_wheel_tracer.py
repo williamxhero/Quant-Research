@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import sys
@@ -11,15 +12,20 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from installed_wheel_harness import (
-    InstalledWheelFailure,
-    build_wheels,
-    create_installed_environment,
-    installed_distribution_manifest,
-    run_command,
-    run_installed_pytest,
-    verify_unchanged_sources,
+HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
+HARNESS_SPEC = importlib.util.spec_from_file_location(
+    "installed_wheel_harness", HARNESS_PATH
 )
+assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
+HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
+HARNESS_SPEC.loader.exec_module(HARNESS)
+InstalledWheelFailure = HARNESS.InstalledWheelFailure
+build_wheels = HARNESS.build_wheels
+create_installed_environment = HARNESS.create_installed_environment
+installed_distribution_manifest = HARNESS.installed_distribution_manifest
+run_command = HARNESS.run_command
+run_installed_pytest = HARNESS.run_installed_pytest
+verify_unchanged_sources = HARNESS.verify_unchanged_sources
 
 PACKAGE_REPOSITORIES = (
     "strategy-workspace",
@@ -112,7 +118,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             environment,
         )
         if unchanged_after_build != unchanged_sources:
-            raise TracerFailure("unchanged repository source identity raced during wheel build")
+            raise TracerFailure(
+                "unchanged repository source identity raced during wheel build"
+            )
         python = create_installed_environment(
             isolated,
             wheels,
@@ -123,7 +131,12 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             run_installed_pytest(
                 python,
                 (repository_root / repository / target for target in targets),
-                ("apex_research", "quant_runtime", "strategy_reporting", "strategy_workspace"),
+                (
+                    "apex_research",
+                    "quant_runtime",
+                    "strategy_reporting",
+                    "strategy_workspace",
+                ),
                 (repository_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=environment,
@@ -148,9 +161,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             try:
                 smoke_results.append(json.loads(output))
             except json.JSONDecodeError as exc:
-                raise TracerFailure(f"installed tracer emitted invalid JSON: {output}") from exc
+                raise TracerFailure(
+                    f"installed tracer emitted invalid JSON: {output}"
+                ) from exc
         if smoke_results[0] != smoke_results[1]:
-            raise TracerFailure("installed tracer identity output is not stable across processes")
+            raise TracerFailure(
+                "installed tracer identity output is not stable across processes"
+            )
         result = smoke_results[0]
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
@@ -220,7 +237,9 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
         QualificationValidationMetricRequirement,
     )
     if any(value.__module__ != "apex_research.qualification" for value in public_types):
-        raise TracerFailure("qualification public exports do not resolve to the installed owner")
+        raise TracerFailure(
+            "qualification public exports do not resolve to the installed owner"
+        )
     workspace = WorkspaceClient(smoke_root)
     workspace.init()
     if workspace.list_records(limit=1) != []:
@@ -231,7 +250,9 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
         family_id="installed-tracer",
         revision=1,
     )
-    predecessor = QualificationPredecessor(state=QualificationState.IDEA, record=candidate)
+    predecessor = QualificationPredecessor(
+        state=QualificationState.IDEA, record=candidate
+    )
     common = {
         "campaign": CampaignRecordRef(record_id="3" * 64),
         "candidate": candidate,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -24,7 +25,11 @@ def run_command(
     environment: dict[str, str],
     timeout_seconds: int,
 ) -> str:
-    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    creationflags = (
+        subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004
+        if os.name == "nt"
+        else 0
+    )
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -36,6 +41,7 @@ def run_command(
         start_new_session=os.name != "nt",
     )
     job_handle = _assign_windows_kill_job(process)
+    _resume_windows_process(process)
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
@@ -82,14 +88,17 @@ def _assign_windows_kill_job(process: subprocess.Popen[str]) -> int | None:
         ]
 
     class IoCounters(ctypes.Structure):
-        _fields_ = [(name, ctypes.c_ulonglong) for name in (
-            "ReadOperationCount",
-            "WriteOperationCount",
-            "OtherOperationCount",
-            "ReadTransferCount",
-            "WriteTransferCount",
-            "OtherTransferCount",
-        )]
+        _fields_ = [
+            (name, ctypes.c_ulonglong)
+            for name in (
+                "ReadOperationCount",
+                "WriteOperationCount",
+                "OtherOperationCount",
+                "ReadTransferCount",
+                "WriteTransferCount",
+                "OtherTransferCount",
+            )
+        ]
 
     class ExtendedLimitInformation(ctypes.Structure):
         _fields_ = [
@@ -129,8 +138,27 @@ def _assign_windows_kill_job(process: subprocess.Popen[str]) -> int | None:
     if not configured or not assigned:
         kernel32.CloseHandle(job)
         process.kill()
-        raise InstalledWheelFailure("failed to own subprocess tree with a Windows Job Object")
+        raise InstalledWheelFailure(
+            "failed to own subprocess tree with a Windows Job Object"
+        )
     return int(job)
+
+
+def _resume_windows_process(process: subprocess.Popen[str]) -> None:
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+    ntdll.NtResumeProcess.argtypes = (wintypes.HANDLE,)
+    ntdll.NtResumeProcess.restype = ctypes.c_long
+    status = ntdll.NtResumeProcess(
+        wintypes.HANDLE(int(process._handle)),  # type: ignore[attr-defined]
+    )
+    if status != 0:
+        process.kill()
+        raise InstalledWheelFailure("failed to resume Job-owned Windows subprocess")
 
 
 def _close_windows_handle(handle: int | None) -> None:
@@ -138,7 +166,9 @@ def _close_windows_handle(handle: int | None) -> None:
         import ctypes
         from ctypes import wintypes
 
-        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(handle))
+        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(
+            wintypes.HANDLE(handle)
+        )
 
 
 def _terminate_process_tree(
@@ -179,7 +209,9 @@ def build_wheels(
         )
         built = set(dist.glob("*.whl")) - before
         if len(built) != 1:
-            raise InstalledWheelFailure(f"{repository} did not produce exactly one wheel")
+            raise InstalledWheelFailure(
+                f"{repository} did not produce exactly one wheel"
+            )
         wheels.extend(built)
     return tuple(wheels)
 
@@ -213,13 +245,19 @@ def create_installed_environment(
         timeout_seconds=600,
     )
     version = run_command(
-        [str(python), "-c", "import sys; print('.'.join(map(str, sys.version_info[:2])))"],
+        [
+            str(python),
+            "-c",
+            "import sys; print('.'.join(map(str, sys.version_info[:2])))",
+        ],
         cwd=isolated,
         environment=environment,
         timeout_seconds=30,
     ).strip()
     if version != "3.12":
-        raise InstalledWheelFailure(f"isolated interpreter is not Python 3.12: {version}")
+        raise InstalledWheelFailure(
+            f"isolated interpreter is not Python 3.12: {version}"
+        )
     return python
 
 
@@ -326,22 +364,28 @@ def verify_unchanged_sources(
             timeout_seconds=30,
         ).strip()
         if head_tree != baseline_tree:
-            raise InstalledWheelFailure(f"{repository} production source differs from baseline")
+            raise InstalledWheelFailure(
+                f"{repository} production source differs from baseline"
+            )
         run_command(
             ["git", "diff", "--quiet", "--", "src"],
             cwd=cwd,
             environment=environment,
             timeout_seconds=30,
         )
-        untracked = run_command(
-            ["git", "ls-files", "--others", "--exclude-standard", "--", "src"],
-            cwd=cwd,
-            environment=environment,
-            timeout_seconds=30,
-        ).splitlines()
+        tracked = set(
+            run_command(
+                ["git", "ls-files", "--", "src"],
+                cwd=cwd,
+                environment=environment,
+                timeout_seconds=30,
+            ).splitlines()
+        )
+        source_files = _source_build_inputs(cwd)
+        untracked = [path for path in source_files if path not in tracked]
         if untracked:
             raise InstalledWheelFailure(
-                f"{repository} has untracked production source: {', '.join(sorted(untracked))}"
+                f"{repository} has untracked production source: {', '.join(untracked)}"
             )
         run_command(
             ["git", "diff", "--cached", "--quiet", "--", "src"],
@@ -353,5 +397,27 @@ def verify_unchanged_sources(
             "baseline": baseline,
             "head": head,
             "source_tree": head_tree,
+            "source_fingerprint": _source_fingerprint(cwd, source_files),
         }
     return verified
+
+
+def _source_build_inputs(repository: Path) -> list[str]:
+    source_root = (repository / "src").resolve()
+    return [
+        "src/" + path.relative_to(source_root).as_posix()
+        for path in sorted(source_root.rglob("*"))
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    ]
+
+
+def _source_fingerprint(repository: Path, source_files: Iterable[str]) -> str:
+    digest = hashlib.sha256()
+    for relative in source_files:
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((repository / relative).resolve().read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()

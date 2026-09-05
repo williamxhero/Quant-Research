@@ -19,43 +19,40 @@ SPEC.loader.exec_module(harness)
 
 class InstalledWheelHarnessTests(unittest.TestCase):
     def test_timeout_kills_descendants_even_after_process_leader_exits(self) -> None:
-        child = "import time; time.sleep(5)"
-        parent = (
-            "import subprocess, sys; "
-            f"subprocess.Popen([sys.executable, '-c', {child!r}])"
-        )
-        started = time.monotonic()
-
-        with tempfile.TemporaryDirectory() as temporary, self.assertRaises(
-            harness.InstalledWheelFailure
-        ):
-            harness.run_command(
-                [sys.executable, "-c", parent],
-                cwd=Path(temporary),
-                environment=dict(os.environ),
-                timeout_seconds=1,
-            )
-
-        self.assertLess(time.monotonic() - started, 4)
-
-    def test_unchanged_source_check_rejects_untracked_build_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            repository = root / "package"
-            (repository / "src" / "package").mkdir(parents=True)
-            subprocess.run(["git", "init"], cwd=repository, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "config", "user.email", "test@example.invalid"],
-                cwd=repository,
-                check=True,
+            temporary_path = Path(temporary)
+            pid_path = temporary_path / "child.pid"
+            child = "import time; time.sleep(30)"
+            parent = (
+                "import pathlib, subprocess, sys; "
+                f"child=subprocess.Popen([sys.executable, '-c', {child!r}]); "
+                f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))"
             )
-            subprocess.run(
-                ["git", "config", "user.name", "Test"], cwd=repository, check=True
+            started = time.monotonic()
+
+            with self.assertRaises(harness.InstalledWheelFailure):
+                harness.run_command(
+                    [sys.executable, "-c", parent],
+                    cwd=temporary_path,
+                    environment=dict(os.environ),
+                    timeout_seconds=1,
+                )
+
+            self.assertLess(time.monotonic() - started, 4)
+            child_pid = int(pid_path.read_text(encoding="utf-8"))
+            with self.assertRaises(OSError):
+                os.kill(child_pid, 0)
+
+    def test_unchanged_source_check_rejects_ignored_build_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root, repository, baseline = self._source_repository(Path(temporary))
+            (repository / ".gitignore").write_text(
+                "src/package/ignored.py\n", encoding="utf-8"
             )
-            tracked = repository / "src" / "package" / "__init__.py"
-            tracked.write_text("VALUE = 1\n", encoding="utf-8")
-            subprocess.run(["git", "add", "src/package/__init__.py"], cwd=repository, check=True)
-            subprocess.run(["git", "commit", "-m", "baseline"], cwd=repository, check=True)
+            subprocess.run(["git", "add", ".gitignore"], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", "ignore"], cwd=repository, check=True
+            )
             baseline = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=repository,
@@ -63,6 +60,50 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.strip()
+            (repository / "src" / "package" / "ignored.py").write_text(
+                "VALUE = 3\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "untracked production source"
+            ):
+                harness.verify_unchanged_sources(
+                    root,
+                    {"package": baseline},
+                    dict(os.environ),
+                )
+
+    @staticmethod
+    def _source_repository(root: Path) -> tuple[Path, Path, str]:
+        repository = root / "package"
+        (repository / "src" / "package").mkdir(parents=True)
+        subprocess.run(["git", "init"], cwd=repository, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.invalid"],
+            cwd=repository,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=repository, check=True
+        )
+        tracked = repository / "src" / "package" / "__init__.py"
+        tracked.write_text("VALUE = 1\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "src/package/__init__.py"], cwd=repository, check=True
+        )
+        subprocess.run(["git", "commit", "-m", "baseline"], cwd=repository, check=True)
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return root, repository, baseline
+
+    def test_unchanged_source_check_rejects_untracked_build_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root, repository, baseline = self._source_repository(Path(temporary))
             (repository / "src" / "package" / "injected.py").write_text(
                 "VALUE = 2\n", encoding="utf-8"
             )
