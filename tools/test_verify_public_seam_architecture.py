@@ -104,8 +104,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "test_governed_behavioral_gate_uses_runtime_conformance_without_live_engines",
             source,
         )
+        self.assertIn(
+            "test_source_round_trips_as_real_workspace_publication_envelope",
+            source,
+        )
+        self.assertIn("test_real_workspace_client_publication_round_trip", source)
         self.assertIn("installed_acceptance_tests", source)
         self.assertIn('environment.pop("PYTHONPATH", None)', source)
+        self.assertLess(
+            source.index('environment.pop("PYTHONPATH", None)'),
+            source.index('["uv", "build"'),
+        )
 
     def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(self) -> None:
         plan = verifier.full_gate_plan(ROOT)

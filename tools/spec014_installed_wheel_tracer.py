@@ -19,11 +19,29 @@ REPOSITORIES = (
     "apex-research",
     "strategy-reporting",
 )
-INSTALLED_ACCEPTANCE_TESTS = (
-    "tests/test_evidence_v2.py",
+INSTALLED_ACCEPTANCE_TEST_GROUPS = (
     (
-        "tests/test_behavioral_gate.py::"
-        "test_governed_behavioral_gate_uses_runtime_conformance_without_live_engines"
+        "apex-research",
+        (
+            "tests/test_evidence_v2.py",
+            (
+                "tests/test_behavioral_gate.py::"
+                "test_governed_behavioral_gate_uses_runtime_conformance_without_live_engines"
+            ),
+            (
+                "tests/test_report_source.py::"
+                "test_source_round_trips_as_real_workspace_publication_envelope"
+            ),
+        ),
+    ),
+    (
+        "strategy-reporting",
+        (
+            (
+                "tests/test_workspace_roundtrip.py::"
+                "test_real_workspace_client_publication_round_trip"
+            ),
+        ),
     ),
 )
 
@@ -56,6 +74,8 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             raise TracerFailure(f"repository is unavailable: {repository}")
     with tempfile.TemporaryDirectory(prefix="spec014-installed-") as temporary:
         isolated = Path(temporary)
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
         dist = isolated / "dist"
         dist.mkdir()
         wheels: list[Path] = []
@@ -64,13 +84,18 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             _run(
                 ["uv", "build", "--wheel", "--out-dir", str(dist)],
                 cwd=root / repository,
+                environment=environment,
             )
             built = set(dist.glob("*.whl")) - before
             if len(built) != 1:
                 raise TracerFailure(f"{repository} did not produce exactly one wheel")
             wheels.extend(built)
         virtual_environment = isolated / "venv"
-        _run(["uv", "venv", str(virtual_environment)], cwd=isolated)
+        _run(
+            ["uv", "venv", str(virtual_environment)],
+            cwd=isolated,
+            environment=environment,
+        )
         python = (
             virtual_environment / "Scripts" / "python.exe"
             if os.name == "nt"
@@ -86,28 +111,25 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 *(str(path) for path in wheels),
             ],
             cwd=isolated,
+            environment=environment,
         )
-        environment = dict(os.environ)
-        environment.pop("PYTHONPATH", None)
         _run(
             ["uv", "pip", "install", "--python", str(python), "pytest>=8.3,<9"],
             cwd=isolated,
             environment=environment,
         )
-        _run(
-            [
-                str(python),
-                "-m",
-                "pytest",
-                "-q",
-                *(
-                    str(root / "apex-research" / target)
-                    for target in INSTALLED_ACCEPTANCE_TESTS
-                ),
-            ],
-            cwd=isolated,
-            environment=environment,
-        )
+        for repository, targets in INSTALLED_ACCEPTANCE_TEST_GROUPS:
+            _run(
+                [
+                    str(python),
+                    "-m",
+                    "pytest",
+                    "-q",
+                    *(str(root / repository / target) for target in targets),
+                ],
+                cwd=isolated,
+                environment=environment,
+            )
         output = _run(
             [
                 str(python),
@@ -126,7 +148,11 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             raise TracerFailure(f"installed tracer emitted invalid JSON: {output}") from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
-        result["installed_acceptance_tests"] = list(INSTALLED_ACCEPTANCE_TESTS)
+        result["installed_acceptance_tests"] = [
+            f"{repository}/{target}"
+            for repository, targets in INSTALLED_ACCEPTANCE_TEST_GROUPS
+            for target in targets
+        ]
         return result
 
 
