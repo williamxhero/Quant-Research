@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).parents[1]
 MODULE_PATH = ROOT / "tools" / "verify_public_seam_architecture.py"
 SPEC = importlib.util.spec_from_file_location("public_seam_verifier", MODULE_PATH)
@@ -127,8 +126,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("test_held_evaluations_do_not_consume_the_one_successor_slot", source)
         self.assertIn("test_early_stopped_cell_remains_in_denominator", source)
         self.assertIn("tests/test_qualification_cli.py", source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("stable_smoke_runs", source)
+        self.assertIn("wheel_sha256", source)
         harness = (ROOT / "tools/installed_wheel_harness.py").read_text(encoding="utf-8")
         self.assertIn('["uv", "venv", "--python", "3.12"', harness)
+        self.assertIn('[str(python), "-I", "-c"', harness)
+        self.assertIn("loaded module escaped installed environment", harness)
 
     def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(self) -> None:
         plan = verifier.full_gate_plan(ROOT)
@@ -267,8 +271,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             (apex / "qualification.py").write_text(
                 "from enum import StrEnum\n"
                 "def canonical_sha256(value): return 'id'\n"
+                "def verify_publication(*values, **options): pass\n"
                 "ActionReservation = object\n"
                 "CampaignLedgerReader = object\n"
+                "class CandidateRecordReader:\n"
+                "    def __init__(self, workspace): pass\n"
+                "    def read(self, value): return value\n"
+                "class EvidenceV2Publisher:\n"
+                "    def __init__(self, workspace): pass\n"
+                "    def read(self, value): return value\n"
                 "class GovernedAction: QUALIFICATION_PUBLICATION='qualification_publication'\n"
                 "class QualificationState(StrEnum):\n"
                 "    IDEA = 'idea'\n"
@@ -278,35 +289,77 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    ROBUSTNESS_VALIDATED = 'robustness_validated'\n"
                 "    RESEARCH_QUALIFIED = 'research_qualified'\n"
                 "    RETIRED = 'retired'\n"
-                "class QualificationPolicy: policy_id: str\n"
+                "class QualificationPolicy:\n"
+                "    policy_id: str\n"
+                "    @classmethod\n"
+                "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationEvaluation:\n"
                 "    evaluation_id: str; policy: object; evidence: object; predecessor: object\n"
-                "class QualificationEvaluator: pass\n"
+                "    @classmethod\n"
+                "    def create(cls, identity): return canonical_sha256(identity)\n"
+                "class QualificationEvaluator:\n"
+                "    def __init__(self, workspace): self._workspace = workspace\n"
+                "    def evaluate(self, candidate, evidence):\n"
+                "        CandidateRecordReader(self._workspace).read(candidate)\n"
+                "        return EvidenceV2Publisher(self._workspace).read(evidence)\n"
                 "class QualificationDecision:\n"
                 "    decision_id: str; evaluation: object; governance_reservation: object; "
                 "governance_settlement: object\n"
+                "    @classmethod\n"
+                "    def target_ref(cls, identity): return canonical_sha256(identity)\n"
+                "    @classmethod\n"
+                "    def create(cls, identity): return cls.target_ref(identity)\n"
                 "class QualificationRetirementRequest:\n"
                 "    retirement_id: str; policy: object; evidence: object; predecessor: object\n"
+                "    @classmethod\n"
+                "    def create(cls, identity): return canonical_sha256(identity)\n"
                 "class QualificationRetirement:\n"
                 "    retirement_id: str; governance_reservation: object; "
                 "governance_settlement: object\n"
+                "class QualificationSuccessorClaim:\n"
+                "    claim_id: str; predecessor: object; successor: object; "
+                "governance_reservation: object; governance_settlement: object\n"
+                "    @classmethod\n"
+                "    def create(cls, predecessor): return _successor_slot_id(predecessor)\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationService:\n"
                 "    def publish_policy(self): return self._execute_publication()\n"
                 "    def publish_decision(self): return self._execute_publication()\n"
                 "    def publish_held_evaluation(self): return self._execute_publication()\n"
                 "    def publish_retirement(self): return self._execute_publication()\n"
-                "    def _execute_publication(self):\n"
-                "        self._governance.execute(None, None)\n"
-                "        self._workspace.publish_record({})\n"
-                "        self._workspace.get_record('id')\n"
-                "        self._workspace.query_lineage(roots=(), direction='descendants')\n"
-                "        return canonical_sha256(GovernedAction.QUALIFICATION_PUBLICATION)\n"
+                "    def _execute_publication(self, complete=lambda: None):\n"
+                "        result = self._governance.execute(None, None)\n"
+                "        if result.status != 'committed': return result\n"
+                "        complete()\n"
+                "        return result\n"
+                "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
+                "def _publish_record(workspace): workspace.publish_record({})\n"
+                "def _read_policy(workspace):\n"
+                "    value=workspace.get_record('id'); QualificationPolicy.model_validate_json('{}'); verify_publication(value)\n"
+                "def _read_decision(workspace):\n"
+                "    value=workspace.get_record('id'); QualificationDecision.model_validate_json('{}'); verify_publication(value)\n"
+                "def _read_held_evaluation(workspace):\n"
+                "    value=workspace.get_record('id'); QualificationEvaluation.model_validate_json('{}'); verify_publication(value)\n"
+                "def _read_retirement(workspace):\n"
+                "    value=workspace.get_record('id'); QualificationRetirement.model_validate_json('{}'); verify_publication(value)\n"
+                "def _read_successor_claim(workspace):\n"
+                "    value=workspace.get_record('id'); QualificationSuccessorClaim.model_validate_json('{}'); verify_publication(value)\n"
+                "def _query_lineage_records(workspace):\n"
+                "    seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
+                "    return workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
                 "held_relation = 'evaluation-of'\n"
                 "state_relation = 'successor-of'\n"
                 "EXPLANATION = 'Active and live are explicitly not granted here.'\n",
+                encoding="utf-8",
+            )
+            (apex / "package_intake.py").write_text(
+                "def read(workspace): workspace.get_registered_package({})\n",
+                encoding="utf-8",
+            )
+            (apex / "candidates.py").write_text(
+                "def read(workspace): workspace.verify_artifact('uri')\n",
                 encoding="utf-8",
             )
 
@@ -350,6 +403,35 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ):
                     verifier.scan_sources(root)
 
+    def test_spec015_guard_rejects_every_non_owner_state_and_publication_symbol(self) -> None:
+        forbidden = (
+            "QualificationEvaluation",
+            "QualificationRetirementRequest",
+            "QualificationState",
+            "QualificationSuccessorClaim",
+            "QualificationPublisher",
+        )
+        for symbol in forbidden:
+            with self.subTest(symbol=symbol), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "strategy-reporting/src/strategy_reporting/qualification.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(f"class {symbol}: pass\n", encoding="utf-8")
+                with self.assertRaisesRegex(
+                    verifier.ArchitectureViolation, "ownership outside Apex Research"
+                ):
+                    verifier._scan_spec015_non_owner_repositories(root)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "quant-runtime/src/quant_runtime/qualification.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("def publish_policy(): pass\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
+
     def test_spec015_guard_allows_non_owner_read_models(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -358,6 +440,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source.write_text("class QualificationReadModel: pass\n", encoding="utf-8")
 
             verifier._scan_spec015_non_owner_repositories(root)
+
+    def test_source_scan_allows_lifecycle_words_in_explanations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "quant-runtime/src/quant_runtime/explanation.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "MESSAGE = 'This does not grant production approval or live trading.'\n",
+                encoding="utf-8",
+            )
+
+            verifier.scan_sources(root)
 
     def test_spec015_guard_fails_closed_when_apex_owner_module_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -685,24 +779,30 @@ def use_lineage(workspace):
             ),
             (
                 "apex-research/src/apex_research/adapters/qrafti.py",
-                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
-                "class Qrafti:\n"
-                "    production = True\n"
-                "    qualification = 'qualified'\n",
+                (
+                    "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                    "class Qrafti:\n"
+                    "    production = True\n"
+                    "    qualification = 'qualified'\n"
+                ),
                 "qualification",
             ),
             (
                 "apex-research/src/apex_research/adapters/fake_production.py",
-                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
-                "production = False\n",
+                (
+                    "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                    "production = False\n"
+                ),
                 "must declare production execution",
             ),
             (
                 "apex-research/src/apex_research/adapters/future.py",
-                "from apex_research.external_runner import GovernedExternalResearchRunner\n"
-                "production = True\n"
-                "def publish(workspace):\n"
-                "    workspace.publish_candidate({})\n",
+                (
+                    "from apex_research.external_runner import GovernedExternalResearchRunner\n"
+                    "production = True\n"
+                    "def publish(workspace):\n"
+                    "    workspace.publish_candidate({})\n"
+                ),
                 "Candidate publication",
             ),
         )

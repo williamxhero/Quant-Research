@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
 import signal
 import subprocess
@@ -34,15 +35,26 @@ def run_command(
         creationflags=creationflags,
         start_new_session=os.name != "nt",
     )
+    job_handle = _assign_windows_kill_job(process)
     try:
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        _terminate_process_tree(process)
-        stdout, stderr = process.communicate()
+        _terminate_process_tree(process, job_handle=job_handle)
+        job_handle = None
+        try:
+            stdout, stderr = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+            stdout, stderr = "", "process pipes remained open after tree termination"
         raise InstalledWheelFailure(
             f"command timed out after {timeout_seconds}s: {' '.join(command)}\n"
             f"{stdout}{stderr}"
         ) from exc
+    finally:
+        _close_windows_handle(job_handle)
     if process.returncode:
         raise InstalledWheelFailure(
             f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}"
@@ -50,10 +62,92 @@ def run_command(
     return stdout
 
 
-def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
+def _assign_windows_kill_job(process: subprocess.Popen[str]) -> int | None:
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_longlong),
+            ("PerJobUserTimeLimit", ctypes.c_longlong),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_ulonglong) for name in (
+            "ReadOperationCount",
+            "WriteOperationCount",
+            "OtherOperationCount",
+            "ReadTransferCount",
+            "WriteTransferCount",
+            "OtherTransferCount",
+        )]
+
+    class ExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", BasicLimitInformation),
+            ("IoInfo", IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = (
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    )
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        process.kill()
+        raise InstalledWheelFailure("failed to create Windows process Job Object")
+    limits = ExtendedLimitInformation()
+    limits.BasicLimitInformation.LimitFlags = 0x00002000
+    configured = kernel32.SetInformationJobObject(
+        job,
+        9,
+        ctypes.byref(limits),
+        ctypes.sizeof(limits),
+    )
+    assigned = kernel32.AssignProcessToJobObject(
+        job,
+        wintypes.HANDLE(int(process._handle)),  # type: ignore[attr-defined]
+    )
+    if not configured or not assigned:
+        kernel32.CloseHandle(job)
+        process.kill()
+        raise InstalledWheelFailure("failed to own subprocess tree with a Windows Job Object")
+    return int(job)
+
+
+def _close_windows_handle(handle: int | None) -> None:
+    if os.name == "nt" and handle is not None:
+        import ctypes
+        from ctypes import wintypes
+
+        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(handle))
+
+
+def _terminate_process_tree(
+    process: subprocess.Popen[str], *, job_handle: int | None
+) -> None:
     if os.name == "nt":
+        if job_handle is not None:
+            _close_windows_handle(job_handle)
+            return
         subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
             text=True,
@@ -62,7 +156,10 @@ def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
             timeout=30,
         )
         return
-    os.killpg(process.pid, signal.SIGKILL)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def build_wheels(
@@ -126,6 +223,65 @@ def create_installed_environment(
     return python
 
 
+def run_installed_pytest(
+    python: Path,
+    targets: Iterable[Path],
+    package_names: Iterable[str],
+    source_roots: Iterable[Path],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    timeout_seconds: int,
+) -> str:
+    payload = json.dumps(
+        {
+            "targets": [str(path.resolve()) for path in targets],
+            "packages": sorted(package_names),
+            "source_roots": [str(path.resolve()) for path in source_roots],
+        },
+        sort_keys=True,
+    )
+    launcher = f"""
+import json
+from pathlib import Path
+import sys
+import pytest
+
+payload = json.loads({payload!r})
+prefix = Path(sys.prefix).resolve()
+source_roots = tuple(Path(value).resolve() for value in payload["source_roots"])
+for entry in sys.path:
+    if not entry:
+        continue
+    resolved = Path(entry).resolve()
+    if any(resolved == source or source.is_relative_to(resolved) for source in source_roots):
+        raise RuntimeError(f"source root is import-visible: {{resolved}}")
+exit_code = pytest.main(["-q", "-p", "no:cacheprovider", *payload["targets"]])
+loaded = {{}}
+for name, module in sorted(sys.modules.items()):
+    if not any(name == package or name.startswith(package + ".") for package in payload["packages"]):
+        continue
+    location = getattr(module, "__file__", None)
+    if location is None:
+        continue
+    resolved = Path(location).resolve()
+    if not resolved.is_relative_to(prefix):
+        raise RuntimeError(f"loaded module escaped installed environment: {{name}}={{resolved}}")
+    loaded[name] = str(resolved)
+print(json.dumps({{"exit_code": exit_code, "loaded_modules": loaded}}, sort_keys=True))
+raise SystemExit(exit_code)
+"""
+    isolated_environment = dict(environment)
+    isolated_environment.pop("PYTHONPATH", None)
+    isolated_environment["PYTHONSAFEPATH"] = "1"
+    return run_command(
+        [str(python), "-I", "-c", launcher],
+        cwd=cwd,
+        environment=isolated_environment,
+        timeout_seconds=timeout_seconds,
+    )
+
+
 def installed_distribution_manifest(
     modules: Iterable[ModuleType],
     distributions: Iterable[str],
@@ -177,6 +333,16 @@ def verify_unchanged_sources(
             environment=environment,
             timeout_seconds=30,
         )
+        untracked = run_command(
+            ["git", "ls-files", "--others", "--exclude-standard", "--", "src"],
+            cwd=cwd,
+            environment=environment,
+            timeout_seconds=30,
+        ).splitlines()
+        if untracked:
+            raise InstalledWheelFailure(
+                f"{repository} has untracked production source: {', '.join(sorted(untracked))}"
+            )
         run_command(
             ["git", "diff", "--cached", "--quiet", "--", "src"],
             cwd=cwd,
