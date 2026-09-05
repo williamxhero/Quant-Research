@@ -590,16 +590,22 @@ def _scan_spec015_qualification_seam(
             )
 
     identity_methods = {
-        "QualificationPolicy": {"create": ({"canonical_sha256"}, "policy_id")},
-        "QualificationEvaluation": {"create": ({"canonical_sha256"}, "evaluation_id")},
+        "QualificationPolicy": {
+            "create": ({"canonical_sha256"}, "policy_id", "identity")
+        },
+        "QualificationEvaluation": {
+            "create": ({"canonical_sha256"}, "evaluation_id", "identity")
+        },
         "QualificationDecision": {
-            "target_ref": ({"canonical_sha256"}, "record_id"),
-            "create": ({"target_ref"}, "decision_id"),
+            "target_ref": ({"canonical_sha256"}, "record_id", "identity"),
+            "create": ({"target_ref"}, "decision_id", "evaluation"),
         },
         "QualificationRetirementRequest": {
-            "create": ({"canonical_sha256"}, "retirement_id")
+            "create": ({"canonical_sha256"}, "retirement_id", "identity")
         },
-        "QualificationSuccessorClaim": {"create": ({"_successor_slot_id"}, "claim_id")},
+        "QualificationSuccessorClaim": {
+            "create": ({"_successor_slot_id"}, "claim_id", "predecessor")
+        },
     }
     for class_name, method_contracts in identity_methods.items():
         methods_by_name = {
@@ -611,10 +617,18 @@ def _scan_spec015_qualification_seam(
             raise ArchitectureViolation(
                 f"apex-research: {class_name} lacks canonical identity construction"
             )
-        for method_name, (allowed_calls, identity_field) in method_contracts.items():
+        for method_name, (
+            allowed_calls,
+            identity_field,
+            identity_input,
+        ) in method_contracts.items():
             method = methods_by_name[method_name]
 
-            def canonical_call(value: ast.AST, permitted_calls: set[str]) -> bool:
+            def canonical_value(
+                value: ast.AST,
+                permitted_calls: frozenset[str] = frozenset(allowed_calls),
+                expected_input: str = identity_input,
+            ) -> bool:
                 return any(
                     isinstance(node, ast.Call)
                     and (
@@ -625,24 +639,29 @@ def _scan_spec015_qualification_seam(
                         else ""
                     )
                     in permitted_calls
+                    and any(
+                        isinstance(argument, ast.Name) and argument.id == expected_input
+                        for call_argument in (
+                            *node.args,
+                            *(item.value for item in node.keywords),
+                        )
+                        for argument in ast.walk(call_argument)
+                    )
                     for node in ast.walk(value)
                 )
 
             supplies_identity = any(
-                isinstance(node, ast.Return)
-                and node.value is not None
-                and canonical_call(node.value, allowed_calls)
-                or isinstance(node, ast.Dict)
+                isinstance(node, ast.Dict)
                 and any(
                     isinstance(key, ast.Constant)
                     and key.value == identity_field
-                    and canonical_call(value, allowed_calls)
+                    and canonical_value(value)
                     for key, value in zip(node.keys, node.values, strict=True)
                     if key is not None
                 )
                 or isinstance(node, ast.keyword)
                 and node.arg == identity_field
-                and canonical_call(node.value, allowed_calls)
+                and canonical_value(node.value)
                 for node in ast.walk(method)
             )
             if not supplies_identity:
@@ -946,22 +965,158 @@ def _scan_spec015_qualification_seam(
         if lineage_reader is not None
         else []
     )
-    lineage_keywords = {
-        keyword.arg
-        for call in lineage_calls
-        for keyword in call.keywords
-        if keyword.arg is not None
-    }
-    lineage_names = (
-        {node.id for node in ast.walk(lineage_reader) if isinstance(node, ast.Name)}
+    lineage_call = lineage_calls[0] if len(lineage_calls) == 1 else None
+    lineage_keywords = (
+        {
+            keyword.arg: keyword.value
+            for keyword in lineage_call.keywords
+            if keyword.arg is not None
+        }
+        if lineage_call is not None
+        else {}
+    )
+    lineage_loops = (
+        [node for node in ast.walk(lineage_reader) if isinstance(node, ast.While)]
         if lineage_reader is not None
-        else set()
+        else []
+    )
+    bounded_loop = next(
+        (
+            loop
+            for loop in lineage_loops
+            if lineage_call is not None and lineage_call in ast.walk(loop)
+        ),
+        None,
+    )
+    page_size = lineage_keywords.get("page_size")
+    bounded_page_size = (
+        isinstance(page_size, ast.Constant)
+        and isinstance(page_size.value, int)
+        and 1 <= page_size.value <= 1_000
+    )
+    max_depth = lineage_keywords.get("max_depth")
+    bounded_depth = (
+        isinstance(max_depth, ast.Constant)
+        and isinstance(max_depth.value, int)
+        and 1 <= max_depth.value <= 8
+    )
+    if isinstance(max_depth, ast.Name) and lineage_reader is not None:
+        bounded_depth = any(
+            isinstance(node, ast.If)
+            and {1, 8}
+            <= {
+                value.value
+                for value in ast.walk(node.test)
+                if isinstance(value, ast.Constant) and isinstance(value.value, int)
+            }
+            and any(
+                isinstance(value, ast.Name) and value.id == max_depth.id
+                for value in ast.walk(node.test)
+            )
+            and any(isinstance(value, ast.Raise) for value in ast.walk(node))
+            for node in ast.walk(lineage_reader)
+        )
+    page_counter_bound = bounded_loop is not None and any(
+        isinstance(node, ast.If)
+        and any(
+            isinstance(value, ast.Name) and value.id == "page_count"
+            for value in ast.walk(node.test)
+        )
+        and any(
+            isinstance(value, ast.Constant)
+            and isinstance(value.value, int)
+            and 1 <= value.value <= 100
+            for value in ast.walk(node.test)
+        )
+        and any(isinstance(value, ast.Raise) for value in ast.walk(node))
+        for node in ast.walk(bounded_loop)
+    )
+    page_counter_advances = bounded_loop is not None and any(
+        isinstance(node, ast.AugAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "page_count"
+        and isinstance(node.op, ast.Add)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == 1
+        for node in ast.walk(bounded_loop)
+    )
+    cursor_cycle_rejected = bounded_loop is not None and any(
+        isinstance(node, ast.If)
+        and any(
+            isinstance(value, ast.Compare)
+            and any(isinstance(operator, ast.In) for operator in value.ops)
+            and any(
+                isinstance(name, ast.Name) and name.id == "next_cursor"
+                for name in ast.walk(value.left)
+            )
+            and any(
+                isinstance(name, ast.Name) and name.id == "seen_cursors"
+                for comparator in value.comparators
+                for name in ast.walk(comparator)
+            )
+            for value in ast.walk(node.test)
+        )
+        and any(isinstance(value, ast.Raise) for value in ast.walk(node))
+        for node in ast.walk(bounded_loop)
+    )
+    cursor_recorded = bounded_loop is not None and any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "seen_cursors"
+        and node.func.attr == "add"
+        and any(
+            isinstance(value, ast.Name) and value.id == "next_cursor"
+            for argument in node.args
+            for value in ast.walk(argument)
+        )
+        for node in ast.walk(bounded_loop)
+    )
+    terminates_without_cursor = bounded_loop is not None and any(
+        isinstance(node, ast.If)
+        and any(
+            isinstance(value, ast.Compare)
+            and any(isinstance(operator, ast.Is) for operator in value.ops)
+            and any(
+                isinstance(comparator, ast.Constant) and comparator.value is None
+                for comparator in value.comparators
+            )
+            for value in ast.walk(node.test)
+        )
+        and any(isinstance(value, (ast.Return, ast.Break)) for value in ast.walk(node))
+        for node in ast.walk(bounded_loop)
+    )
+    response_size_rejected = (
+        bounded_loop is not None
+        and bounded_page_size
+        and any(
+            isinstance(node, ast.If)
+            and any(
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "len"
+                for value in ast.walk(node.test)
+            )
+            and any(
+                isinstance(value, ast.Constant) and value.value == page_size.value
+                for value in ast.walk(node.test)
+            )
+            and any(isinstance(value, ast.Raise) for value in ast.walk(node))
+            for node in ast.walk(bounded_loop)
+        )
     )
     if (
         len(lineage_calls) != 1
         or not {"max_depth", "page_size", "cursor", "snapshot_token"}
-        <= lineage_keywords
-        or not {"seen_cursors", "page_count"} <= lineage_names
+        <= set(lineage_keywords)
+        or not bounded_page_size
+        or not bounded_depth
+        or not page_counter_bound
+        or not page_counter_advances
+        or not cursor_cycle_rejected
+        or not cursor_recorded
+        or not terminates_without_cursor
+        or not response_size_rejected
     ):
         raise ArchitectureViolation(
             "apex-research: qualification lineage is not bounded snapshot pagination"
@@ -1148,17 +1303,37 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
             continue
         for path in source_root.rglob("*.py"):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            imports_qualification_owner = any(
-                isinstance(node, ast.ImportFrom)
-                and node.module is not None
-                and (
-                    node.module == "apex_research.qualification"
-                    or node.module.startswith("apex_research.qualification.")
-                )
-                or isinstance(node, (ast.Import, ast.ImportFrom))
-                and any("Qualification" in alias.name for alias in node.names)
-                for node in ast.walk(tree)
-            )
+            qualification_modules: set[str] = set()
+            qualification_symbols: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if (
+                            alias.name == "apex_research.qualification"
+                            or alias.name.startswith("apex_research.qualification.")
+                        ):
+                            qualification_modules.add(
+                                alias.asname or alias.name.split(".", maxsplit=1)[0]
+                            )
+                elif (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module is not None
+                    and (
+                        node.module == "apex_research.qualification"
+                        or node.module.startswith("apex_research.qualification.")
+                    )
+                ):
+                    qualification_symbols.update(
+                        alias.asname or alias.name
+                        for alias in node.names
+                        if alias.name in SPEC015_OWNER_CLASSES
+                        or (
+                            "Qualification" in alias.name
+                            and not alias.name.endswith(
+                                ("ReadModel", "ReadModelBuilder")
+                            )
+                        )
+                    )
             owns_qualification = any(
                 isinstance(node, ast.ClassDef)
                 and (
@@ -1178,14 +1353,44 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "publish_record"
             )
+
+            def references_qualification_owner(
+                value: ast.AST,
+                symbol_aliases: frozenset[str] = frozenset(qualification_symbols),
+                module_aliases: frozenset[str] = frozenset(qualification_modules),
+            ) -> bool:
+                if isinstance(value, ast.Name):
+                    return value.id in symbol_aliases
+                if isinstance(value, ast.Attribute):
+                    root: ast.AST = value
+                    attributes: set[str] = set()
+                    while isinstance(root, ast.Attribute):
+                        attributes.add(root.attr)
+                        root = root.value
+                    return (
+                        isinstance(root, ast.Name)
+                        and root.id in module_aliases
+                        and any(
+                            name in SPEC015_OWNER_CLASSES
+                            or (
+                                "Qualification" in name
+                                and not name.endswith(("ReadModel", "ReadModelBuilder"))
+                            )
+                            for name in attributes
+                        )
+                    )
+                return False
+
             publishes_qualification = any(
-                imports_qualification_owner
-                or any(
-                    isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                    and (
-                        value.value.startswith("apex-research.qualification-")
-                        or value.value == "historical_research_maturity"
+                any(
+                    references_qualification_owner(value)
+                    or (
+                        isinstance(value, ast.Constant)
+                        and isinstance(value.value, str)
+                        and (
+                            value.value.startswith("apex-research.qualification-")
+                            or value.value == "historical_research_maturity"
+                        )
                     )
                     for argument in (
                         *call.args,

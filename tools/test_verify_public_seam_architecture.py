@@ -217,7 +217,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn(
             "tools/test_validate_architecture_constitution.py", root_pytest.command
         )
-        self.assertEqual(root_pytest.command[:6], ("uv", "run", "--python", "3.12", "--with", "pytest"))
+        self.assertEqual(
+            root_pytest.command[:6],
+            ("uv", "run", "--python", "3.12", "--with", "pytest"),
+        )
         python_launches = [
             item.command
             for item in plan
@@ -375,11 +378,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class QualificationPolicy:\n"
                 "    schema_id: str; policy_id: str; campaign: object; strategy_class: str; revision: int; transitions: tuple; scope: str; operational_authority: str; supersedes: object\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return canonical_sha256(identity)\n"
+                "    def create(cls, identity): return cls(policy_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluation:\n"
                 "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return canonical_sha256(identity)\n"
+                "    def create(cls, identity): return cls(evaluation_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluator:\n"
                 "    def __init__(self, workspace): self._workspace = workspace\n"
                 "    def evaluate(self, candidate, evidence):\n"
@@ -388,19 +391,19 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class QualificationDecision:\n"
                 "    schema_id: str; decision_id: str; evaluation: object; governance: object; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
-                "    def target_ref(cls, identity): return canonical_sha256(identity)\n"
+                "    def target_ref(cls, identity): return cls(record_id=canonical_sha256(identity))\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return cls.target_ref(identity)\n"
+                "    def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation))\n"
                 "class QualificationRetirementRequest:\n"
                 "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str; operational_authority: str\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return canonical_sha256(identity)\n"
+                "    def create(cls, identity): return cls(retirement_id=canonical_sha256(identity))\n"
                 "class QualificationRetirement:\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationSuccessorClaim:\n"
                 "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance: object\n"
                 "    @classmethod\n"
-                "    def create(cls, predecessor): return _successor_slot_id(predecessor)\n"
+                "    def create(cls, predecessor): return cls(claim_id=_successor_slot_id(predecessor))\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationService:\n"
                 "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
@@ -428,7 +431,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    value=workspace.get_record('id'); QualificationSuccessorClaim.model_validate_json('{}'); verify_publication(value)\n"
                 "def _query_lineage_records(workspace):\n"
                 "    seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
-                "    return workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
+                "    while True:\n"
+                "        if page_count >= 100: raise RuntimeError('bounded')\n"
+                "        page_count += 1\n"
+                "        page=workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
+                "        page_records=page['records']\n"
+                "        if len(page_records) > 100: raise RuntimeError('oversized')\n"
+                "        next_cursor=page['next_cursor']\n"
+                "        if next_cursor is None: return page_records\n"
+                "        if next_cursor in seen_cursors: raise RuntimeError('cycle')\n"
+                "        seen_cursors.add(next_cursor)\n"
+                "        cursor=next_cursor\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
                 "held_relation = 'evaluation-of'\n"
@@ -449,13 +462,42 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             verifier.scan_sources(root)
 
             qualification = apex / "qualification.py"
-            masked = qualification.read_text(encoding="utf-8").replace(
-                "def create(cls, identity): return cls.target_ref(identity)",
-                "def create(cls, identity): return 'nondeterministic'",
+            accepted = qualification.read_text(encoding="utf-8")
+            masked_policy = accepted.replace(
+                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
+                "def create(cls, identity): canonical_sha256(identity); "
+                "return cls(policy_id='nondeterministic')",
+            )
+            qualification.write_text(masked_policy, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "QualificationPolicy.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            masked = accepted.replace(
+                "def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation))",
+                "def create(cls, evaluation): return cls(decision_id='nondeterministic')",
             )
             qualification.write_text(masked, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "QualificationDecision.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            unbounded = accepted.replace("page_size=100", "page_size=1000000")
+            qualification.write_text(unbounded, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            no_cycle_guard = accepted.replace(
+                "if next_cursor in seen_cursors: raise RuntimeError('cycle')",
+                "if False: raise RuntimeError('cycle')",
+            )
+            qualification.write_text(no_cycle_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -550,6 +592,21 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def save(workspace):\n"
                 "    workspace.publish_record({'record_type': "
                 "'apex-research.qualification-decision.v1'})\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-reporting/src/strategy_reporting/publisher.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "import apex_research.qualification as q\n"
+                "def save(workspace, value):\n"
+                "    workspace.publish_record(q.QualificationDecision(value))\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(

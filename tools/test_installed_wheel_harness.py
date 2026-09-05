@@ -8,6 +8,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).parents[1]
 MODULE_PATH = ROOT / "tools" / "installed_wheel_harness.py"
@@ -18,6 +19,31 @@ SPEC.loader.exec_module(harness)
 
 
 class InstalledWheelHarnessTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows Job cleanup contract")
+    def test_resume_failure_closes_job_and_reaps_suspended_process(self) -> None:
+        process = mock.Mock()
+        process.communicate.return_value = ("", "")
+        with (
+            mock.patch.object(harness.subprocess, "Popen", return_value=process),
+            mock.patch.object(harness, "_assign_windows_kill_job", return_value=123),
+            mock.patch.object(
+                harness,
+                "_resume_windows_process",
+                side_effect=harness.InstalledWheelFailure("resume failed"),
+            ),
+            mock.patch.object(harness, "_close_windows_handle") as close_handle,
+            self.assertRaisesRegex(harness.InstalledWheelFailure, "resume failed"),
+        ):
+            harness.run_command(
+                ["python", "-c", "pass"],
+                cwd=Path.cwd(),
+                environment=dict(os.environ),
+                timeout_seconds=1,
+            )
+
+        close_handle.assert_called_once_with(123)
+        process.communicate.assert_called_once_with(timeout=10)
+
     def test_timeout_kills_descendants_even_after_process_leader_exits(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temporary_path = Path(temporary)
@@ -135,6 +161,24 @@ class InstalledWheelHarnessTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 harness.InstalledWheelFailure, "symbolic link or junction"
+            ):
+                harness._source_build_inputs(repository)
+
+    def test_source_build_inputs_rejects_a_linked_source_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "package"
+            external = root / "external-source"
+            external.mkdir()
+            repository.mkdir()
+            try:
+                (repository / "src").symlink_to(external, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                harness.InstalledWheelFailure,
+                "source root is a symbolic link or junction",
             ):
                 harness._source_build_inputs(repository)
 

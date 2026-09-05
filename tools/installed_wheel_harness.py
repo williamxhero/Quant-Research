@@ -38,9 +38,10 @@ def run_command(
         creationflags=creationflags,
         start_new_session=os.name != "nt",
     )
-    job_handle = _assign_windows_kill_job(process)
-    _resume_windows_process(process)
+    job_handle: int | None = None
     try:
+        job_handle = _assign_windows_kill_job(process)
+        _resume_windows_process(process)
         stdout, stderr = process.communicate(timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
         _terminate_process_tree(process, job_handle=job_handle)
@@ -57,8 +58,20 @@ def run_command(
             f"command timed out after {timeout_seconds}s: {' '.join(command)}\n"
             f"{stdout}{stderr}"
         ) from exc
+    except BaseException:
+        _terminate_process_tree(process, job_handle=job_handle)
+        job_handle = None
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+        raise
     finally:
-        _close_windows_handle(job_handle)
+        if job_handle is not None:
+            _close_windows_handle(job_handle)
     if process.returncode:
         raise InstalledWheelFailure(
             f"command failed ({process.returncode}): {' '.join(command)}\n{stdout}{stderr}"
@@ -401,7 +414,15 @@ def verify_unchanged_sources(
 
 
 def _source_build_inputs(repository: Path) -> list[str]:
-    source_root = (repository / "src").resolve()
+    unresolved_source_root = repository / "src"
+    source_root_is_junction = getattr(
+        unresolved_source_root, "is_junction", lambda: False
+    )()
+    if unresolved_source_root.is_symlink() or source_root_is_junction:
+        raise InstalledWheelFailure(
+            f"production source root is a symbolic link or junction: {unresolved_source_root}"
+        )
+    source_root = unresolved_source_root.resolve()
     inputs: list[str] = []
     for path in sorted(source_root.rglob("*")):
         is_junction = getattr(path, "is_junction", lambda: False)()
