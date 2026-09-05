@@ -96,6 +96,46 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tools/spec014_installed_wheel_tracer.py", installed.command)
         self.assertTrue((ROOT / "tools/spec014_installed_wheel_tracer.py").is_file())
 
+    def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(self) -> None:
+        source = (ROOT / "tools/spec014_installed_wheel_tracer.py").read_text(encoding="utf-8")
+
+        self.assertIn("tests/test_evidence_v2.py", source)
+        self.assertIn(
+            "test_governed_behavioral_gate_uses_runtime_conformance_without_live_engines",
+            source,
+        )
+        self.assertIn("installed_acceptance_tests", source)
+        self.assertIn('environment.pop("PYTHONPATH", None)', source)
+
+    def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(self) -> None:
+        plan = verifier.full_gate_plan(ROOT)
+        owners = {item.owner for item in plan}
+
+        self.assertEqual(
+            owners,
+            {
+                "strategy_workspace",
+                "quant_runtime",
+                "apex_research",
+                "strategy_reporting",
+                "spec014_installed_wheels",
+            },
+        )
+        commands = {token for item in plan for token in item.command}
+        for required in ("format", "check", "mypy", "pytest", "build", "diff"):
+            self.assertTrue(any(required in token for token in commands), required)
+        self.assertTrue(all(not item.connected for item in plan))
+        runtime_pytest = next(
+            item for item in plan if item.owner == "quant_runtime" and item.category == "pytest"
+        )
+        reporting_pytest = next(
+            item
+            for item in plan
+            if item.owner == "strategy_reporting" and item.category == "pytest"
+        )
+        self.assertIn("not connected", " ".join(runtime_pytest.command))
+        self.assertIn("not connected", " ".join(reporting_pytest.command))
+
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -124,6 +164,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class EvidenceV2StudySourcePublisher: pass\n"
                 "max_depth = 4\n"
                 "page_size = 100\n"
+                "_BACKFILL_MAX_PAGES = 100\n"
+                "seen_cursors = set()\n"
                 "snapshot_token = 'frozen'\n"
                 "def read(workspace):\n"
                 "    workspace.query_lineage(snapshot_token=snapshot_token)\n"

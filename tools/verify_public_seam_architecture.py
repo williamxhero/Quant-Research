@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -23,6 +24,14 @@ class FixtureCheck(NamedTuple):
     owner: str
     repository: str
     command: tuple[str, ...]
+
+
+class GateCheck(NamedTuple):
+    owner: str
+    repository: str
+    category: str
+    command: tuple[str, ...]
+    connected: bool = False
 
 
 class ApexSeamPolicy(NamedTuple):
@@ -134,6 +143,53 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
     )
 
 
+def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
+    """Return the complete non-connected release gate plan for all five seams."""
+    commands: list[GateCheck] = []
+
+    def add(owner: str, repository: str, category: str, *command: str) -> None:
+        commands.append(GateCheck(owner, repository, category, command))
+
+    for owner, repository, dev_switch in (
+        ("strategy_workspace", "strategy-workspace", ("--extra", "dev")),
+        ("quant_runtime", "quant-runtime", ("--extra", "dev")),
+        ("apex_research", "apex-research", ("--group", "dev")),
+        ("strategy_reporting", "strategy-reporting", ("--extra", "dev")),
+    ):
+        add(owner, repository, "format", "uv", "run", *dev_switch, "ruff", "format", "--check", ".")
+        add(owner, repository, "lint", "uv", "run", *dev_switch, "ruff", "check", ".")
+        if owner in {"apex_research", "strategy_reporting"}:
+            add(owner, repository, "typing", "uv", "run", *dev_switch, "mypy")
+        marker = {
+            "quant_runtime": "not connected and not oci",
+            "apex_research": "not oci",
+            "strategy_reporting": "not connected",
+        }.get(owner)
+        pytest = ("uv", "run", *dev_switch, "pytest")
+        add(owner, repository, "pytest", *pytest, *(("-m", marker) if marker else ()))
+        add(
+            owner,
+            repository,
+            "build",
+            "uv",
+            "build",
+            "--wheel",
+            "--out-dir",
+            f"{{dist}}/{repository}",
+        )
+        add(owner, repository, "diff", "git", "diff", "--check")
+    add(
+        "spec014_installed_wheels",
+        ".",
+        "installed-wheel-smoke",
+        "python",
+        "tools/spec014_installed_wheel_tracer.py",
+        "--repository-root",
+        str(repository_root),
+    )
+    return tuple(commands)
+
+
 SOURCE_RULES = {
     "strategy-workspace": (
         ("quant_runtime", "Workspace must not own Runtime behavior"),
@@ -241,15 +297,14 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
         repository_root / "strategy-reporting" / "src" / "strategy_reporting"
     )
     apex_paths = tuple(
-        apex_root / name
-        for name in (
-            "evidence_v2.py",
-            "evidence_backfill.py",
-            "evidence_extensions.py",
-            "report_models.py",
+        sorted(
+            {
+                *apex_root.glob("evidence_*.py"),
+                apex_root / "report_models.py",
+            }
         )
-        if (apex_root / name).is_file()
     )
+    apex_paths = tuple(path for path in apex_paths if path.is_file())
     reporting_paths = tuple(sorted(reporting_root.rglob("evidence_v2.py")))
     if not apex_paths and not reporting_paths:
         return
@@ -264,11 +319,13 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
             "evidence_extensions.py",
             "report_models.py",
         }
-        if set(apex_by_name) != required_files:
+        if not required_files <= set(apex_by_name):
             raise ArchitectureViolation(
                 "apex-research: Evidence v2 acceptance seam is incomplete"
             )
-        evidence_source = apex_by_name["evidence_v2.py"].read_text(encoding="utf-8")
+        evidence_source = "\n".join(
+            path.read_text(encoding="utf-8") for path in apex_paths
+        )
         for marker in (
             "EvidenceV2",
             "EvidenceSection",
@@ -297,6 +354,8 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
             "snapshot_token",
             "max_depth",
             "page_size",
+            "_BACKFILL_MAX_PAGES",
+            "seen_cursors",
         ):
             if marker not in backfill_source:
                 raise ArchitectureViolation(
@@ -873,20 +932,56 @@ def run_fixture_checks(repository_root: Path) -> None:
             raise ArchitectureViolation(f"{check.owner} public-seam fixture failed:\n{detail}")
 
 
+def run_full_gate_checks(repository_root: Path) -> None:
+    """Execute every non-connected release gate without retaining build output."""
+    with tempfile.TemporaryDirectory(prefix="spec014-full-gates-") as temporary:
+        dist = Path(temporary).resolve()
+        for check in full_gate_plan(repository_root):
+            if check.connected:
+                raise ArchitectureViolation("connected checks must not enter the full gate plan")
+            repository = repository_root / check.repository
+            if not repository.is_dir():
+                raise ArchitectureViolation(f"gate repository is unavailable: {repository}")
+            command = tuple(token.replace("{dist}", str(dist)) for token in check.command)
+            completed = subprocess.run(
+                command,
+                cwd=repository,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if completed.returncode:
+                detail = completed.stdout + completed.stderr
+                raise ArchitectureViolation(
+                    f"{check.owner} {check.category} gate failed:\n{detail}"
+                )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--run-fixtures", action="store_true")
+    parser.add_argument("--run-full-gates", action="store_true")
     arguments = parser.parse_args(argv)
     try:
         validate_constitution()
         scan_sources(arguments.repository_root)
         if arguments.run_fixtures:
             run_fixture_checks(arguments.repository_root)
+        if arguments.run_full_gates:
+            run_full_gate_checks(arguments.repository_root)
     except ArchitectureViolation as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
-    print(json.dumps({"ok": True, "fixtures": arguments.run_fixtures}))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "fixtures": arguments.run_fixtures,
+                "full_gates": arguments.run_full_gates,
+            }
+        )
+    )
     return 0
 
 

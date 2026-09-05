@@ -19,6 +19,13 @@ REPOSITORIES = (
     "apex-research",
     "strategy-reporting",
 )
+INSTALLED_ACCEPTANCE_TESTS = (
+    "tests/test_evidence_v2.py",
+    (
+        "tests/test_behavioral_gate.py::"
+        "test_governed_behavioral_gate_uses_runtime_conformance_without_live_engines"
+    ),
+)
 
 
 class TracerFailure(RuntimeError):
@@ -82,6 +89,25 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         )
         environment = dict(os.environ)
         environment.pop("PYTHONPATH", None)
+        _run(
+            ["uv", "pip", "install", "--python", str(python), "pytest>=8.3,<9"],
+            cwd=isolated,
+            environment=environment,
+        )
+        _run(
+            [
+                str(python),
+                "-m",
+                "pytest",
+                "-q",
+                *(
+                    str(root / "apex-research" / target)
+                    for target in INSTALLED_ACCEPTANCE_TESTS
+                ),
+            ],
+            cwd=isolated,
+            environment=environment,
+        )
         output = _run(
             [
                 str(python),
@@ -100,6 +126,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             raise TracerFailure(f"installed tracer emitted invalid JSON: {output}") from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
+        result["installed_acceptance_tests"] = list(INSTALLED_ACCEPTANCE_TESTS)
         return result
 
 
