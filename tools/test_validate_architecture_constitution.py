@@ -227,6 +227,32 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_015_historical_research_maturity_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("WorkspaceClient", candidate["public_seam"])
+        self.assertIn("historical research maturity", candidate["identity_impact"])
+        self.assertIn("Evidence v2", candidate["evidence_level"])
+        self.assertIn("existing governance", candidate["fail_closed_behavior"])
+        self.assertIn("currency", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(
+            candidate["lifecycle_states"],
+            [
+                "idea",
+                "experimental",
+                "formally_tested",
+                "research_validated",
+                "robustness_validated",
+                "research_qualified",
+                "retired",
+            ],
+        )
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
             validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)

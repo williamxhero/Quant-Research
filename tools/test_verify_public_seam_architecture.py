@@ -244,6 +244,50 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
 
+    def test_spec015_guard_accepts_only_the_scoped_apex_historical_maturity_seam(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            apex.mkdir(parents=True)
+            (apex / "qualification.py").write_text(
+                "from enum import StrEnum\n"
+                "class QualificationState(StrEnum):\n"
+                "    IDEA = 'idea'\n"
+                "    EXPERIMENTAL = 'experimental'\n"
+                "    FORMALLY_TESTED = 'formally_tested'\n"
+                "    RESEARCH_VALIDATED = 'research_validated'\n"
+                "    ROBUSTNESS_VALIDATED = 'robustness_validated'\n"
+                "    RESEARCH_QUALIFIED = 'research_qualified'\n"
+                "    RETIRED = 'retired'\n"
+                "class QualificationPolicy: pass\n"
+                "class QualificationService:\n"
+                "    def publish(self, workspace, governance):\n"
+                "        governance.execute(None, None)\n"
+                "        workspace.publish_record({})\n"
+                "        workspace.get_record('id')\n"
+                "scope = 'historical_research_maturity'\n"
+                "operational_authority = 'forbidden'\n"
+                "EXPLANATION = 'Active and live are explicitly not granted here.'\n",
+                encoding="utf-8",
+            )
+
+            verifier.scan_sources(root)
+
+    def test_spec015_guard_rejects_a_second_qualification_ledger(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            apex.mkdir(parents=True)
+            (apex / "qualification.py").write_text(
+                "class QualificationLedger: pass\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "parallel qualification owner"
+            ):
+                verifier.scan_sources(root)
+
     def test_statistical_control_rejects_parallel_execution_and_truth(self) -> None:
         required = """
 class StatisticalControlPolicy: pass

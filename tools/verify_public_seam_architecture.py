@@ -289,6 +289,118 @@ def scan_sources(repository_root: Path) -> None:
     _scan_validation_matrix_seams(repository_root / "apex-research")
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
+    _scan_spec015_qualification_seam(repository_root / "apex-research")
+
+
+def _scan_spec015_qualification_seam(repository: Path) -> None:
+    qualification = repository / "src" / "apex_research" / "qualification.py"
+    if not qualification.is_file():
+        return
+    tree = ast.parse(qualification.read_text(encoding="utf-8"), filename=str(qualification))
+    classes = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    for name in classes:
+        if name != "QualificationService" and any(
+            marker in name for marker in ("Ledger", "Registry", "Runner", "Backtester")
+        ):
+            raise ArchitectureViolation(
+                f"apex-research: parallel qualification owner {name}: {qualification}"
+            )
+    required_classes = {"QualificationState", "QualificationPolicy", "QualificationService"}
+    missing = required_classes - set(classes)
+    if missing:
+        raise ArchitectureViolation(
+            "apex-research: qualification seam lacks public classes "
+            + ", ".join(sorted(missing))
+        )
+
+    forbidden_imports = {
+        "sqlite3": "second governance ledger",
+        "quant_runtime": "Runtime implementation access",
+        "strategy_reporting": "presentation ownership",
+        "strategy_workspace.core": "private Workspace access",
+        "strategy_workspace.storage": "private Workspace access",
+    }
+    for node in ast.walk(tree):
+        modules = (
+            [alias.name for alias in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+            if isinstance(node, ast.ImportFrom)
+            else []
+        )
+        for module in modules:
+            for prefix, reason in forbidden_imports.items():
+                if module == prefix or module.startswith(prefix + "."):
+                    raise ArchitectureViolation(
+                        f"apex-research: qualification owns forbidden {reason}: {qualification}"
+                    )
+        if isinstance(node, ast.Call):
+            call = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else node.func.id
+                if isinstance(node.func, ast.Name)
+                else ""
+            )
+            if call in {"list_records", "submit_run"}:
+                raise ArchitectureViolation(
+                    f"apex-research: qualification uses forbidden call {call}: {qualification}"
+                )
+
+    calls = {
+        node.func.attr
+        if isinstance(node.func, ast.Attribute)
+        else node.func.id
+        if isinstance(node.func, ast.Name)
+        else ""
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    for required in ("execute", "get_record", "publish_record"):
+        if required not in calls:
+            raise ArchitectureViolation(
+                f"apex-research: qualification seam lacks {required}: {qualification}"
+            )
+
+    state_class = classes["QualificationState"]
+    state_values = {
+        node.value.value
+        for node in state_class.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    }
+    expected_states = {
+        "idea",
+        "experimental",
+        "formally_tested",
+        "research_validated",
+        "robustness_validated",
+        "research_qualified",
+        "retired",
+    }
+    if state_values != expected_states:
+        raise ArchitectureViolation("apex-research: qualification maturity states drifted")
+
+    strings = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    if "historical_research_maturity" not in strings or "forbidden" not in strings:
+        raise ArchitectureViolation(
+            "apex-research: qualification lacks historical maturity-only semantics"
+        )
+    policy = classes["QualificationPolicy"]
+    field_names = {
+        node.target.id
+        for node in policy.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
+    if field_names & {"current", "currency", "approved", "active", "tradable", "live"}:
+        raise ArchitectureViolation(
+            "apex-research: qualification policy declares non-historical authority fields"
+        )
 
 
 def _scan_spec014_evidence_seams(repository_root: Path) -> None:
