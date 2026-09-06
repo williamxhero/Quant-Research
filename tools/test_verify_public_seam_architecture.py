@@ -1074,6 +1074,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 (
                     accepted.replace(
                         "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of'), (value.predecessor.record, 'evaluation-' + 'of')]}",
+                    ),
+                    "lineage relation is invalid",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
                         "def _held_publication(value): return {'lineage': [(value.candidate, 'evaluation-of')]}",
                     ),
                     "lineage relation is invalid",
@@ -1870,6 +1877,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "def save(workspace):\n"
                     "    payload={'record_type': 'apex-research.qualification-decision.v1'}\n"
                     "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "def save(workspace, fields):\n"
+                    "    workspace.publish_record(dict(record_type="
+                    "'apex-research.qualification-decision.v1', **fields))\n"
                 ),
                 (
                     "def save(workspace):\n"

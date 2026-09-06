@@ -3721,14 +3721,24 @@ def _scan_spec015_qualification_seam(
                 if len(relation_assignments) == 1
                 else None
             )
+
+        def constant_relation(value: ast.AST) -> str | None:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                return value.value
+            if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                left = constant_relation(value.left)
+                right = constant_relation(value.right)
+                if left is not None and right is not None:
+                    return left + right
+            return None
+
         returned_relations = (
             [
-                (node.elts[1].value, node.elts[0])
+                (relation, node.elts[0])
                 for node in ast.walk(returned_expression)
                 if isinstance(node, (ast.Tuple, ast.List))
                 and len(node.elts) >= 2
-                and isinstance(node.elts[1], ast.Constant)
-                and isinstance(node.elts[1].value, str)
+                and (relation := constant_relation(node.elts[1])) is not None
             ]
             if returned_expression is not None
             else []
@@ -4069,16 +4079,29 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 ):
                     return True
                 return any(
-                    isinstance(candidate, ast.Dict)
-                    and any(
-                        isinstance(key, ast.Constant)
-                        and key.value in {"record_type", "schema_id"}
-                        and (semantic_type := constant_text(item)) is not None
-                        and semantic_type.startswith("apex-research.qualification-")
-                        for key, item in zip(
-                            candidate.keys, candidate.values, strict=True
+                    (
+                        isinstance(candidate, ast.Dict)
+                        and any(
+                            isinstance(key, ast.Constant)
+                            and key.value in {"record_type", "schema_id"}
+                            and (semantic_type := constant_text(item)) is not None
+                            and semantic_type.startswith("apex-research.qualification-")
+                            for key, item in zip(
+                                candidate.keys, candidate.values, strict=True
+                            )
+                            if key is not None
                         )
-                        if key is not None
+                    )
+                    or (
+                        isinstance(candidate, ast.Call)
+                        and isinstance(candidate.func, ast.Name)
+                        and candidate.func.id == "dict"
+                        and any(
+                            item.arg in {"record_type", "schema_id"}
+                            and (semantic_type := constant_text(item.value)) is not None
+                            and semantic_type.startswith("apex-research.qualification-")
+                            for item in candidate.keywords
+                        )
                     )
                     for candidate in ast.walk(value)
                 )
