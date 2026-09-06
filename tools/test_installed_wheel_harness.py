@@ -95,6 +95,38 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             self.assertEqual(topology["source_files"], ["src/package/__init__.py"])
             self.assertEqual(len(topology["source_fingerprint"]), 64)
 
+    def test_verify_source_topology_attests_a_non_package_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / "quant-research"
+            tools = repository / "tools"
+            tools.mkdir(parents=True)
+            (tools / "tracer.py").write_text("VALUE = 1\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "init"], cwd=repository, check=True, capture_output=True
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=repository,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"], cwd=repository, check=True
+            )
+            subprocess.run(
+                ["git", "add", "tools/tracer.py"], cwd=repository, check=True
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "root"],
+                cwd=repository,
+                check=True,
+                capture_output=True,
+            )
+
+            topology = harness.verify_source_topology(repository, dict(os.environ))
+
+            self.assertEqual(topology["source_files"], ["tools/tracer.py"])
+            self.assertEqual(len(topology["source_fingerprint"]), 64)
+
     def test_source_topology_includes_declared_force_includes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repository = Path(temporary)

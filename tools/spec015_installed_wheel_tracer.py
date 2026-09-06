@@ -452,6 +452,23 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         _assert_snapshot_trees(
             snapshot_root, repositories, snapshot_trees, phase="installed smoke"
         )
+        final_source_topology = {
+            repository: verify_source_topology(path, environment)
+            for repository, path in repositories.items()
+        }
+        if final_source_topology != source_topology:
+            raise TracerFailure(
+                "repository source topology raced during installed execution"
+            )
+        final_unchanged_sources = verify_unchanged_sources(
+            repository_root,
+            UNCHANGED_SOURCE_BASELINES,
+            environment,
+        )
+        if final_unchanged_sources != unchanged_sources:
+            raise TracerFailure(
+                "unchanged repository source identity raced during installed execution"
+            )
         result["repositories"] = list(repositories)
         result["installed_tests"] = [
             f"{repository}/{target}"

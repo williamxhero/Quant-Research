@@ -688,7 +688,11 @@ def verify_source_topology(
         require_git=environment is not None,
         environment=environment,
     )
-    source_files = _source_build_inputs(repository)
+    source_files = (
+        _source_build_inputs(repository)
+        if (repository / "pyproject.toml").is_file() or environment is None
+        else []
+    )
     result: dict[str, object] = {
         "source_files": source_files,
         "source_fingerprint": _source_fingerprint(repository, source_files),
@@ -810,7 +814,9 @@ def _validated_repository_path(
             project_name = project.get("name") if isinstance(project, dict) else None
             if isinstance(project_name, str) and project_name.lower().replace(
                 "_", "-"
-            ) != (resolved.name.lower().replace("_", "-")):
+            ) != (
+                (unresolved.name if linked else resolved.name).lower().replace("_", "-")
+            ):
                 raise InstalledWheelFailure(
                     f"repository project identity does not match its root: {unresolved}"
                 )
