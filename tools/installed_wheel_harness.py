@@ -83,6 +83,7 @@ def _run_command(
             cwd=cwd,
             env=environment,
             text=True,
+            encoding="utf-8" if Path(command[0]).stem.lower() == "git" else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=creationflags,
@@ -642,7 +643,7 @@ def verify_unchanged_sources(
         )
         tracked = set(
             run_command(
-                ["git", "ls-files", "--", *build_roots],
+                ["git", "-c", "core.quotepath=false", "ls-files", "--", *build_roots],
                 cwd=cwd,
                 environment=environment,
                 timeout_seconds=30,
@@ -709,7 +710,7 @@ def verify_source_topology(
                 f"wheel source repository is not a Git work tree: {repository}"
             )
         index_lines = run_command(
-            ["git", "ls-files", "-v"],
+            ["git", "-c", "core.quotepath=false", "ls-files", "-v"],
             cwd=repository,
             environment=environment,
             timeout_seconds=30,
@@ -736,7 +737,7 @@ def verify_source_topology(
         )
         tracked = set(
             run_command(
-                ["git", "ls-files"],
+                ["git", "-c", "core.quotepath=false", "ls-files"],
                 cwd=repository,
                 environment=environment,
                 timeout_seconds=30,
@@ -755,7 +756,14 @@ def verify_source_topology(
                 "repository has untracked wheel build inputs: " + ", ".join(untracked)
             )
         unexpected = run_command(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            [
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+            ],
             cwd=repository,
             environment=environment,
             timeout_seconds=30,

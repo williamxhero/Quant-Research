@@ -101,6 +101,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             tools = repository / "tools"
             tools.mkdir(parents=True)
             (tools / "tracer.py").write_text("VALUE = 1\n", encoding="utf-8")
+            (repository / "说明.md").write_text("验收\n", encoding="utf-8")
             subprocess.run(
                 ["git", "init"], cwd=repository, check=True, capture_output=True
             )
@@ -113,7 +114,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 ["git", "config", "user.name", "Test"], cwd=repository, check=True
             )
             subprocess.run(
-                ["git", "add", "tools/tracer.py"], cwd=repository, check=True
+                ["git", "add", "tools/tracer.py", "说明.md"], cwd=repository, check=True
             )
             subprocess.run(
                 ["git", "commit", "-m", "root"],
@@ -124,7 +125,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
 
             topology = harness.verify_source_topology(repository, dict(os.environ))
 
-            self.assertEqual(topology["source_files"], ["tools/tracer.py"])
+            self.assertEqual(topology["source_files"], ["tools/tracer.py", "说明.md"])
             self.assertEqual(len(topology["source_fingerprint"]), 64)
 
     def test_source_topology_includes_declared_force_includes(self) -> None:
