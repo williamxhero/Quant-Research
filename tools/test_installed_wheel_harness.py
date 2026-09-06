@@ -55,6 +55,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         self.assertFalse(any(name.startswith("HATCH_") for name in environment))
         self.assertNotIn("SOURCE_DATE_EPOCH", environment)
         self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
+        self.assertEqual(environment["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertEqual(environment["KEEP"], "yes")
 
     def test_run_command_wraps_process_launch_failures(self) -> None:
@@ -203,9 +204,33 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 process,
                 job_handle=None,
                 descendant_pids={200: 11, 201: 33},
+                process_start_time=44,
             )
 
         kill.assert_called_once_with(201, 9)
+
+    def test_posix_cleanup_reaps_only_newly_adopted_subreaper_children(self) -> None:
+        parent = os.getpid()
+        process_map = {
+            200: (parent, 11),
+            201: (parent, 22),
+        }
+        with (
+            mock.patch.object(harness.os, "name", "posix"),
+            mock.patch.object(harness.os, "kill") as kill,
+            mock.patch.object(harness.os, "WNOHANG", 1, create=True),
+            mock.patch.object(harness.signal, "SIGKILL", 9, create=True),
+            mock.patch.object(
+                harness,
+                "_posix_process_map",
+                return_value=process_map,
+            ),
+            mock.patch.object(harness.os, "waitpid"),
+        ):
+            harness._kill_owned_subreaper_children({}, {200: 11})
+
+        self.assertEqual(kill.call_count, 4)
+        self.assertEqual({call.args[0] for call in kill.call_args_list}, {201})
 
     def test_source_topology_attests_tests_and_rejects_a_dirty_test(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

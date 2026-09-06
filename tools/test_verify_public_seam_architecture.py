@@ -211,6 +211,17 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             baseline_only,
             {"strategy_workspace", "quant_runtime", "strategy_reporting"},
         )
+        source_attestations = {
+            item.owner: item for item in plan if item.category == "spec015-source-diff"
+        }
+        self.assertEqual(
+            set(source_attestations),
+            {"strategy_workspace", "quant_runtime", "strategy_reporting"},
+        )
+        for item in source_attestations.values():
+            self.assertTrue(item.baseline_only)
+            self.assertEqual(item.command[:3], ("git", "diff", "--quiet"))
+            self.assertEqual(item.command[-2:], ("--", "src"))
         runtime_pytest = next(
             item
             for item in plan
@@ -589,15 +600,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "from enum import StrEnum\n"
                 "def canonical_sha256(value): return 'id'\n"
                 "def verify_publication(*values, **options): pass\n"
-                "ActionReservation = object\n"
-                "CampaignLedgerReader = object\n"
+                "from apex_research.governance import ActionReservation, CampaignLedgerReader, GovernanceCoordinator, GovernedAction\n"
                 "class CandidateRecordReader:\n"
                 "    def __init__(self, workspace): pass\n"
                 "    def read(self, value): return value\n"
                 "class EvidenceV2Publisher:\n"
                 "    def __init__(self, workspace): pass\n"
                 "    def read(self, value): return value\n"
-                "class GovernedAction: QUALIFICATION_PUBLICATION='qualification_publication'\n"
                 "class QualificationState(StrEnum):\n"
                 "    IDEA = 'idea'\n"
                 "    EXPERIMENTAL = 'experimental'\n"
@@ -607,28 +616,36 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    RESEARCH_QUALIFIED = 'research_qualified'\n"
                 "    RETIRED = 'retired'\n"
                 "class QualificationPolicy:\n"
-                "    schema_id: str; policy_id: str; campaign: object; strategy_class: str; revision: int; transitions: tuple; scope: str; operational_authority: str; supersedes: object\n"
+                "    schema_id: str; policy_id: str; campaign: object; strategy_class: str; revision: int; transitions: tuple; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'; supersedes: object\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return cls(policy_id=canonical_sha256(identity))\n"
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}\n"
+                "        return cls(policy_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluation:\n"
-                "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; supersedes_qualification: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str; operational_authority: str\n"
+                "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; supersedes_qualification: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return cls(evaluation_id=canonical_sha256(identity))\n"
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-evaluation.v1', **values}\n"
+                "        return cls(evaluation_id=canonical_sha256(identity))\n"
                 "class QualificationEvaluator:\n"
                 "    def __init__(self, workspace): self._workspace = workspace\n"
                 "    def evaluate(self, candidate, evidence):\n"
                 "        CandidateRecordReader(self._workspace).read(candidate)\n"
                 "        return EvidenceV2Publisher(self._workspace).read(evidence)\n"
                 "class QualificationDecision:\n"
-                "    schema_id: str; decision_id: str; evaluation: object; governance: object; scope: str; operational_authority: str\n"
+                "    schema_id: str; decision_id: str; evaluation: object; governance: object; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
-                "    def target_ref(cls, identity): return cls(record_id=canonical_sha256(identity))\n"
+                "    def target_ref(cls, evaluation):\n"
+                "        identity={'schema': 'apex-research.qualification-decision.v1', 'evaluation': evaluation, 'scope': 'historical_research_maturity', 'operational_authority': 'forbidden'}\n"
+                "        return cls(record_id=canonical_sha256(identity))\n"
                 "    @classmethod\n"
                 "    def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation).record_id)\n"
                 "class QualificationRetirementRequest:\n"
-                "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str; operational_authority: str\n"
+                "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
-                "    def create(cls, identity): return cls(retirement_id=canonical_sha256(identity))\n"
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-retirement-request.v1', **values}\n"
+                "        return cls(retirement_id=canonical_sha256(identity))\n"
                 "class QualificationRetirement:\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationHistoryReader: pass\n"
@@ -649,28 +666,32 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        try: complete(result.reservation, result.settlement)\n"
                 "        except Exception: return result\n"
                 "        return result\n"
-                "    def _require_governance(self): return self._governance\n"
+                "    def _require_governance(self) -> GovernanceCoordinator: return self._governance\n"
                 "def qualification_publication_scope(target): return (target,)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
+                "def _policy_publication(value): return {'lineage': []}\n"
+                "def _decision_publication(value): return {'lineage': [{'relation': 'successor-of'}]}\n"
+                "def _held_publication(value): return {'lineage': [{'relation': 'evaluation-of'}]}\n"
+                "def _retirement_publication(value): return {'lineage': [{'relation': 'successor-of'}]}\n"
                 "def _read_policy(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationPolicy.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n"
+                "    verify_publication(raw, _policy_publication(value))\n"
                 "    return value\n"
                 "def _read_decision(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationDecision.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n"
+                "    verify_publication(raw, _decision_publication(value))\n"
                 "    return value\n"
                 "def _read_held_evaluation(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationEvaluation.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n"
+                "    verify_publication(raw, _held_publication(value))\n"
                 "    return value\n"
                 "def _read_retirement(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationRetirement.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n"
+                "    verify_publication(raw, _retirement_publication(value))\n"
                 "    return value\n"
                 "def _query_lineage_records(workspace):\n"
                 "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
@@ -695,9 +716,6 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        cursor=next_cursor\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
-                "def _held_publication(): return ('evaluation-of',)\n"
-                "def _decision_publication(): return ('successor-of',)\n"
-                "def _retirement_publication(): return ('successor-of',)\n"
                 "EXPLANATION = 'Active and live are explicitly not granted here.'\n",
                 encoding="utf-8",
             )
@@ -716,9 +734,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             qualification = apex / "qualification.py"
             accepted = qualification.read_text(encoding="utf-8")
             masked_policy = accepted.replace(
-                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
-                "def create(cls, identity): canonical_sha256(identity); "
-                "return cls(policy_id='nondeterministic')",
+                "        return cls(policy_id=canonical_sha256(identity))",
+                "        canonical_sha256(identity)\n"
+                "        return cls(policy_id='nondeterministic')",
+                1,
             )
             qualification.write_text(masked_policy, encoding="utf-8")
             with self.assertRaisesRegex(
@@ -743,6 +762,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "parallel qualification owner",
                 ),
                 (
+                    accepted + "\ndef nested_owner():\n"
+                    "    Alias = QualificationService\n"
+                    "    class Mirror(Alias): pass\n",
+                    "parallel qualification owner",
+                ),
+                (
                     accepted.replace(
                         "return cls(policy_id=canonical_sha256(identity))",
                         "return (cls(policy_id=canonical_sha256(identity)), "
@@ -753,8 +778,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
-                        "    verify_publication(raw, value)\n    return value\n",
-                        "    verify_publication(raw, value)\n"
+                        "    verify_publication(raw, _policy_publication(value))\n"
+                        "    return value\n",
+                        "    verify_publication(raw, _policy_publication(value))\n"
                         "    object.__setattr__(value, 'policy_id', 'forged')\n"
                         "    return value\n",
                         1,
@@ -778,14 +804,76 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
-                        "def _held_publication(): return ('evaluation-of',)",
-                        "def _held_publication(): return ('successor-of',)",
+                        "        expected_resources = qualification_publication_scope(target)\n",
+                        "        GovernedAction = object()\n"
+                        "        expected_resources = qualification_publication_scope(target)\n",
+                        1,
+                    ),
+                    "governance types must come directly",
+                ),
+                (
+                    accepted.replace(
+                        "target=target, idempotency_key='slot'",
+                        "target=(_publish_record(self._workspace), target)[1], "
+                        "idempotency_key='slot'",
+                        1,
+                    ),
+                    "eagerly publishes before governance",
+                ),
+                (
+                    accepted.replace(
+                        "        governance = self._require_governance()\n",
+                        "        governance = self._require_governance()\n"
+                        "        governance = object()\n",
+                        1,
+                    ),
+                    "existing governance coordinator",
+                ),
+                (
+                    accepted.replace(
+                        "    raw=workspace.get_record('id')\n",
+                        "    raw=mirror.get_record('id')\n",
+                        1,
+                    ),
+                    "typed canonical readback _read_policy",
+                ),
+                (
+                    accepted.replace(
+                        "    verify_publication(raw, _policy_publication(value))\n",
+                        "    verify_publication(raw, disguise(value))\n",
+                        1,
+                    )
+                    + "\ndef disguise(value): return _policy_publication(value)\n",
+                    "typed canonical readback _read_policy",
+                ),
+                (
+                    accepted.replace(
+                        "        expected_resources = qualification_publication_scope(target)\n"
+                        "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
+                        "        if False:\n"
+                        "            expected_resources = qualification_publication_scope(target)\n"
+                        "            if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
+                    ),
+                    "action/resource contract is not exact",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(value): return {'lineage': [{'relation': 'evaluation-of'}]}",
+                        "def _held_publication(value): return {'lineage': [{'relation': 'successor-of'}]}",
                     ),
                     "lineage relation is invalid",
                 ),
                 (
                     accepted + "\nclass QualificationAuthority:\n    live: bool\n",
                     "non-historical authority fields",
+                ),
+                (
+                    accepted.replace(
+                        "scope: str = 'historical_research_maturity'",
+                        "scope: str = 'current'",
+                        1,
+                    ),
+                    "historical maturity-only semantics",
                 ),
                 (
                     accepted.replace(
@@ -800,15 +888,28 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             incomplete_identity = accepted.replace(
-                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
-                "def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}",
                 "        identity={'schema': 'apex-research.qualification-policy.v1', "
-                "'campaign': values['campaign']}\n"
-                "        return cls(policy_id=canonical_sha256(identity))",
+                "'campaign': values['campaign']}",
+                1,
             )
             qualification.write_text(incomplete_identity, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "canonical identity omits"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            opaque_identity = accepted.replace(
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}\n"
+                "        return cls(policy_id=canonical_sha256(identity))",
+                "    def create(cls, identity):\n"
+                "        return cls(policy_id=canonical_sha256(identity))",
+                1,
+            )
+            qualification.write_text(opaque_identity, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "canonical identity"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -869,10 +970,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             disconnected_readback = accepted.replace(
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationPolicy.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n",
+                "    verify_publication(raw, _policy_publication(value))\n",
                 "    workspace.get_record('id')\n"
                 "    value=QualificationPolicy.model_validate_json('{}')\n"
-                "    verify_publication({}, value)\n",
+                "    verify_publication({}, _policy_publication(value))\n",
             )
             qualification.write_text(disconnected_readback, encoding="utf-8")
             with self.assertRaisesRegex(
@@ -881,8 +982,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             overwritten_readback = accepted.replace(
-                "    verify_publication(raw, value)\n",
-                "    raw={}\n    value={}\n    verify_publication(raw, value)\n",
+                "    verify_publication(raw, _policy_publication(value))\n",
+                "    raw={}\n    value={}\n"
+                "    verify_publication(raw, _policy_publication(value))\n",
                 1,
             )
             qualification.write_text(overwritten_readback, encoding="utf-8")
@@ -896,6 +998,35 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "if False: raise RuntimeError('cycle')",
             )
             qualification.write_text(no_cycle_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            malformed_cursor = accepted.replace(
+                "        if not isinstance(next_cursor, str) or not next_cursor: raise RuntimeError('invalid cursor')\n",
+                "        if False: raise RuntimeError('invalid cursor')\n",
+            )
+            qualification.write_text(malformed_cursor, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            late_cursor_guard = accepted.replace(
+                "        if not isinstance(next_cursor, str) or not next_cursor: raise RuntimeError('invalid cursor')\n"
+                "        if next_cursor in seen_cursors: raise RuntimeError('cycle')\n",
+                "        if next_cursor in seen_cursors: raise RuntimeError('cycle')\n"
+                "        if not isinstance(next_cursor, str) or not next_cursor: raise RuntimeError('invalid cursor')\n",
+            )
+            qualification.write_text(late_cursor_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            dead_query = accepted.replace("    while True:\n", "    while False:\n", 1)
+            qualification.write_text(dead_query, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "bounded snapshot pagination"
             ):
@@ -954,8 +1085,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             dead_identity = accepted.replace(
-                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
-                "def create(cls, identity):\n"
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}\n"
+                "        return cls(policy_id=canonical_sha256(identity))",
+                "    def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}\n"
                 "        if False: return cls(policy_id=canonical_sha256(identity))\n"
                 "        return cls(policy_id='forged')",
             )
@@ -976,8 +1110,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             dead_readback = accepted.replace(
-                "    verify_publication(raw, value)\n",
-                "    if False: verify_publication(raw, value)\n",
+                "    verify_publication(raw, _policy_publication(value))\n",
+                "    if False: verify_publication(raw, _policy_publication(value))\n",
                 1,
             )
             qualification.write_text(dead_readback, encoding="utf-8")
@@ -997,8 +1131,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
             for corrupted_readback in (
                 accepted.replace(
-                    "    verify_publication(raw, value)\n",
-                    "    verify_publication(value, value)\n",
+                    "    verify_publication(raw, _policy_publication(value))\n",
+                    "    verify_publication(value, _policy_publication(value))\n",
                     1,
                 ),
                 accepted.replace(
@@ -1012,19 +1146,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     1,
                 ),
                 accepted.replace(
-                    "    verify_publication(raw, value)\n",
-                    "    verify_publication(raw, (value, object())[1])\n",
+                    "    verify_publication(raw, _policy_publication(value))\n",
+                    "    verify_publication(raw, _policy_publication((value, object())[1]))\n",
                     1,
                 ),
                 accepted.replace(
-                    "    verify_publication(raw, value)\n",
-                    "    verify_publication(raw, value)\n    if opaque: value={}\n",
+                    "    verify_publication(raw, _policy_publication(value))\n",
+                    "    verify_publication(raw, _policy_publication(value))\n"
+                    "    if opaque: value={}\n",
                     1,
                 ),
                 accepted.replace(
-                    "    verify_publication(raw, value)\n",
+                    "    verify_publication(raw, _policy_publication(value))\n",
                     "    raw, value = {}, object()\n"
-                    "    verify_publication(raw, value)\n",
+                    "    verify_publication(raw, _policy_publication(value))\n",
                     1,
                 ),
             ):
@@ -1414,6 +1549,28 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "    payload={}\n"
                     "    payload['record_type']='apex-research.qualification-decision.v1'\n"
                     "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "SCHEMA='apex-research.qualification-decision.v1'\n"
+                    "def save(workspace):\n"
+                    "    payload={'record_type': SCHEMA}\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def make(value):\n"
+                    "    local=QualificationDecision(value)\n"
+                    "    return local\n"
+                    "def save(workspace, value): workspace.publish_record(make(value))\n"
+                ),
+                (
+                    "from apex_research import QualificationDecision\n"
+                    "def save(workspace, value):\n"
+                    "    publication={}\n"
+                    "    try:\n"
+                    "        publication=QualificationDecision(value)\n"
+                    "    finally:\n"
+                    "        workspace.publish_record(publication)\n"
                 ),
                 (
                     "from apex_research import QualificationDecision\n"

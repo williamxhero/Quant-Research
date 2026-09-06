@@ -100,21 +100,36 @@ STABLE_BEHAVIORAL_TESTS = (
 IDENTITY_TRANSCRIPT_PREFIX = "SPEC015_IDENTITY_TRANSCRIPT="
 HEX_ID = re.compile(r"[0-9a-f]{64}\Z")
 IDENTITY_TRANSCRIPT_FIELDS = {
-    "policy": {"campaign_id", "policy_id"},
+    "policy": {
+        "campaign_id",
+        "policy_id",
+        "reservation_id",
+        "settlement_id",
+    },
     "qualified-chain": {
         "candidate_id",
         "evidence_id",
         "policy_id",
         "decision_ids",
+        "decision_reservation_ids",
+        "decision_settlement_ids",
         "terminal_state",
     },
     "held-successor-retirement": {
         "candidate_id",
         "policy_id",
         "held_evaluation_id",
+        "held_reservation_id",
+        "held_settlement_id",
         "revised_held_evaluation_id",
+        "revised_held_reservation_id",
+        "revised_held_settlement_id",
         "decision_id",
+        "decision_reservation_id",
+        "decision_settlement_id",
         "retirement_id",
+        "retirement_reservation_id",
+        "retirement_settlement_id",
         "terminal_state",
     },
 }
@@ -163,7 +178,11 @@ def _validated_identity_transcript(
         for key, value in identities.items():
             if key == "terminal_state":
                 continue
-            if key == "decision_ids":
+            if key in {
+                "decision_ids",
+                "decision_reservation_ids",
+                "decision_settlement_ids",
+            }:
                 if (
                     not isinstance(value, list)
                     or len(value) != 5
@@ -181,11 +200,64 @@ def _validated_identity_transcript(
                     "stable installed identity transcript payload is invalid"
                 )
         validated.append({"label": label, "identities": identities})
+    by_label = {str(item["label"]): item["identities"] for item in validated}
+    policy = by_label["policy"]
+    qualified = by_label["qualified-chain"]
+    held = by_label["held-successor-retirement"]
+    if not (
+        policy["policy_id"] == qualified["policy_id"] == held["policy_id"]
+        and qualified["candidate_id"] == held["candidate_id"]
+    ):
+        raise TracerFailure(
+            "stable installed identity transcript relationships drifted"
+        )
+    domain_ids = [
+        qualified["evidence_id"],
+        *qualified["decision_ids"],
+        held["held_evaluation_id"],
+        held["revised_held_evaluation_id"],
+        held["decision_id"],
+        held["retirement_id"],
+    ]
+    governance_ids = [
+        policy["reservation_id"],
+        policy["settlement_id"],
+        *qualified["decision_reservation_ids"],
+        *qualified["decision_settlement_ids"],
+        held["held_reservation_id"],
+        held["held_settlement_id"],
+        held["revised_held_reservation_id"],
+        held["revised_held_settlement_id"],
+        held["decision_reservation_id"],
+        held["decision_settlement_id"],
+        held["retirement_reservation_id"],
+        held["retirement_settlement_id"],
+    ]
+    if (
+        len(domain_ids) != len(set(domain_ids))
+        or len(governance_ids) != len(set(governance_ids))
+        or set(domain_ids) & set(governance_ids)
+    ):
+        raise TracerFailure("stable installed identity transcript cardinality drifted")
     return sorted(validated, key=lambda value: str(value["label"]))
+
+
+def _snapshot_tree_identity(repository: Path) -> dict[str, object]:
+    files: list[str] = []
+    for path in sorted(repository.rglob("*")):
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+            raise TracerFailure(f"attested snapshot contains a link: {path}")
+        if path.is_file():
+            files.append(path.relative_to(repository).as_posix())
+    return {
+        "files": files,
+        "fingerprint": source_fingerprint(repository, files),
+    }
 
 
 def build_and_run(repository_root: Path) -> dict[str, Any]:
     repository_root = repository_root.resolve()
+    root_repository = Path(__file__).resolve().parents[1]
     for repository in PACKAGE_REPOSITORIES:
         if not (repository_root / repository / "pyproject.toml").is_file():
             raise TracerFailure(f"repository is unavailable: {repository}")
@@ -194,11 +266,16 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         environment = sanitized_environment()
         dist = isolated / "dist"
         dist.mkdir()
+        repositories = {
+            "quant-research": root_repository,
+            **{
+                repository: repository_root / repository
+                for repository in PACKAGE_REPOSITORIES
+            },
+        }
         source_topology = {
-            repository: verify_source_topology(
-                repository_root / repository, environment
-            )
-            for repository in PACKAGE_REPOSITORIES
+            repository: verify_source_topology(path, environment)
+            for repository, path in repositories.items()
         }
         unchanged_sources = verify_unchanged_sources(
             repository_root,
@@ -207,9 +284,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         )
         snapshot_root = isolated / "source-snapshot"
         snapshot_root.mkdir()
-        for repository in PACKAGE_REPOSITORIES:
+        for repository, path in repositories.items():
             snapshot_repository(
-                repository_root / repository,
+                path,
                 snapshot_root / repository,
                 source_topology[repository]["source_files"],
             )
@@ -218,7 +295,18 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 snapshot_root / repository,
                 source_topology[repository]["source_files"],
             )
-            for repository in PACKAGE_REPOSITORIES
+            for repository in repositories
+        }
+        if snapshot_fingerprints != {
+            repository: source_topology[repository]["source_fingerprint"]
+            for repository in repositories
+        }:
+            raise TracerFailure(
+                "build snapshot does not match initial source attestation"
+            )
+        snapshot_trees = {
+            repository: _snapshot_tree_identity(snapshot_root / repository)
+            for repository in repositories
         }
         wheels = build_wheels(
             snapshot_root,
@@ -226,19 +314,14 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             dist,
             environment,
         )
-        if snapshot_fingerprints != {
-            repository: source_fingerprint(
-                snapshot_root / repository,
-                source_topology[repository]["source_files"],
-            )
-            for repository in PACKAGE_REPOSITORIES
+        if snapshot_trees != {
+            repository: _snapshot_tree_identity(snapshot_root / repository)
+            for repository in repositories
         }:
             raise TracerFailure("attested build snapshot mutated during wheel build")
         source_topology_after_build = {
-            repository: verify_source_topology(
-                repository_root / repository, environment
-            )
-            for repository in PACKAGE_REPOSITORIES
+            repository: verify_source_topology(path, environment)
+            for repository, path in repositories.items()
         }
         if source_topology_after_build != source_topology:
             raise TracerFailure("repository source topology raced during wheel build")
@@ -321,9 +404,14 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             [
                 str(python),
                 "-I",
-                str(Path(__file__).resolve()),
+                str(
+                    snapshot_root
+                    / "quant-research"
+                    / "tools"
+                    / "spec015_installed_wheel_tracer.py"
+                ),
                 "--repository-root",
-                str(repository_root),
+                str(snapshot_root),
                 "--smoke-root",
                 str(isolated / "workspace-import-smoke"),
             ],
@@ -339,7 +427,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             ) from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
-        result["repositories"] = ["quant-research", *PACKAGE_REPOSITORIES]
+        result["repositories"] = list(repositories)
         result["installed_tests"] = [
             f"{repository}/{target}"
             for repository, targets in INSTALLED_TESTS

@@ -45,6 +45,7 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
         if name.startswith(("GIT_", "HATCH_", "UV_")) or name == "SOURCE_DATE_EPOCH":
             environment.pop(name)
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return environment
 
 
@@ -92,6 +93,11 @@ def _run_command(
             f"command could not start: {' '.join(command)}: {exc}"
         ) from exc
     job_handle: int | None = None
+    process_start_time = (
+        None
+        if os.name == "nt"
+        else _posix_process_map().get(process.pid, (None, None))[1]
+    )
     descendant_pids: dict[int, int] = {}
     tracker_stop: threading.Event | None = None
     tracker: threading.Thread | None = None
@@ -113,6 +119,7 @@ def _run_command(
             job_handle=job_handle,
             descendant_pids=dict(descendant_pids),
             subreaper_baseline=subreaper_baseline,
+            process_start_time=process_start_time,
         )
         _stop_descendant_tracker(tracker, tracker_stop)
         tracker = None
@@ -136,6 +143,7 @@ def _run_command(
             job_handle=job_handle,
             descendant_pids=dict(descendant_pids),
             subreaper_baseline=subreaper_baseline,
+            process_start_time=process_start_time,
         )
         _stop_descendant_tracker(tracker, tracker_stop)
         tracker = None
@@ -158,6 +166,7 @@ def _run_command(
                 job_handle=None,
                 descendant_pids=dict(descendant_pids),
                 subreaper_baseline=subreaper_baseline,
+                process_start_time=process_start_time,
             )
         _stop_descendant_tracker(tracker, tracker_stop)
     if process.returncode:
@@ -277,6 +286,7 @@ def _terminate_process_tree(
     job_handle: int | None,
     descendant_pids: dict[int, int] | None = None,
     subreaper_baseline: dict[int, int] | None = None,
+    process_start_time: int | None = None,
 ) -> None:
     if os.name == "nt":
         if job_handle is not None:
@@ -290,21 +300,17 @@ def _terminate_process_tree(
             timeout=30,
         )
         return
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    process_map = _posix_process_map()
-    for pid, start_time in (descendant_pids or {}).items():
-        if process_map.get(pid, (None, None))[1] != start_time:
-            continue
-        if _posix_process_map().get(pid, (None, None))[1] != start_time:
-            continue
+    if (
+        process_start_time is not None
+        and _posix_process_map().get(process.pid, (None, None))[1] == process_start_time
+    ):
         try:
-            os.kill(pid, signal.SIGKILL)
+            os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-    _kill_owned_subreaper_children(descendant_pids or {})
+    for pid, start_time in (descendant_pids or {}).items():
+        _kill_posix_identity(pid, start_time)
+    _kill_owned_subreaper_children(descendant_pids or {}, subreaper_baseline or {})
 
 
 def _prepare_posix_containment() -> dict[int, int]:
@@ -329,25 +335,54 @@ def _prepare_posix_containment() -> dict[int, int]:
     }
 
 
-def _kill_owned_subreaper_children(owned: dict[int, int]) -> None:
+def _kill_posix_identity(pid: int, start_time: int) -> None:
+    if _posix_process_map().get(pid, (None, None))[1] != start_time:
+        return
+    pidfd_open = getattr(os, "pidfd_open", None)
+    pidfd_send_signal = getattr(signal, "pidfd_send_signal", None)
+    if pidfd_open is not None and pidfd_send_signal is not None:
+        try:
+            descriptor = pidfd_open(pid)
+        except ProcessLookupError:
+            return
+        try:
+            if _posix_process_map().get(pid, (None, None))[1] == start_time:
+                pidfd_send_signal(descriptor, signal.SIGKILL)
+        finally:
+            os.close(descriptor)
+        return
+    if _posix_process_map().get(pid, (None, None))[1] != start_time:
+        return
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _kill_owned_subreaper_children(
+    owned: dict[int, int], baseline: dict[int, int]
+) -> None:
     if os.name == "nt":
         return
     for _ in range(4):
         process_map = _posix_process_map()
+        candidates = dict(owned)
+        candidates.update(
+            {
+                pid: start_time
+                for pid, (parent, start_time) in process_map.items()
+                if parent == os.getpid() and baseline.get(pid) != start_time
+            }
+        )
         children = {
-            pid
+            pid: start_time
             for pid, (parent, start_time) in process_map.items()
-            if parent == os.getpid() and owned.get(pid) == start_time
+            if pid in candidates and candidates[pid] == start_time
         }
         if not children:
             return
-        for pid in children:
-            if _posix_process_map().get(pid, (None, None))[1] != owned[pid]:
-                continue
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        for pid, start_time in children.items():
+            _kill_posix_identity(pid, start_time)
         for pid in children:
             try:
                 os.waitpid(pid, os.WNOHANG)
@@ -628,7 +663,9 @@ def verify_source_topology(
 ) -> dict[str, object]:
     """Fail closed on linked build inputs and attest the complete source topology."""
     repository = _validated_repository_path(
-        repository, require_git=environment is not None
+        repository,
+        require_git=environment is not None,
+        environment=environment,
     )
     source_files = _source_build_inputs(repository)
     result: dict[str, object] = {
@@ -721,25 +758,27 @@ def verify_source_topology(
     return result
 
 
-def _validated_repository_path(repository: Path, *, require_git: bool = False) -> Path:
+def _validated_repository_path(
+    repository: Path,
+    *,
+    require_git: bool = False,
+    environment: dict[str, str] | None = None,
+) -> Path:
     """Resolve only ordinary directories or verified sibling Git worktree links."""
     unresolved = Path(os.path.abspath(repository))
     linked = (
         unresolved.is_symlink() or getattr(unresolved, "is_junction", lambda: False)()
     )
     resolved = unresolved.resolve(strict=True)
-    if not linked and require_git:
-        completed = subprocess.run(
-            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=30,
-        )
-        if (
-            completed.returncode != 0
-            or Path(completed.stdout.strip()).resolve() != resolved
-        ):
+
+    def verify_git_root() -> None:
+        top_level = run_command(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=resolved,
+            environment=sanitized_environment(environment),
+            timeout_seconds=30,
+        ).strip()
+        if Path(top_level).resolve() != resolved:
             raise InstalledWheelFailure(
                 f"repository path is not an exact Git work-tree root: {unresolved}"
             )
@@ -754,6 +793,9 @@ def _validated_repository_path(repository: Path, *, require_git: bool = False) -
                 raise InstalledWheelFailure(
                     f"repository project identity does not match its root: {unresolved}"
                 )
+
+    if not linked and require_git:
+        verify_git_root()
         return resolved
     if not linked:
         return resolved
@@ -789,7 +831,9 @@ def _validated_repository_path(repository: Path, *, require_git: bool = False) -
         raise InstalledWheelFailure(
             f"repository worktree metadata does not point back to its link: {unresolved}"
         )
-    return unresolved
+    if require_git:
+        verify_git_root()
+    return resolved
 
 
 def _source_build_inputs(repository: Path) -> list[str]:
@@ -942,7 +986,11 @@ def snapshot_repository(
     repository: Path, destination: Path, source_files: Iterable[str]
 ) -> None:
     """Copy an attested repository closure into an isolated build snapshot."""
-    repository = _validated_repository_path(repository, require_git=True)
+    repository = _validated_repository_path(
+        repository,
+        require_git=True,
+        environment=sanitized_environment(),
+    )
     destination.mkdir(parents=True, exist_ok=False)
     for relative in source_files:
         source = repository / relative
