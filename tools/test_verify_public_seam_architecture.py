@@ -762,7 +762,11 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        return cls(retirement_id=canonical_sha256(identity))\n"
                 "class QualificationRetirement(FrozenModel):\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
-                "class QualificationHistoryReader: pass\n"
+                "class QualificationHistory(FrozenModel):\n"
+                "    candidate: object; state: object; decisions: tuple; held_evaluations: tuple; retirement: object; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
+                "class QualificationHistoryReader:\n"
+                "    def __init__(self, workspace): self._workspace = workspace\n"
+                "    def read(self, candidate): return read_qualification_history(self._workspace, candidate)\n"
                 "class QualificationPageCursor:\n"
                 "    current: str\n"
                 "class QualificationService:\n"
@@ -790,6 +794,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def _decision_publication(value): return {'lineage': [(value.evaluation.predecessor.record, 'successor-of')]}\n"
                 "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}\n"
                 "def _retirement_publication(value): return {'lineage': [(value.request.predecessor.record, 'successor-of')]}\n"
+                "def read_qualification_history(workspace, candidate):\n"
+                "    records = _query_lineage_records(workspace, candidate)\n"
+                "    decisions = _history_successors(records)\n"
+                "    held = _held_for(records)\n"
+                "    return QualificationHistory(candidate=candidate, state=QualificationState.IDEA, decisions=tuple(decisions), held_evaluations=tuple(held), retirement=None)\n"
+                "def _history_successors(records): return ()\n"
+                "def _held_for(records): return ()\n"
                 "def _read_policy(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationPolicy.model_validate_json(raw)\n"
@@ -1103,6 +1114,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                     "lacks _execute_publication",
                 ),
+                (
+                    accepted.replace(
+                        "    def read(self, candidate): return read_qualification_history(self._workspace, candidate)",
+                        "    def read(self, candidate): return None",
+                    ),
+                    "history reader is disconnected",
+                ),
             ):
                 qualification.write_text(bypass, encoding="utf-8")
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, message):
@@ -1221,6 +1239,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    verify_publication({}, _policy_publication(value))\n",
             )
             qualification.write_text(disconnected_readback, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "typed canonical readback _read_policy"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            early_readback = accepted.replace(
+                "    verify_publication(raw, _policy_publication(value))\n",
+                "    if raw: return value\n"
+                "    verify_publication(raw, _policy_publication(value))\n",
+                1,
+            )
+            qualification.write_text(early_readback, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "typed canonical readback _read_policy"
             ):

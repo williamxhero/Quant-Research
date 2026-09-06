@@ -740,6 +740,7 @@ def _scan_spec015_qualification_seam(
         "QualificationDecision",
         "QualificationEvaluation",
         "QualificationEvaluator",
+        "QualificationHistory",
         "QualificationHistoryReader",
         "QualificationPolicy",
         "QualificationRetirement",
@@ -972,6 +973,7 @@ def _scan_spec015_qualification_seam(
         "QualificationDecision",
         "QualificationEvaluation",
         "QualificationEvaluator",
+        "QualificationHistory",
         "QualificationHistoryReader",
         "QualificationPolicy",
         "QualificationRetirement",
@@ -1042,6 +1044,15 @@ def _scan_spec015_qualification_seam(
             "retirement_id",
             "request",
             "governance",
+        },
+        "QualificationHistory": {
+            "candidate",
+            "state",
+            "decisions",
+            "held_evaluations",
+            "retirement",
+            "scope",
+            "operational_authority",
         },
     }
     for class_name, expected_fields in required_fields.items():
@@ -2276,6 +2287,8 @@ def _scan_spec015_qualification_seam(
         ]
         returns_verified = (
             len(returns) == 1
+            and len([node for node in ast.walk(reader) if isinstance(node, ast.Return)])
+            == 1
             and isinstance(returns[0].value, ast.Name)
             and returns[0].value.id == typed_name
             and bool(verify_statements)
@@ -2494,6 +2507,83 @@ def _scan_spec015_qualification_seam(
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"
             )
+
+    history_reader = classes["QualificationHistoryReader"]
+    history_reader_methods = {
+        node.name: node
+        for node in history_reader.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    history_read = history_reader_methods.get("read")
+    history_read_returns = (
+        [node for node in history_read.body if isinstance(node, ast.Return)]
+        if history_read is not None
+        else []
+    )
+    history_function = functions.get("read_qualification_history")
+    history_calls = (
+        [node for node in ast.walk(history_function) if isinstance(node, ast.Call)]
+        if history_function is not None
+        else []
+    )
+    history_returns = (
+        [node for node in history_function.body if isinstance(node, ast.Return)]
+        if history_function is not None
+        else []
+    )
+    history_result = history_returns[0].value if len(history_returns) == 1 else None
+    history_keywords = (
+        {
+            item.arg: item.value
+            for item in history_result.keywords
+            if item.arg is not None
+        }
+        if isinstance(history_result, ast.Call)
+        and isinstance(history_result.func, ast.Name)
+        and history_result.func.id == "QualificationHistory"
+        else {}
+    )
+    history_call_names = {
+        node.func.id
+        if isinstance(node.func, ast.Name)
+        else node.func.attr
+        if isinstance(node.func, ast.Attribute)
+        else ""
+        for node in history_calls
+    }
+    query_calls = [
+        node
+        for node in history_calls
+        if isinstance(node.func, ast.Name)
+        and node.func.id == "_query_lineage_records"
+        and len(node.args) >= 2
+        and ast.unparse(node.args[0]) == "workspace"
+        and ast.unparse(node.args[1]) == "candidate"
+    ]
+    history_read_connected = (
+        len(history_read_returns) == 1
+        and isinstance(history_read_returns[0].value, ast.Call)
+        and isinstance(history_read_returns[0].value.func, ast.Name)
+        and history_read_returns[0].value.func.id == "read_qualification_history"
+        and [ast.unparse(item) for item in history_read_returns[0].value.args]
+        == ["self._workspace", "candidate"]
+    )
+    separated_history = (
+        {"decisions", "held_evaluations"} <= set(history_keywords)
+        and ast.unparse(history_keywords["decisions"])
+        != ast.unparse(history_keywords["held_evaluations"])
+        and {"_history_successors", "_held_for"} <= history_call_names
+    )
+    if (
+        not history_read_connected
+        or history_function is None
+        or len(query_calls) != 1
+        or not separated_history
+    ):
+        raise ArchitectureViolation(
+            "apex-research: qualification history reader is disconnected from "
+            "canonical state and held lineage"
+        )
 
     lineage_reader = functions.get("_query_lineage_records")
     lineage_calls = (
@@ -3644,6 +3734,7 @@ SPEC015_OWNER_CLASSES = {
     "QualificationDecision",
     "QualificationEvaluation",
     "QualificationEvaluator",
+    "QualificationHistory",
     "QualificationHistoryReader",
     "QualificationLedger",
     "QualificationPolicy",
