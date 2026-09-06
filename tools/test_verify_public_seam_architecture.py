@@ -1574,6 +1574,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "QualificationPublisher",
             "QualificationStateStore",
             "ResearchQualificationPublisher",
+            "CandidateTruth",
             "MaturityState",
             "MaturityService",
         )
@@ -1598,7 +1599,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source = root / "quant-runtime/src/quant_runtime/qualification.py"
             source.parent.mkdir(parents=True)
             source.write_text("def publish_policy(): pass\n", encoding="utf-8")
-            verifier._scan_spec015_non_owner_repositories(root)
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

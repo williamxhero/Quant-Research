@@ -3277,6 +3277,7 @@ SPEC015_MATURITY_OWNER_CLASSES = {
 SPEC015_PARALLEL_OWNER_CLASSES = {
     *SPEC015_OWNER_CLASSES,
     *SPEC015_MATURITY_OWNER_CLASSES,
+    "CandidateTruth",
     "QualificationPublisher",
     "QualificationStateStore",
     "ResearchQualificationPublisher",
@@ -3428,6 +3429,10 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     )
                 )
                 for node in ast.walk(tree)
+            ) or any(
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in SPEC015_OWNER_METHODS
+                for node in tree.body
             )
 
             def references_qualification_owner(
