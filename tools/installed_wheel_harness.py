@@ -590,7 +590,7 @@ raise SystemExit(exit_code)
     isolated_environment.pop("PYTHONPATH", None)
     isolated_environment["PYTHONSAFEPATH"] = "1"
     return run_command(
-        [str(python), "-I", "-c", launcher],
+        [str(python), "-I", "-B", "-c", launcher],
         cwd=cwd,
         environment=isolated_environment,
         timeout_seconds=timeout_seconds,

@@ -426,6 +426,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             [
                 str(python),
                 "-I",
+                "-B",
                 str(
                     snapshot_root
                     / "quant-research"

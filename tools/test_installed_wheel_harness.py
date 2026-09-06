@@ -19,6 +19,38 @@ SPEC.loader.exec_module(harness)
 
 
 class InstalledWheelHarnessTests(unittest.TestCase):
+    def test_installed_pytest_preserves_snapshot_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            isolated = Path(temporary)
+            snapshot = isolated / "snapshot"
+            snapshot.mkdir()
+            test_file = snapshot / "test_fixture.py"
+            test_file.write_text(
+                "def test_passes():\n    assert True\n", encoding="utf-8"
+            )
+
+            harness.run_installed_pytest(
+                Path(sys.executable),
+                (test_file,),
+                (),
+                (),
+                cwd=isolated,
+                environment=harness.sanitized_environment(),
+                timeout_seconds=30,
+            )
+
+            self.assertEqual(
+                sorted(
+                    path.relative_to(snapshot).as_posix()
+                    for path in snapshot.rglob("*")
+                ),
+                ["test_fixture.py"],
+            )
+            self.assertEqual(
+                test_file.read_text(encoding="utf-8"),
+                "def test_passes():\n    assert True\n",
+            )
+
     def test_sanitized_environment_removes_pytest_and_source_injection(self) -> None:
         environment = harness.sanitized_environment(
             {
