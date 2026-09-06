@@ -27,11 +27,57 @@ UNCHANGED_REPOSITORY_BASELINES = {
     "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
     "strategy-reporting": "255442a9291ca49a67e05afa0123e10e07aeb754",
 }
-SPEC015_CANONICAL_OWNER = "apex_research"
-SPEC015_REQUIRED_PUBLIC_SEAM_MARKERS = (
-    "Apex qualification policy",
-    "WorkspaceClient",
-)
+SPEC015_ADMISSION_CONTRACT = {
+    "schema": "quant-research.future-spec-admission.v1",
+    "spec": "SPEC-015",
+    "canonical_owner": "apex_research",
+    "public_seam": (
+        "Apex qualification policy, pure evaluator, and governed publisher / "
+        "WorkspaceClient immutable publication, canonical record readback, bounded "
+        "lineage query, registered Strategy Package lookup, and artifact verification"
+    ),
+    "identity_impact": (
+        "Policy, held evaluation, advancement, and retirement identities freeze one "
+        "exact Candidate revision, historical research maturity state, predecessor, "
+        "Evidence v2 revision, policy revision, requirement observations, owner "
+        "sources, thresholds, comparability rules, governance evidence, and lineage "
+        "while excluding publication timestamps, local paths, storage metadata, and "
+        "evidence currency."
+    ),
+    "evidence_level": (
+        "Apex-owned deterministic historical research maturity decisions over exact "
+        "Evidence v2 owner facts; no current evidence currency, Runtime single-run "
+        "truth, production approval, or operational authority is created."
+    ),
+    "fail_closed_behavior": (
+        "Require strict typed canonical owner readback and the existing governance "
+        "reservation and grant lifecycle for qualification publication; reject "
+        "skipped or regressive transitions, stale predecessors, multiple "
+        "state-changing successors, mandatory not_evaluated, blocked, incomparable, "
+        "stale, superseded, identity-mismatched, denominator-drifting, ownerless, or "
+        "currency-masquerading evidence without metric reconstruction, auxiliary-to-"
+        "formal substitution, a second ledger, or production-authority inference."
+    ),
+    "compatibility": [
+        "spec-006-governance",
+        "spec-009-candidate-gate",
+        "spec-012-validation-matrix",
+        "spec-013-statistical-control",
+        "spec-014-evidence-v2",
+        "spec-028-candidate-ir",
+        "spec-032-currency-separate",
+    ],
+    "claims": [],
+    "lifecycle_states": [
+        "idea",
+        "experimental",
+        "formally_tested",
+        "research_validated",
+        "robustness_validated",
+        "research_qualified",
+        "retired",
+    ],
+}
 
 
 class ArchitectureViolation(ValueError):
@@ -995,6 +1041,43 @@ def _scan_spec015_qualification_seam(
             raise ArchitectureViolation(
                 f"apex-research: {class_name} immutable identity fields drifted: "
                 + ", ".join(sorted(declared ^ expected_fields))
+            )
+
+    for class_name in required_fields:
+        class_node = classes[class_name]
+        source_tree = next(
+            tree for _, tree in subsystem_trees if class_node in tree.body
+        )
+        frozen_model_imported = any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "apex_research.records"
+            and any(
+                alias.name == "FrozenModel" and alias.asname in {None, "FrozenModel"}
+                for alias in node.names
+            )
+            for node in source_tree.body
+        )
+        frozen_model_rebound = any(
+            isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "FrozenModel"
+            or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+            and any(
+                "FrozenModel" in bound_names(target)
+                for target in (
+                    tuple(node.targets)
+                    if isinstance(node, ast.Assign)
+                    else (node.target,)
+                )
+            )
+            for node in source_tree.body
+        )
+        directly_frozen = any(
+            isinstance(base, ast.Name) and base.id == "FrozenModel"
+            for base in class_node.bases
+        )
+        if not frozen_model_imported or frozen_model_rebound or not directly_frozen:
+            raise ArchitectureViolation(
+                f"apex-research: {class_name} must be a frozen strict owner record"
             )
 
     service_methods = {
@@ -4798,19 +4881,9 @@ def validate_constitution() -> None:
             ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
         )
         validator.validate_candidate(candidate, policy)
-        if candidate["canonical_owner"] != SPEC015_CANONICAL_OWNER:
+        if candidate != SPEC015_ADMISSION_CONTRACT:
             raise validator.ConstitutionError(
-                "SPEC-015 canonical owner must remain apex_research"
-            )
-        public_seam = candidate["public_seam"]
-        missing_seams = [
-            marker
-            for marker in SPEC015_REQUIRED_PUBLIC_SEAM_MARKERS
-            if marker not in public_seam
-        ]
-        if missing_seams:
-            raise validator.ConstitutionError(
-                "SPEC-015 public seam must retain: " + ", ".join(missing_seams)
+                "SPEC-015 machine admission contract drifted"
             )
     except Exception as exc:
         raise ArchitectureViolation(

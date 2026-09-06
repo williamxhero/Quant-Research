@@ -61,10 +61,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.validate_constitution()
 
-    def test_spec015_admission_pins_the_apex_owner_and_workspace_seam(self) -> None:
+    def test_spec015_admission_pins_the_complete_machine_contract(self) -> None:
         for field, replacement in (
+            ("schema", "other-schema.v1"),
+            ("spec", "SPEC-999"),
             ("canonical_owner", "strategy_reporting"),
             ("public_seam", "not-workspace"),
+            ("identity_impact", "mutable current state"),
+            ("evidence_level", "current production approval"),
+            ("fail_closed_behavior", "allow"),
+            ("compatibility", ["unrelated"]),
+            ("claims", ["unrelated-claim"]),
+            ("lifecycle_states", ["idea"]),
         ):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
@@ -688,6 +696,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "from apex_research.canonical import canonical_sha256\n"
                 "from apex_research.evidence_workspace import verify_publication\n"
                 "from apex_research.governance import ActionReservation, CampaignLedgerReader, GovernanceCoordinator, GovernedAction\n"
+                "from apex_research.records import FrozenModel\n"
                 "class CandidateRecordReader:\n"
                 "    def __init__(self, workspace): pass\n"
                 "    def read(self, value): return value\n"
@@ -702,13 +711,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    ROBUSTNESS_VALIDATED = 'robustness_validated'\n"
                 "    RESEARCH_QUALIFIED = 'research_qualified'\n"
                 "    RETIRED = 'retired'\n"
-                "class QualificationPolicy:\n"
+                "class QualificationPolicy(FrozenModel):\n"
                 "    schema_id: str; policy_id: str; campaign: object; strategy_class: str; revision: int; transitions: tuple; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'; supersedes: object\n"
                 "    @classmethod\n"
                 "    def create(cls, **values):\n"
                 "        identity={'schema': 'apex-research.qualification-policy.v1', **values}\n"
                 "        return cls(policy_id=canonical_sha256(identity))\n"
-                "class QualificationEvaluation:\n"
+                "class QualificationEvaluation(FrozenModel):\n"
                 "    schema_id: str; evaluation_id: str; campaign: object; candidate: object; strategy_package: object; protocol: object; evidence: object; policy: object; predecessor: object; supersedes_qualification: object; from_state: object; to_state: object; requirements: tuple; blockers: tuple; disposition: str; reason: str; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
                 "    def create(cls, **values):\n"
@@ -719,7 +728,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    def evaluate(self, candidate, evidence):\n"
                 "        CandidateRecordReader(self._workspace).read(candidate)\n"
                 "        return EvidenceV2Publisher(self._workspace).read(evidence)\n"
-                "class QualificationDecision:\n"
+                "class QualificationDecision(FrozenModel):\n"
                 "    schema_id: str; decision_id: str; evaluation: object; governance: object; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
                 "    def target_ref(cls, evaluation):\n"
@@ -727,13 +736,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        return cls(record_id=canonical_sha256(identity))\n"
                 "    @classmethod\n"
                 "    def create(cls, evaluation): return cls(decision_id=cls.target_ref(evaluation).record_id)\n"
-                "class QualificationRetirementRequest:\n"
+                "class QualificationRetirementRequest(FrozenModel):\n"
                 "    schema_id: str; retirement_id: str; campaign: object; candidate: object; policy: object; evidence: object; predecessor: object; reason: str; scope: str = 'historical_research_maturity'; operational_authority: str = 'forbidden'\n"
                 "    @classmethod\n"
                 "    def create(cls, **values):\n"
                 "        identity={'schema': 'apex-research.qualification-retirement-request.v1', **values}\n"
                 "        return cls(retirement_id=canonical_sha256(identity))\n"
-                "class QualificationRetirement:\n"
+                "class QualificationRetirement(FrozenModel):\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationPageCursor:\n"
@@ -902,6 +911,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                         "def verify_publication(*values, **options): pass",
                     ),
                     "integrity helpers must come directly",
+                ),
+                (
+                    accepted.replace(
+                        "class QualificationPolicy(FrozenModel):",
+                        "class QualificationPolicy:",
+                    ),
+                    "frozen strict owner record",
                 ),
                 (
                     accepted.replace(
