@@ -353,6 +353,19 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             for item in plan
             if item.owner == "strategy_reporting" and item.category == "pytest"
         )
+        apex_pytest = next(
+            item
+            for item in plan
+            if item.owner == "apex_research" and item.category == "pytest"
+        )
+        self.assertEqual(apex_pytest.timeout_seconds, 7_200)
+        self.assertTrue(
+            all(
+                item.timeout_seconds == 1_800
+                for item in plan
+                if item is not apex_pytest
+            )
+        )
         self.assertIn("not connected", " ".join(runtime_pytest.command))
         self.assertIn("not connected", " ".join(reporting_pytest.command))
         root_checks = [item for item in plan if item.owner == "quant_research"]
@@ -394,6 +407,27 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             )
         )
 
+    def test_full_gate_runner_uses_the_planned_command_timeout(self) -> None:
+        check = verifier.GateCheck(
+            "apex_research",
+            "apex-research",
+            "pytest",
+            ("pytest",),
+            timeout_seconds=7_200,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "apex-research").mkdir()
+            with (
+                mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
+                mock.patch.object(
+                    verifier.HARNESS, "run_command", return_value=""
+                ) as run_command,
+            ):
+                verifier.run_full_gate_checks(root)
+
+        self.assertEqual(run_command.call_args.kwargs["timeout_seconds"], 7_200)
+
     def test_connected_status_plan_keeps_each_external_dependency_independent(
         self,
     ) -> None:
@@ -410,6 +444,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertTrue(all(item.connected for item in plan))
         self.assertTrue(all("pytest" in item.command for item in plan))
+        self.assertTrue(all(item.timeout_seconds == 1_800 for item in plan))
 
     def test_connected_status_distinguishes_passed_partial_and_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

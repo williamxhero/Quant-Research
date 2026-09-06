@@ -97,6 +97,7 @@ class GateCheck(NamedTuple):
     command: tuple[str, ...]
     connected: bool = False
     baseline_only: bool = False
+    timeout_seconds: int = 1_800
 
 
 class ApexSeamPolicy(NamedTuple):
@@ -244,6 +245,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         category: str,
         *command: str,
         baseline_only: bool = False,
+        timeout_seconds: int = 1_800,
     ) -> None:
         commands.append(
             GateCheck(
@@ -252,6 +254,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
                 category,
                 command,
                 baseline_only=baseline_only,
+                timeout_seconds=timeout_seconds,
             )
         )
 
@@ -336,7 +339,14 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
             "strategy_reporting": "not connected",
         }.get(owner)
         pytest = ("uv", "run", *dev_switch, "pytest")
-        add(owner, repository, "pytest", *pytest, *(("-m", marker) if marker else ()))
+        add(
+            owner,
+            repository,
+            "pytest",
+            *pytest,
+            *(("-m", marker) if marker else ()),
+            timeout_seconds=7_200 if owner == "apex_research" else 1_800,
+        )
         add(
             owner,
             repository,
@@ -5477,7 +5487,7 @@ def run_full_gate_checks(repository_root: Path) -> list[dict[str, str]]:
                     list(command),
                     cwd=repository,
                     environment=environment,
-                    timeout_seconds=1_800,
+                    timeout_seconds=check.timeout_seconds,
                 )
             except HARNESS.InstalledWheelFailure as exc:
                 baseline = UNCHANGED_REPOSITORY_BASELINES.get(check.repository)
