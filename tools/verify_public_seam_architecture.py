@@ -209,6 +209,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "tools/spec014_installed_wheel_tracer.py",
         "tools/spec015_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
+        "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
         "tools/test_verify_public_seam_architecture.py",
         "tools/validate_architecture_constitution.py",
@@ -239,6 +240,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "-m",
         "pytest",
         "tools/test_installed_wheel_harness.py",
+        "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
         "tools/test_verify_public_seam_architecture.py",
         "-q",
@@ -449,11 +451,17 @@ def scan_sources(repository_root: Path) -> None:
     _scan_validation_matrix_seams(repository_root / "apex-research")
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
+    admission = (
+        repository_root / "docs" / "architecture-admissions" / "spec-015.v1.json"
+    )
+    constitution = repository_root / "docs" / "architecture-constitution.v1.json"
+    if constitution.is_file() and not admission.is_file():
+        raise ArchitectureViolation(
+            "quant-research: SPEC-015 architecture admission is missing"
+        )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
-        required=(
-            repository_root / "docs" / "architecture-admissions" / "spec-015.v1.json"
-        ).is_file(),
+        required=constitution.is_file() or admission.is_file(),
     )
     _scan_spec015_non_owner_repositories(repository_root)
 
@@ -661,7 +669,6 @@ def _scan_spec015_qualification_seam(
         "QualificationRetirementRequest",
         "QualificationService",
         "QualificationState",
-        "QualificationSuccessorClaim",
     }
 
     def bound_names(target: ast.AST) -> set[str]:
@@ -713,6 +720,29 @@ def _scan_spec015_qualification_seam(
                 )
     for path in all_package_paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        owner_aliases = set(classes)
+        for statement in tree.body:
+            targets = (
+                tuple(statement.targets) if isinstance(statement, ast.Assign) else ()
+            )
+            if isinstance(statement, ast.AnnAssign):
+                targets = (statement.target,)
+            target_names = {name for target in targets for name in bound_names(target)}
+            value = (
+                statement.value
+                if isinstance(statement, (ast.Assign, ast.AnnAssign))
+                else None
+            )
+            source_name = (
+                value.id
+                if isinstance(value, ast.Name)
+                else value.attr
+                if isinstance(value, ast.Attribute)
+                else ""
+            )
+            owner_aliases.difference_update(target_names)
+            if source_name in owner_aliases or source_name in classes:
+                owner_aliases.update(target_names)
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 top_level = node in tree.body
@@ -723,9 +753,9 @@ def _scan_spec015_qualification_seam(
                 }
                 inherited_owner = any(
                     isinstance(base, ast.Name)
-                    and base.id in classes
+                    and base.id in owner_aliases
                     or isinstance(base, ast.Attribute)
-                    and base.attr in classes
+                    and base.attr in owner_aliases
                     for base in node.bases
                 )
                 alternative_owner = (
@@ -752,7 +782,17 @@ def _scan_spec015_qualification_seam(
                     and node.name in canonical_class_names
                 )
                 if (
-                    node.name == "CandidateTruth"
+                    node.name
+                    in {
+                        "CandidateTruth",
+                        "QualificationSuccessorClaim",
+                        "MaturityDecision",
+                        "MaturityLedger",
+                        "MaturityPolicy",
+                        "MaturityRegistry",
+                        "MaturityService",
+                        "MaturityState",
+                    }
                     or node.name in canonical_class_names
                     and not canonical_owner
                     or node.name
@@ -858,7 +898,6 @@ def _scan_spec015_qualification_seam(
         "QualificationRetirementRequest",
         "QualificationService",
         "QualificationState",
-        "QualificationSuccessorClaim",
     }
     missing = required_classes - set(classes)
     if missing:
@@ -924,14 +963,6 @@ def _scan_spec015_qualification_seam(
             "request",
             "governance",
         },
-        "QualificationSuccessorClaim": {
-            "schema_id",
-            "claim_id",
-            "predecessor",
-            "successor",
-            "governance_reservation",
-            "supersedes",
-        },
     }
     for class_name, expected_fields in required_fields.items():
         declared = {
@@ -985,9 +1016,6 @@ def _scan_spec015_qualification_seam(
         "QualificationRetirementRequest": {
             "create": ({"canonical_sha256"}, "retirement_id", "identity")
         },
-        "QualificationSuccessorClaim": {
-            "create": ({"_successor_slot_id"}, "claim_id", "predecessor")
-        },
     }
     for class_name, method_contracts in identity_methods.items():
         methods_by_name = {
@@ -1039,7 +1067,7 @@ def _scan_spec015_qualification_seam(
                 node for node in ast.walk(method) if isinstance(node, ast.Return)
             ]
             returned = returns[0].value if len(returns) == 1 else None
-            supplies_identity = returned is not None and any(
+            supplies_identity = isinstance(returned, ast.Call) and any(
                 isinstance(node, ast.Dict)
                 and any(
                     isinstance(key, ast.Constant)
@@ -1060,6 +1088,55 @@ def _scan_spec015_qualification_seam(
                     f"apex-research: {class_name}.{method_name} does not supply its "
                     f"identity field from the canonical constructor"
                 )
+
+            identity_assignments = [
+                node
+                for node in method.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "identity"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.Dict)
+            ]
+            if allowed_calls == {"canonical_sha256"} and len(identity_assignments) == 1:
+                identity_dict = identity_assignments[0].value
+                assert isinstance(identity_dict, ast.Dict)
+                explicit = {
+                    "schema_id" if key.value == "schema" else str(key.value)
+                    for key in identity_dict.keys
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                }
+                includes_values = any(
+                    key is None and isinstance(value, ast.Name) and value.id == "values"
+                    for key, value in zip(
+                        identity_dict.keys, identity_dict.values, strict=True
+                    )
+                )
+                popped = {
+                    str(call.args[0].value)
+                    for call in ast.walk(method)
+                    if isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id == "values"
+                    and call.func.attr == "pop"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                    and isinstance(call.args[0].value, str)
+                    and call.lineno < identity_assignments[0].lineno
+                }
+                declared = required_fields[class_name]
+                identity_id = identity_field.replace("record_id", "decision_id")
+                required_identity = declared - {identity_id, "governance"}
+                represented = set(explicit)
+                if includes_values:
+                    represented.update(declared - popped - {identity_id})
+                if not required_identity <= represented:
+                    raise ArchitectureViolation(
+                        f"apex-research: {class_name}.{method_name} canonical identity omits "
+                        + ", ".join(sorted(required_identity - represented))
+                    )
 
     forbidden_imports = {
         "sqlite3": "second governance ledger",
@@ -1185,8 +1262,8 @@ def _scan_spec015_qualification_seam(
             "action",
             "campaign_id",
             "target",
+            "idempotency_key",
             "preflight",
-            "launch",
             "complete",
         }:
             raise ArchitectureViolation(
@@ -1244,7 +1321,17 @@ def _scan_spec015_qualification_seam(
                     if isinstance(call.func, ast.Name)
                     else ""
                 )
-                if called == "publish_record":
+                if called == "publish_record" and (
+                    isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id
+                    in {argument.arg for argument in function.args.args}
+                    or isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Attribute)
+                    and isinstance(call.func.value.value, ast.Name)
+                    and call.func.value.value.id == "self"
+                    and call.func.value.attr == "_workspace"
+                ):
                     return True
                 if reaches_workspace_publication(called, seen):
                     return True
@@ -1283,11 +1370,9 @@ def _scan_spec015_qualification_seam(
                 for called in callback_calls(keywords[callback_name])
                 if reaches_workspace_publication(called, set())
             }
-            for callback_name in ("preflight", "launch", "complete")
+            for callback_name in ("preflight", "complete")
         }
-        if publication_calls["preflight"] or publication_calls["launch"] - {
-            "_publish_successor_claim"
-        }:
+        if publication_calls["preflight"]:
             raise ArchitectureViolation(
                 f"apex-research: {method_name} publishes outside an allowed deferred phase"
             )
@@ -1317,6 +1402,23 @@ def _scan_spec015_qualification_seam(
                 f"apex-research: {method_name} eagerly publishes before governance"
             )
     execute_publication = methods.get("_execute_publication")
+    if execute_publication is None:
+        raise ArchitectureViolation(
+            "apex-research: qualification service lacks _execute_publication"
+        )
+    execute_source = ast.unparse(execute_publication)
+    if not all(
+        fragment in execute_source
+        for fragment in (
+            "expected_resources = qualification_publication_scope(target)",
+            "action.action is not GovernedAction.QUALIFICATION_PUBLICATION",
+            "action.resources != expected_resources",
+            "action.idempotency_key != idempotency_key",
+        )
+    ):
+        raise ArchitectureViolation(
+            "apex-research: qualification publication action/resource contract is not exact"
+        )
     governance_aliases = (
         {
             target.id
@@ -1539,7 +1641,6 @@ def _scan_spec015_qualification_seam(
         "_read_decision": "QualificationDecision",
         "_read_held_evaluation": "QualificationEvaluation",
         "_read_retirement": "QualificationRetirement",
-        "_read_successor_claim": "QualificationSuccessorClaim",
     }
     for reader_name, model_name in reader_models.items():
         reader = functions.get(reader_name)
@@ -1689,6 +1790,71 @@ def _scan_spec015_qualification_seam(
             )
         )
         protected_names = envelope_names | {typed_name}
+        for assignment in sorted(
+            lexical_assignments,
+            key=lambda item: (
+                getattr(item, "lineno", -1),
+                getattr(item, "col_offset", -1),
+            ),
+        ):
+            value = assignment.value
+            targets = (
+                tuple(assignment.targets)
+                if isinstance(assignment, ast.Assign)
+                else (assignment.target,)
+            )
+            if isinstance(value, ast.Name) and value.id in protected_names:
+                protected_names.update(
+                    name for target in targets for name in bound_names(target)
+                )
+
+        def protected_root(
+            value: ast.AST, names: frozenset[str] = frozenset(protected_names)
+        ) -> bool:
+            while isinstance(value, (ast.Attribute, ast.Subscript)):
+                value = value.value
+            return isinstance(value, ast.Name) and value.id in names
+
+        post_verify_mutation = bool(verify_statements) and any(
+            getattr(node, "lineno", -1) > verify_statements[0].lineno
+            and (
+                isinstance(
+                    node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
+                )
+                and any(
+                    isinstance(target, (ast.Attribute, ast.Subscript))
+                    and protected_root(target)
+                    for target in (
+                        tuple(node.targets)
+                        if isinstance(node, ast.Assign)
+                        else (node.target,)
+                    )
+                )
+                or isinstance(node, ast.Delete)
+                and any(protected_root(target) for target in node.targets)
+                or isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and (
+                    protected_root(node.func.value)
+                    and node.func.attr
+                    in {
+                        "clear",
+                        "pop",
+                        "remove",
+                        "update",
+                        "append",
+                        "extend",
+                        "__setitem__",
+                    }
+                    or isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "object"
+                    and node.func.attr == "__setattr__"
+                    and bool(node.args)
+                    and protected_root(node.args[0])
+                )
+            )
+            for node in ast.walk(reader)
+        )
         protected_rebound = (
             any(
                 assignment.lineno > typed_line
@@ -1712,6 +1878,7 @@ def _scan_spec015_qualification_seam(
             or not verified
             or not returns_verified
             or protected_rebound
+            or post_verify_mutation
         ):
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"
@@ -1820,7 +1987,9 @@ def _scan_spec015_qualification_seam(
             and node.test.operand.comparators[1].value == 8
             and all(isinstance(operator, ast.LtE) for operator in node.test.operand.ops)
             and any(isinstance(value, ast.Raise) for value in node.body)
-            for node in ast.walk(lineage_reader)
+            for index, node in enumerate(lineage_reader.body)
+            if bounded_loop is not None
+            and index < lineage_reader.body.index(bounded_loop)
         )
 
     def direct_guard(
@@ -1931,9 +2100,14 @@ def _scan_spec015_qualification_seam(
     terminates_without_cursor = bounded_loop is not None and any(
         isinstance(node, ast.If)
         and exact_name_constant_compare(node.test, "next_cursor", ast.Is, None)
-        and any(
-            isinstance(statement, (ast.Return, ast.Break)) for statement in node.body
-        )
+        and len(node.body) == 1
+        and isinstance(node.body[0], ast.Return)
+        and isinstance(node.body[0].value, ast.Call)
+        and isinstance(node.body[0].value.func, ast.Name)
+        and node.body[0].value.func.id == "tuple"
+        and len(node.body[0].value.args) == 1
+        and isinstance(node.body[0].value.args[0], ast.Name)
+        and node.body[0].value.args[0].id == "records"
         for node in bounded_loop.body
     )
     response_size_rejected = (
@@ -2610,22 +2784,48 @@ def _scan_spec015_qualification_seam(
         for node in subsystem_nodes
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     }
-    if (
-        not {
-            "historical_research_maturity",
-            "forbidden",
-            "evaluation-of",
-            "successor-of",
-        }
-        <= strings
-    ):
+    if not {"historical_research_maturity", "forbidden"} <= strings:
         raise ArchitectureViolation(
             "apex-research: qualification lacks historical maturity-only semantics"
         )
+    relation_contracts = {
+        "_held_publication": ("evaluation-of", "successor-of"),
+        "_decision_publication": ("successor-of", "evaluation-of"),
+        "_retirement_publication": ("successor-of", "evaluation-of"),
+    }
+    for function_name, (
+        required_relation,
+        forbidden_relation,
+    ) in relation_contracts.items():
+        function = functions.get(function_name)
+        function_strings = (
+            {
+                node.value
+                for node in ast.walk(function)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            }
+            if function is not None
+            else set()
+        )
+        if (
+            required_relation not in function_strings
+            or forbidden_relation in function_strings
+        ):
+            raise ArchitectureViolation(
+                f"apex-research: {function_name} qualification lineage relation is invalid"
+            )
     field_names = {
         node.target.id
-        for class_name in required_fields
-        for node in classes[class_name].body
+        for class_name, class_node in classes.items()
+        if class_name.startswith("Qualification")
+        and class_name
+        not in {
+            "QualificationEvaluator",
+            "QualificationHistoryReader",
+            "QualificationService",
+        }
+        and not class_name.endswith("Cursor")
+        for node in class_node.body
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     }
     if field_names & {
@@ -2813,13 +3013,10 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         and base.value.id in qualification_modules
                         for base in node.bases
                     )
-                    or (
-                        "Qualification" in node.name
-                        and any(
-                            isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                            and item.name in SPEC015_OWNER_METHODS
-                            for item in node.body
-                        )
+                    or any(
+                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and item.name in SPEC015_OWNER_METHODS
+                        for item in node.body
                     )
                 )
                 for node in ast.walk(tree)
@@ -2858,9 +3055,9 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 if isinstance(node, ast.Name):
                     return {node.id}
                 if isinstance(node, ast.Attribute):
-                    return {ast.unparse(node)}
+                    return {ast.unparse(node), *assigned_names(node.value)}
                 if isinstance(node, ast.Subscript):
-                    return {ast.unparse(node)}
+                    return {ast.unparse(node), *assigned_names(node.value)}
                 if isinstance(node, ast.Starred):
                     return assigned_names(node.value)
                 if isinstance(node, (ast.Tuple, ast.List)):
@@ -3213,12 +3410,27 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
 
                 def assign_target(target: ast.AST, value: ast.AST | None) -> None:
                     aliases = assigned_names(target)
-                    qualification_values.difference_update(aliases)
-                    publication_aliases.difference_update(aliases)
-                    for alias in aliases:
-                        callable_aliases.pop(alias, None)
-                    safe_publication_values.difference_update(aliases)
-                    if value is not None and contains_qualification(value):
+                    mutates_container = isinstance(
+                        target, (ast.Attribute, ast.Subscript)
+                    )
+                    if not mutates_container:
+                        qualification_values.difference_update(aliases)
+                        publication_aliases.difference_update(aliases)
+                        for alias in aliases:
+                            callable_aliases.pop(alias, None)
+                        safe_publication_values.difference_update(aliases)
+                    assigns_qualification_discriminator = (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.slice, ast.Constant)
+                        and target.slice.value in {"record_type", "schema_id"}
+                        and isinstance(value, ast.Constant)
+                        and isinstance(value.value, str)
+                        and value.value.startswith("apex-research.qualification-")
+                    )
+                    if value is not None and (
+                        contains_qualification(value)
+                        or assigns_qualification_discriminator
+                    ):
                         qualification_values.update(aliases)
                     if value is not None and explicitly_non_owner_record(value):
                         safe_publication_values.update(aliases)
@@ -4254,11 +4466,7 @@ def run_connected_status_checks(repository_root: Path) -> list[dict[str, str]]:
         else:
             counts = _pytest_terminal_counts(output)
             passed = 0 if counts is None else counts["passed"] + counts["xpassed"]
-            skipped = (
-                0
-                if counts is None
-                else counts["skipped"] + counts["xfailed"] + counts["deselected"]
-            )
+            skipped = 0 if counts is None else counts["skipped"] + counts["xfailed"]
             if counts is None or (
                 counts["failed"] or counts["error"] or not (passed or skipped)
             ):

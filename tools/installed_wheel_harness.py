@@ -7,7 +7,9 @@ import importlib.metadata
 import inspect
 import json
 import os
+import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -17,6 +19,8 @@ from pathlib import Path
 from types import ModuleType
 
 import tomllib
+
+_COMMAND_LOCK = threading.Lock()
 
 
 class InstalledWheelFailure(RuntimeError):
@@ -38,13 +42,29 @@ def sanitized_environment(source: dict[str, str] | None = None) -> dict[str, str
     ):
         environment.pop(name, None)
     for name in tuple(environment):
-        if name.startswith(("GIT_", "UV_")):
+        if name.startswith(("GIT_", "HATCH_", "UV_")) or name == "SOURCE_DATE_EPOCH":
             environment.pop(name)
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     return environment
 
 
 def run_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    timeout_seconds: int,
+) -> str:
+    with _COMMAND_LOCK:
+        return _run_command(
+            command,
+            cwd=cwd,
+            environment=environment,
+            timeout_seconds=timeout_seconds,
+        )
+
+
+def _run_command(
     command: list[str],
     *,
     cwd: Path,
@@ -278,11 +298,13 @@ def _terminate_process_tree(
     for pid, start_time in (descendant_pids or {}).items():
         if process_map.get(pid, (None, None))[1] != start_time:
             continue
+        if _posix_process_map().get(pid, (None, None))[1] != start_time:
+            continue
         try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-    _kill_new_subreaper_children(subreaper_baseline or {})
+    _kill_owned_subreaper_children(descendant_pids or {})
 
 
 def _prepare_posix_containment() -> dict[int, int]:
@@ -307,7 +329,7 @@ def _prepare_posix_containment() -> dict[int, int]:
     }
 
 
-def _kill_new_subreaper_children(baseline: dict[int, int]) -> None:
+def _kill_owned_subreaper_children(owned: dict[int, int]) -> None:
     if os.name == "nt":
         return
     for _ in range(4):
@@ -315,11 +337,13 @@ def _kill_new_subreaper_children(baseline: dict[int, int]) -> None:
         children = {
             pid
             for pid, (parent, start_time) in process_map.items()
-            if parent == os.getpid() and baseline.get(pid) != start_time
+            if parent == os.getpid() and owned.get(pid) == start_time
         }
         if not children:
             return
         for pid in children:
+            if _posix_process_map().get(pid, (None, None))[1] != owned[pid]:
+                continue
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -603,14 +627,15 @@ def verify_source_topology(
     repository: Path, environment: dict[str, str] | None = None
 ) -> dict[str, object]:
     """Fail closed on linked build inputs and attest the complete source topology."""
-    repository = _validated_repository_path(repository)
+    repository = _validated_repository_path(
+        repository, require_git=environment is not None
+    )
     source_files = _source_build_inputs(repository)
     result: dict[str, object] = {
         "source_files": source_files,
         "source_fingerprint": _source_fingerprint(repository, source_files),
     }
     if environment is not None:
-        build_roots = _declared_build_roots(repository)
         inside_work_tree = run_command(
             ["git", "rev-parse", "--is-inside-work-tree"],
             cwd=repository,
@@ -622,7 +647,7 @@ def verify_source_topology(
                 f"wheel source repository is not a Git work tree: {repository}"
             )
         index_lines = run_command(
-            ["git", "ls-files", "-v", "--", *build_roots],
+            ["git", "ls-files", "-v"],
             cwd=repository,
             environment=environment,
             timeout_seconds=30,
@@ -636,36 +661,57 @@ def verify_source_topology(
                 + ", ".join(special_index_entries)
             )
         run_command(
-            ["git", "diff", "--quiet", "--", *build_roots],
+            ["git", "diff", "--quiet"],
             cwd=repository,
             environment=environment,
             timeout_seconds=30,
         )
         run_command(
-            ["git", "diff", "--cached", "--quiet", "--", *build_roots],
+            ["git", "diff", "--cached", "--quiet"],
             cwd=repository,
             environment=environment,
             timeout_seconds=30,
         )
         tracked = set(
             run_command(
-                ["git", "ls-files", "--", *build_roots],
+                ["git", "ls-files"],
                 cwd=repository,
                 environment=environment,
                 timeout_seconds=30,
             ).splitlines()
         )
-        missing = sorted(tracked - set(source_files))
+        declared_inputs = set(source_files)
+        missing = sorted(path for path in tracked if not (repository / path).is_file())
         if missing:
             raise InstalledWheelFailure(
                 "tracked wheel build inputs are absent from the work tree: "
                 + ", ".join(missing)
             )
-        untracked = sorted(set(source_files) - tracked)
+        untracked = sorted(declared_inputs - tracked)
         if untracked:
             raise InstalledWheelFailure(
                 "repository has untracked wheel build inputs: " + ", ".join(untracked)
             )
+        unexpected = run_command(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=repository,
+            environment=environment,
+            timeout_seconds=30,
+        ).splitlines()
+        if unexpected:
+            raise InstalledWheelFailure(
+                "repository has untracked attestation inputs: "
+                + ", ".join(sorted(unexpected))
+            )
+        source_files = sorted(tracked)
+        for relative in source_files:
+            path = repository / relative
+            if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                raise InstalledWheelFailure(
+                    f"repository attestation input is a symbolic link or junction: {path}"
+                )
+        result["source_files"] = source_files
+        result["source_fingerprint"] = _source_fingerprint(repository, source_files)
         result["head"] = run_command(
             ["git", "rev-parse", "HEAD"],
             cwd=repository,
@@ -675,13 +721,40 @@ def verify_source_topology(
     return result
 
 
-def _validated_repository_path(repository: Path) -> Path:
+def _validated_repository_path(repository: Path, *, require_git: bool = False) -> Path:
     """Resolve only ordinary directories or verified sibling Git worktree links."""
     unresolved = Path(os.path.abspath(repository))
     linked = (
         unresolved.is_symlink() or getattr(unresolved, "is_junction", lambda: False)()
     )
     resolved = unresolved.resolve(strict=True)
+    if not linked and require_git:
+        completed = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        if (
+            completed.returncode != 0
+            or Path(completed.stdout.strip()).resolve() != resolved
+        ):
+            raise InstalledWheelFailure(
+                f"repository path is not an exact Git work-tree root: {unresolved}"
+            )
+        pyproject = resolved / "pyproject.toml"
+        if pyproject.is_file():
+            document = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            project = document.get("project", {})
+            project_name = project.get("name") if isinstance(project, dict) else None
+            if isinstance(project_name, str) and project_name.lower().replace(
+                "_", "-"
+            ) != (resolved.name.lower().replace("_", "-")):
+                raise InstalledWheelFailure(
+                    f"repository project identity does not match its root: {unresolved}"
+                )
+        return resolved
     if not linked:
         return resolved
     worktree_pool = unresolved.parent.parent.resolve()
@@ -796,6 +869,16 @@ def _declared_build_roots(repository: Path) -> list[str]:
     targets = build.get("targets", {}) if isinstance(build, dict) else {}
     wheel = targets.get("wheel", {}) if isinstance(targets, dict) else {}
     if isinstance(build, dict):
+        for field in ("include", "only-include"):
+            patterns = build.get(field, ())
+            if isinstance(patterns, list):
+                for pattern in patterns:
+                    if isinstance(pattern, str):
+                        roots.update(
+                            path.relative_to(repository).as_posix()
+                            for path in repository.glob(pattern.lstrip("/"))
+                            if path.is_file()
+                        )
         artifacts = build.get("artifacts", ())
         if isinstance(artifacts, list):
             for pattern in artifacts:
@@ -813,7 +896,30 @@ def _declared_build_roots(repository: Path) -> list[str]:
             for hook in hooks.values():
                 if isinstance(hook, dict) and isinstance(hook.get("path"), str):
                     roots.add(str(hook["path"]))
+        if "custom" in hooks and (repository / "hatch_build.py").is_file():
+            roots.add("hatch_build.py")
+    metadata = hatch.get("metadata", {}) if isinstance(hatch, dict) else {}
+    metadata_hooks = metadata.get("hooks", {}) if isinstance(metadata, dict) else {}
+    if isinstance(metadata_hooks, dict):
+        for hook in metadata_hooks.values():
+            if isinstance(hook, dict) and isinstance(hook.get("path"), str):
+                roots.add(str(hook["path"]))
     if isinstance(wheel, dict):
+        for field in ("include", "only-include"):
+            patterns = wheel.get(field, ())
+            if isinstance(patterns, list):
+                for pattern in patterns:
+                    if isinstance(pattern, str):
+                        roots.update(
+                            path.relative_to(repository).as_posix()
+                            for path in repository.glob(pattern.lstrip("/"))
+                            if path.is_file()
+                        )
+        target_hooks = wheel.get("hooks", {})
+        if isinstance(target_hooks, dict):
+            for hook in target_hooks.values():
+                if isinstance(hook, dict) and isinstance(hook.get("path"), str):
+                    roots.add(str(hook["path"]))
         wheel_artifacts = wheel.get("artifacts", ())
         if isinstance(wheel_artifacts, list):
             for pattern in wheel_artifacts:
@@ -830,6 +936,24 @@ def _declared_build_roots(repository: Path) -> list[str]:
         if isinstance(force_include, dict):
             roots.update(str(source) for source in force_include)
     return sorted(roots)
+
+
+def snapshot_repository(
+    repository: Path, destination: Path, source_files: Iterable[str]
+) -> None:
+    """Copy an attested repository closure into an isolated build snapshot."""
+    repository = _validated_repository_path(repository, require_git=True)
+    destination.mkdir(parents=True, exist_ok=False)
+    for relative in source_files:
+        source = repository / relative
+        target = destination / relative
+        if not source.is_file() or source.is_symlink():
+            raise InstalledWheelFailure(
+                f"attested snapshot input is unavailable: {source}"
+            )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        target.chmod(stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
 
 
 def _source_fingerprint(repository: Path, source_files: Iterable[str]) -> str:

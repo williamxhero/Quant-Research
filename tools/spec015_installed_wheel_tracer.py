@@ -29,6 +29,8 @@ run_installed_pytest = HARNESS.run_installed_pytest
 verify_unchanged_sources = HARNESS.verify_unchanged_sources
 verify_source_topology = HARNESS.verify_source_topology
 sanitized_environment = HARNESS.sanitized_environment
+snapshot_repository = HARNESS.snapshot_repository
+source_fingerprint = HARNESS._source_fingerprint
 
 PACKAGE_REPOSITORIES = (
     "strategy-workspace",
@@ -203,12 +205,35 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             UNCHANGED_SOURCE_BASELINES,
             environment,
         )
+        snapshot_root = isolated / "source-snapshot"
+        snapshot_root.mkdir()
+        for repository in PACKAGE_REPOSITORIES:
+            snapshot_repository(
+                repository_root / repository,
+                snapshot_root / repository,
+                source_topology[repository]["source_files"],
+            )
+        snapshot_fingerprints = {
+            repository: source_fingerprint(
+                snapshot_root / repository,
+                source_topology[repository]["source_files"],
+            )
+            for repository in PACKAGE_REPOSITORIES
+        }
         wheels = build_wheels(
-            repository_root,
+            snapshot_root,
             PACKAGE_REPOSITORIES,
             dist,
             environment,
         )
+        if snapshot_fingerprints != {
+            repository: source_fingerprint(
+                snapshot_root / repository,
+                source_topology[repository]["source_files"],
+            )
+            for repository in PACKAGE_REPOSITORIES
+        }:
+            raise TracerFailure("attested build snapshot mutated during wheel build")
         source_topology_after_build = {
             repository: verify_source_topology(
                 repository_root / repository, environment
@@ -235,14 +260,14 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         for repository, targets in INSTALLED_TESTS:
             run_installed_pytest(
                 python,
-                (repository_root / repository / target for target in targets),
+                (snapshot_root / repository / target for target in targets),
                 (
                     "apex_research",
                     "quant_runtime",
                     "strategy_reporting",
                     "strategy_workspace",
                 ),
-                (repository_root / name / "src" for name in PACKAGE_REPOSITORIES),
+                (snapshot_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=environment,
                 timeout_seconds=900,
@@ -254,7 +279,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             stable_output = run_installed_pytest(
                 python,
                 (
-                    repository_root / "apex-research" / target
+                    snapshot_root / "apex-research" / target
                     for target in STABLE_BEHAVIORAL_TESTS
                 ),
                 (
@@ -263,7 +288,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     "strategy_reporting",
                     "strategy_workspace",
                 ),
-                (repository_root / name / "src" for name in PACKAGE_REPOSITORIES),
+                (snapshot_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=transcript_environment,
                 timeout_seconds=1_200,

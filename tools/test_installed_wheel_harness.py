@@ -31,6 +31,9 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 "UV_PROJECT_ENVIRONMENT": "other-venv",
                 "UV_CACHE_DIR": "poisoned-cache",
                 "UV_INDEX_URL": "https://example.invalid/simple",
+                "HATCH_BUILD_NO_HOOKS": "1",
+                "HATCH_BUILD_HOOKS_ONLY": "1",
+                "SOURCE_DATE_EPOCH": "1",
                 "VIRTUAL_ENV": "caller-venv",
                 "GIT_DIR": "elsewhere/.git",
                 "GIT_WORK_TREE": "elsewhere",
@@ -49,6 +52,8 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         self.assertFalse(any(name.startswith("UV_") for name in environment))
         self.assertNotIn("VIRTUAL_ENV", environment)
         self.assertFalse(any(name.startswith("GIT_") for name in environment))
+        self.assertFalse(any(name.startswith("HATCH_") for name in environment))
+        self.assertNotIn("SOURCE_DATE_EPOCH", environment)
         self.assertEqual(environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"], "1")
         self.assertEqual(environment["KEEP"], "yes")
 
@@ -192,7 +197,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 "_posix_process_map",
                 return_value={200: (1, 22), 201: (1, 33)},
             ),
-            mock.patch.object(harness, "_kill_new_subreaper_children"),
+            mock.patch.object(harness, "_kill_owned_subreaper_children"),
         ):
             harness._terminate_process_tree(
                 process,
@@ -201,6 +206,48 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             )
 
         kill.assert_called_once_with(201, 9)
+
+    def test_source_topology_attests_tests_and_rejects_a_dirty_test(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _root, repository, _baseline = self._source_repository(Path(temporary))
+            test_file = repository / "tests/test_acceptance.py"
+            test_file.parent.mkdir()
+            test_file.write_text("def test_acceptance(): pass\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "tests/test_acceptance.py"], cwd=repository, check=True
+            )
+            subprocess.run(["git", "commit", "-m", "tests"], cwd=repository, check=True)
+
+            topology = harness.verify_source_topology(repository, dict(os.environ))
+            self.assertIn("tests/test_acceptance.py", topology["source_files"])
+            test_file.write_text(
+                "def test_acceptance(): assert False\n", encoding="utf-8"
+            )
+            with self.assertRaises(harness.InstalledWheelFailure):
+                harness.verify_source_topology(repository, dict(os.environ))
+
+    def test_repository_validation_rejects_a_nested_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            _root, repository, _baseline = self._source_repository(Path(temporary))
+            nested = repository / "src/package"
+            with self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "exact Git work-tree root"
+            ):
+                harness._validated_repository_path(nested, require_git=True)
+
+    def test_snapshot_repository_copies_only_the_attested_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root, repository, _baseline = self._source_repository(Path(temporary))
+            destination = root / "snapshot"
+            harness.snapshot_repository(
+                repository, destination, ["src/package/__init__.py"]
+            )
+
+            self.assertEqual(
+                (destination / "src/package/__init__.py").read_text(encoding="utf-8"),
+                "VALUE = 1\n",
+            )
+            self.assertFalse((destination / ".git").exists())
 
     def test_unchanged_source_check_rejects_ignored_build_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

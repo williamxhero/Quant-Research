@@ -314,7 +314,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
         self.assertEqual(
             [item["status"] for item in statuses],
-            ["passed", "partial", "skipped"],
+            ["passed", "passed", "skipped"],
         )
 
     def test_pytest_terminal_counts_accepts_all_terminal_summary_categories(
@@ -631,20 +631,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    def create(cls, identity): return cls(retirement_id=canonical_sha256(identity))\n"
                 "class QualificationRetirement:\n"
                 "    schema_id: str; retirement_id: str; request: object; governance: object\n"
-                "class QualificationSuccessorClaim:\n"
-                "    schema_id: str; claim_id: str; predecessor: object; successor: object; governance_reservation: object; supersedes: object\n"
-                "    @classmethod\n"
-                "    def create(cls, predecessor): return cls(claim_id=_successor_slot_id(predecessor))\n"
                 "class QualificationHistoryReader: pass\n"
                 "class QualificationPageCursor:\n"
                 "    current: str\n"
                 "class QualificationService:\n"
-                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def _execute_publication(self, *, action, campaign_id, target, preflight, launch, complete):\n"
-                "        def authorize(grant): preflight(); launch(grant); return target\n"
+                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def _execute_publication(self, *, action, campaign_id, target, idempotency_key, preflight, complete):\n"
+                "        expected_resources = qualification_publication_scope(target)\n"
+                "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n"
+                "        def authorize(grant): preflight(); return target\n"
                 "        governance = self._require_governance()\n"
                 "        result = governance.execute(action, authorize)\n"
                 "        if result.status != 'committed' or result.reason != 'success': return result\n"
@@ -652,7 +650,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        except Exception: return result\n"
                 "        return result\n"
                 "    def _require_governance(self): return self._governance\n"
-                "def _successor_slot_id(predecessor): return canonical_sha256(predecessor)\n"
+                "def qualification_publication_scope(target): return (target,)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
                 "def _read_policy(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
@@ -672,11 +670,6 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def _read_retirement(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationRetirement.model_validate_json(raw)\n"
-                "    verify_publication(raw, value)\n"
-                "    return value\n"
-                "def _read_successor_claim(workspace):\n"
-                "    raw=workspace.get_record('id')\n"
-                "    value=QualificationSuccessorClaim.model_validate_json(raw)\n"
                 "    verify_publication(raw, value)\n"
                 "    return value\n"
                 "def _query_lineage_records(workspace):\n"
@@ -702,8 +695,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        cursor=next_cursor\n"
                 "scope = 'historical_research_maturity'\n"
                 "operational_authority = 'forbidden'\n"
-                "held_relation = 'evaluation-of'\n"
-                "state_relation = 'successor-of'\n"
+                "def _held_publication(): return ('evaluation-of',)\n"
+                "def _decision_publication(): return ('successor-of',)\n"
+                "def _retirement_publication(): return ('successor-of',)\n"
                 "EXPLANATION = 'Active and live are explicitly not granted here.'\n",
                 encoding="utf-8",
             )
@@ -739,6 +733,109 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             qualification.write_text(forged_descendant, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "QualificationPolicy.create"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            for bypass, message in (
+                (
+                    accepted
+                    + "\nAlias = QualificationService\nclass Mirror(Alias): pass\n",
+                    "parallel qualification owner",
+                ),
+                (
+                    accepted.replace(
+                        "return cls(policy_id=canonical_sha256(identity))",
+                        "return (cls(policy_id=canonical_sha256(identity)), "
+                        "cls(policy_id='forged'))[1]",
+                        1,
+                    ),
+                    "QualificationPolicy.create",
+                ),
+                (
+                    accepted.replace(
+                        "    verify_publication(raw, value)\n    return value\n",
+                        "    verify_publication(raw, value)\n"
+                        "    object.__setattr__(value, 'policy_id', 'forged')\n"
+                        "    return value\n",
+                        1,
+                    ),
+                    "typed canonical readback _read_policy",
+                ),
+                (
+                    accepted.replace(
+                        "def _publish_record(workspace): workspace.publish_record({})",
+                        "def _publish_record(workspace): workspace.mirror.publish_record({})\n"
+                        "def _dead_workspace_publish(workspace): workspace.publish_record({})",
+                    ),
+                    "completion does not reach Workspace publication",
+                ),
+                (
+                    accepted.replace(
+                        "action.action is not GovernedAction.QUALIFICATION_PUBLICATION",
+                        "action.action is not GovernedAction.UNRELATED",
+                    ),
+                    "action/resource contract is not exact",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(): return ('evaluation-of',)",
+                        "def _held_publication(): return ('successor-of',)",
+                    ),
+                    "lineage relation is invalid",
+                ),
+                (
+                    accepted + "\nclass QualificationAuthority:\n    live: bool\n",
+                    "non-historical authority fields",
+                ),
+                (
+                    accepted.replace(
+                        "    def _execute_publication(self, *,",
+                        "    def _execute_publication_missing(self, *,",
+                    ),
+                    "lacks _execute_publication",
+                ),
+            ):
+                qualification.write_text(bypass, encoding="utf-8")
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, message):
+                    verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            incomplete_identity = accepted.replace(
+                "def create(cls, identity): return cls(policy_id=canonical_sha256(identity))",
+                "def create(cls, **values):\n"
+                "        identity={'schema': 'apex-research.qualification-policy.v1', "
+                "'campaign': values['campaign']}\n"
+                "        return cls(policy_id=canonical_sha256(identity))",
+            )
+            qualification.write_text(incomplete_identity, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "canonical identity omits"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            nested_depth_guard = accepted.replace(
+                "def _query_lineage_records(workspace):\n",
+                "def _query_lineage_records(workspace, max_depth=99):\n"
+                "    def unused():\n"
+                "        if not 1 <= max_depth <= 8: raise RuntimeError('bounded')\n",
+            ).replace(
+                "max_depth=1, page_size=100", "max_depth=max_depth, page_size=100"
+            )
+            qualification.write_text(nested_depth_guard, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            dead_pagination_return = accepted.replace(
+                "        if next_cursor is None: return tuple(records)\n",
+                "        if next_cursor is None: break\n",
+            ).replace(
+                "scope = 'historical_research_maturity'",
+                "    return tuple(records)\nscope = 'historical_research_maturity'",
+            )
+            qualification.write_text(dead_pagination_return, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "bounded snapshot pagination"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
@@ -946,15 +1043,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     1,
                 ),
                 accepted.replace(
-                    "preflight=lambda: None, launch=lambda *_: None",
-                    "preflight=lambda: _publish_record(self._workspace), "
-                    "launch=lambda *_: None",
-                    1,
-                ),
-                accepted.replace(
-                    "preflight=lambda: None, launch=lambda *_: None",
-                    "preflight=lambda: None, "
-                    "launch=lambda *_: _publish_record(self._workspace)",
+                    "preflight=lambda: None, complete=",
+                    "preflight=lambda: _publish_record(self._workspace), complete=",
                     1,
                 ),
             ):
@@ -991,10 +1081,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             named_eager_default = accepted.replace(
-                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=lambda *_: _publish_record(self._workspace))\n",
+                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n",
                 "    def publish_policy(self, action, target):\n"
                 "        def done(eager=_publish_record(self._workspace)): return eager\n"
-                "        return self._execute_publication(action=action, campaign_id='id', target=target, preflight=lambda: None, launch=lambda *_: None, complete=done)\n",
+                "        return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=done)\n",
             )
             qualification.write_text(named_eager_default, encoding="utf-8")
             with self.assertRaisesRegex(
@@ -1196,6 +1286,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "QualificationEvidenceStore",
             "QualificationFormalEngine",
             "CandidateTruth",
+            "MaturityLedger",
+            "MaturityRegistry",
         )
         for class_name in forbidden:
             with (
@@ -1272,6 +1364,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             source.write_text("def publish_policy(): pass\n", encoding="utf-8")
             verifier._scan_spec015_non_owner_repositories(root)
 
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-workspace/src/strategy_workspace/maturity.py"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "class ResearchMaturityCoordinator:\n"
+                "    def publish_policy(self): pass\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "ownership outside Apex Research"
+            ):
+                verifier._scan_spec015_non_owner_repositories(root)
+
         for case_index, source_text in enumerate(
             (
                 (
@@ -1301,6 +1407,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 (
                     "def save(workspace):\n"
                     "    payload={'record_type': 'apex-research.qualification-decision.v1'}\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={}\n"
+                    "    payload['record_type']='apex-research.qualification-decision.v1'\n"
                     "    workspace.publish_record(payload)\n"
                 ),
                 (
@@ -1670,6 +1782,22 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(
                     root / "apex-research", required=True
                 )
+
+    def test_spec015_guard_requires_admission_independently_of_owner_module(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "docs").mkdir()
+            (root / "docs/architecture-constitution.v1.json").write_text(
+                "{}\n", encoding="utf-8"
+            )
+            (root / "apex-research/src/apex_research").mkdir(parents=True)
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "architecture admission is missing"
+            ):
+                verifier.scan_sources(root)
 
     def test_spec015_guard_rejects_publication_bypassing_governance(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
