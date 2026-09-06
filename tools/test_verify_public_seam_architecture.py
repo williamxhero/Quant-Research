@@ -1140,6 +1140,27 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                     "bypasses governed qualification publication",
                 ),
+                (
+                    accepted.replace(
+                        "    def publish_policy(self, policy, action): return self._execute_publication(",
+                        "    def publish_policy(self, policy, action):\n"
+                        "        publish = self._workspace.publish_record\n"
+                        "        publish({})\n"
+                        "        return self._execute_publication(",
+                        1,
+                    ),
+                    "workspace method alias",
+                ),
+                (
+                    accepted.replace(
+                        "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n",
+                        "    global_scan = workspace.list_records\n"
+                        "    global_scan(limit=10000)\n"
+                        "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n",
+                        1,
+                    ),
+                    "workspace method alias",
+                ),
             ):
                 qualification.write_text(bypass, encoding="utf-8")
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, message):

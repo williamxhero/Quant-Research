@@ -1492,6 +1492,47 @@ def _scan_spec015_qualification_seam(
                         f"apex-research: qualification uses forbidden call {call}: "
                         f"{subsystem_path}"
                     )
+        workspace_method_aliases: dict[str, str] = {}
+        aliases_changed = True
+        while aliases_changed:
+            aliases_changed = False
+            for node in ast.walk(subsystem_tree):
+                if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    continue
+                value = node.value
+                method = (
+                    value.attr
+                    if isinstance(value, ast.Attribute)
+                    and value.attr in {"publish_record", "list_records", "submit_run"}
+                    else workspace_method_aliases.get(value.id)
+                    if isinstance(value, ast.Name)
+                    else None
+                )
+                if method is None:
+                    continue
+                targets = (
+                    tuple(node.targets)
+                    if isinstance(node, ast.Assign)
+                    else (node.target,)
+                )
+                for alias in {
+                    name for target in targets for name in bound_names(target)
+                }:
+                    if workspace_method_aliases.get(alias) != method:
+                        workspace_method_aliases[alias] = method
+                        aliases_changed = True
+        aliased_calls = [
+            node
+            for node in ast.walk(subsystem_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in workspace_method_aliases
+        ]
+        if aliased_calls:
+            raise ArchitectureViolation(
+                "apex-research: qualification uses forbidden workspace method alias "
+                f"{workspace_method_aliases[aliased_calls[0].func.id]}: {subsystem_path}"
+            )
 
     service = classes["QualificationService"]
     methods = {
