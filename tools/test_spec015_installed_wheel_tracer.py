@@ -93,10 +93,24 @@ class Spec015InstalledWheelTracerTests(unittest.TestCase):
             ):
                 tracer._validated_identity_transcript(transcript)
 
-    def test_transcript_rejects_disconnected_or_colliding_identities(self) -> None:
+    def test_transcript_preserves_independent_fixture_scopes(self) -> None:
+        transcript = self._valid_transcript()
+        qualified = transcript[1]["identities"]
+        held = transcript[2]["identities"]
+        assert isinstance(qualified, dict)
+        assert isinstance(held, dict)
+        qualified["policy_id"] = f"{90:064x}"
+        held["policy_id"] = f"{91:064x}"
+        held["candidate_id"] = f"{92:064x}"
+
+        validated = tracer._validated_identity_transcript(transcript)
+
+        self.assertEqual(validated[0]["identities"]["policy_id"], f"{91:064x}")
+        self.assertEqual(validated[0]["identities"]["candidate_id"], f"{92:064x}")
+        self.assertEqual(validated[2]["identities"]["policy_id"], f"{90:064x}")
+
+    def test_transcript_rejects_colliding_identities(self) -> None:
         for mutation in (
-            "policy",
-            "candidate",
             "domain-collision",
             "governance-collision",
         ):
@@ -107,11 +121,7 @@ class Spec015InstalledWheelTracerTests(unittest.TestCase):
             assert isinstance(policy, dict)
             assert isinstance(qualified, dict)
             assert isinstance(held, dict)
-            if mutation == "policy":
-                held["policy_id"] = f"{90:064x}"
-            elif mutation == "candidate":
-                held["candidate_id"] = f"{91:064x}"
-            elif mutation == "domain-collision":
+            if mutation == "domain-collision":
                 held["decision_id"] = qualified["evidence_id"]
             else:
                 held["decision_settlement_id"] = policy["reservation_id"]

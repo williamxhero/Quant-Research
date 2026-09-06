@@ -204,13 +204,8 @@ def _validated_identity_transcript(
     policy = by_label["policy"]
     qualified = by_label["qualified-chain"]
     held = by_label["held-successor-retirement"]
-    if not (
-        policy["policy_id"] == qualified["policy_id"] == held["policy_id"]
-        and qualified["candidate_id"] == held["candidate_id"]
-    ):
-        raise TracerFailure(
-            "stable installed identity transcript relationships drifted"
-        )
+    # Labels are independent scenarios with their own frozen scope. Compare
+    # each complete labeled transcript across replays, not scopes across labels.
     domain_ids = [
         qualified["evidence_id"],
         *qualified["decision_ids"],
