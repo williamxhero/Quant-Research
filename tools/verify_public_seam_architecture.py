@@ -5384,7 +5384,19 @@ def _formatter_only_drift(exc: HARNESS.InstalledWheelFailure) -> bool:
     try:
         payload, end = json.JSONDecoder().raw_decode(output)
     except json.JSONDecodeError:
-        return False
+        lines = output.rstrip().splitlines()
+        if not lines:
+            return False
+        summary = re.fullmatch(
+            r"(?P<would>\d+) files? would be reformatted"
+            r"(?:, \d+ files? already formatted)?",
+            lines[-1],
+        )
+        return bool(
+            summary
+            and sum(line == "unformatted: File would be reformatted" for line in lines)
+            == int(summary.group("would"))
+        )
     if output[end:].strip() or not isinstance(payload, list) or not payload:
         return False
     return all(

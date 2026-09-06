@@ -555,6 +555,34 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 drift = verifier.run_full_gate_checks(root)
             self.assertEqual(drift[0]["status"], "baseline-only-drift")
 
+            formatter_text = (
+                "unformatted: File would be reformatted\n"
+                "  --> README.md:1:1\n"
+                "   |\n"
+                "1 - old\n"
+                "1 + new\n"
+                "   |\n\n"
+                "1 file would be reformatted, 2 files already formatted"
+            )
+            with (
+                mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
+                mock.patch.object(
+                    verifier.HARNESS,
+                    "run_command",
+                    side_effect=(
+                        verifier.HARNESS.InstalledWheelFailure(
+                            "command failed (1): ruff format --check .\n"
+                            + formatter_text,
+                            returncode=1,
+                        ),
+                        baseline,
+                        "",
+                    ),
+                ),
+            ):
+                drift = verifier.run_full_gate_checks(root)
+            self.assertEqual(drift[0]["status"], "baseline-only-drift")
+
             with (
                 mock.patch.object(verifier, "full_gate_plan", return_value=(check,)),
                 mock.patch.object(
