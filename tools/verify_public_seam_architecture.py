@@ -1273,6 +1273,58 @@ def _scan_spec015_qualification_seam(
                         + ", ".join(sorted(substituted))
                     )
 
+                def identity_target(target: ast.AST) -> bool:
+                    root = target
+                    while isinstance(root, (ast.Attribute, ast.Subscript)):
+                        root = root.value
+                    return isinstance(root, ast.Name) and root.id == "identity"
+
+                identity_mutations = [
+                    node
+                    for node in ast.walk(method)
+                    if getattr(node, "lineno", -1) > identity_assignments[0].lineno
+                    and (
+                        isinstance(
+                            node,
+                            (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr),
+                        )
+                        and any(
+                            identity_target(target)
+                            for target in (
+                                tuple(node.targets)
+                                if isinstance(node, ast.Assign)
+                                else (node.target,)
+                            )
+                        )
+                        or isinstance(node, ast.Call)
+                        and (
+                            isinstance(node.func, ast.Attribute)
+                            and identity_target(node.func.value)
+                            or (
+                                node.func.id
+                                if isinstance(node.func, ast.Name)
+                                else node.func.attr
+                                if isinstance(node.func, ast.Attribute)
+                                else ""
+                            )
+                            != "canonical_sha256"
+                            and any(
+                                isinstance(argument, ast.Name)
+                                and argument.id == "identity"
+                                for argument in (
+                                    *node.args,
+                                    *(item.value for item in node.keywords),
+                                )
+                            )
+                        )
+                    )
+                ]
+                if identity_mutations:
+                    raise ArchitectureViolation(
+                        f"apex-research: {class_name}.{method_name} canonical identity "
+                        "is mutable after construction"
+                    )
+
     forbidden_imports = {
         "sqlite3": "second governance ledger",
         "quant_runtime": "Runtime implementation access",
@@ -1790,7 +1842,9 @@ def _scan_spec015_qualification_seam(
     exact_grant_guard = len(authorize_functions) == 1 and any(
         isinstance(statement, ast.If)
         and ast.unparse(statement.test) == "grant.reservation.request != action"
-        and any(isinstance(item, ast.Raise) for item in statement.body)
+        and len(statement.body) == 1
+        and isinstance(statement.body[0], ast.Raise)
+        and not statement.orelse
         for statement in authorize_functions[0].body
     )
     if not exact_grant_guard:

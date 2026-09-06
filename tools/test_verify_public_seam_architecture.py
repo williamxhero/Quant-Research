@@ -953,6 +953,16 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
+                        "            if grant.reservation.request != action: raise RuntimeError('grant')\n",
+                        "            if grant.reservation.request != action:\n"
+                        "                return target\n"
+                        "                raise RuntimeError('grant')\n",
+                        1,
+                    ),
+                    "grant must bind the exact action request",
+                ),
+                (
+                    accepted.replace(
                         "from apex_research.canonical import canonical_sha256",
                         "def canonical_sha256(value): return 'id'",
                     ),
@@ -1108,6 +1118,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 1,
             )
             qualification.write_text(substituted_identity, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "canonical identity"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            mutated_identity = accepted.replace(
+                "        return cls(evaluation_id=canonical_sha256(identity))",
+                "        identity['candidate'] = alternate_candidate\n"
+                "        return cls(evaluation_id=canonical_sha256(identity))",
+                1,
+            )
+            qualification.write_text(mutated_identity, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "canonical identity"
             ):
