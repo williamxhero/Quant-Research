@@ -56,6 +56,7 @@ INSTALLED_TESTS = (
         "apex-research",
         (
             "tests/test_qualification_policy.py",
+            "tests/test_qualification_fixture_replay.py",
             (
                 "tests/test_evidence_v2.py::"
                 "test_four_section_states_are_closed_mutually_exclusive_and_require_owner_sources"
@@ -136,7 +137,13 @@ IDENTITY_TRANSCRIPT_FIELDS = {
 
 
 class TracerFailure(InstalledWheelFailure):
-    pass
+    def __init__(self, message: str, *, transcripts: list[list[object]] | None = None):
+        super().__init__(message)
+        self.transcripts = (
+            [_validated_identity_transcript(value) for value in transcripts]
+            if transcripts is not None
+            else None
+        )
 
 
 def _validated_identity_transcript(
@@ -416,7 +423,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         if not stable_identity_transcripts[0]:
             raise TracerFailure("stable installed tests emitted no identity transcript")
         if stable_identity_transcripts[0] != stable_identity_transcripts[1]:
-            raise TracerFailure("stable installed identity transcripts drifted")
+            raise TracerFailure(
+                "stable installed identity transcripts drifted",
+                transcripts=stable_identity_transcripts,
+            )
         output = run_command(
             [
                 str(python),
@@ -555,7 +565,10 @@ def main(argv: list[str] | None = None) -> int:
             else build_and_run(arguments.repository_root)
         )
     except (InstalledWheelFailure, ImportError, OSError, TypeError, ValueError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        failure = {"ok": False, "error": str(exc)}
+        if isinstance(exc, TracerFailure) and exc.transcripts is not None:
+            failure["stable_identity_transcripts"] = exc.transcripts
+        print(json.dumps(failure), file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0

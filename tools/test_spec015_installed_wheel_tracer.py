@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).parents[1]
 MODULE_PATH = ROOT / "tools" / "spec015_installed_wheel_tracer.py"
@@ -16,6 +20,33 @@ SPEC.loader.exec_module(tracer)
 
 
 class Spec015InstalledWheelTracerTests(unittest.TestCase):
+    def test_cli_preserves_validated_replays_when_identity_comparison_fails(
+        self,
+    ) -> None:
+        first = self._valid_transcript()
+        second = self._valid_transcript()
+        second[0]["identities"]["reservation_id"] = "f" * 64
+        error = tracer.TracerFailure(
+            "stable installed identity transcripts drifted",
+            transcripts=[first, second],
+        )
+        captured = io.StringIO()
+        with (
+            patch.object(tracer, "build_and_run", side_effect=error),
+            contextlib.redirect_stderr(captured),
+        ):
+            status = tracer.main(["--repository-root", str(ROOT)])
+        self.assertEqual(status, 1)
+        payload = json.loads(captured.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual(
+            payload["stable_identity_transcripts"],
+            [
+                tracer._validated_identity_transcript(first),
+                tracer._validated_identity_transcript(second),
+            ],
+        )
+
     @staticmethod
     def _valid_transcript() -> list[dict[str, object]]:
         values = [f"{value:064x}" for value in range(1, 40)]
