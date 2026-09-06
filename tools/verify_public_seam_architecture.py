@@ -323,8 +323,6 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
             "ruff",
             "format",
             "--check",
-            "--output-format",
-            "json",
             ".",
             baseline_only=owner
             in {"strategy_workspace", "quant_runtime", "strategy_reporting"},

@@ -305,6 +305,14 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             baseline_only,
             {"strategy_workspace", "quant_runtime", "strategy_reporting"},
         )
+        package_format_checks = (
+            item
+            for item in plan
+            if item.category == "format" and item.repository != "."
+        )
+        self.assertTrue(
+            all("--output-format" not in item.command for item in package_format_checks)
+        )
         source_attestations = {
             (item.owner, item.category): item
             for item in plan
