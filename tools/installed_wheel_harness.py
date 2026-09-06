@@ -360,13 +360,17 @@ def _kill_posix_identity(pid: int, start_time: int) -> None:
 
 
 def _kill_owned_subreaper_children(
-    owned: dict[int, int], baseline: dict[int, int]
+    owned: dict[int, int],
+    baseline: dict[int, int],
+    *,
+    timeout_seconds: float = 2.0,
 ) -> None:
     if os.name == "nt":
         return
-    for _ in range(4):
+    deadline = time.monotonic() + timeout_seconds
+    candidates = dict(owned)
+    while time.monotonic() < deadline:
         process_map = _posix_process_map()
-        candidates = dict(owned)
         candidates.update(
             {
                 pid: start_time
@@ -388,6 +392,23 @@ def _kill_owned_subreaper_children(
                 os.waitpid(pid, os.WNOHANG)
             except ChildProcessError:
                 pass
+        time.sleep(0.01)
+    process_map = _posix_process_map()
+    survivors = {
+        pid
+        for pid, start_time in candidates.items()
+        if process_map.get(pid, (None, None))[1] == start_time
+    }
+    survivors.update(
+        pid
+        for pid, (parent, start_time) in process_map.items()
+        if parent == os.getpid() and baseline.get(pid) != start_time
+    )
+    if survivors:
+        raise InstalledWheelFailure(
+            "owned POSIX descendants survived bounded cleanup: "
+            + ", ".join(str(pid) for pid in sorted(survivors))
+        )
 
 
 def _posix_parent_map() -> dict[int, int]:

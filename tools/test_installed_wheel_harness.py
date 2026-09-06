@@ -221,16 +221,32 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             mock.patch.object(harness.os, "WNOHANG", 1, create=True),
             mock.patch.object(harness.signal, "SIGKILL", 9, create=True),
             mock.patch.object(
-                harness,
-                "_posix_process_map",
-                return_value=process_map,
+                harness, "_posix_process_map", side_effect=[process_map, {}]
             ),
+            mock.patch.object(harness, "_kill_posix_identity") as kill_identity,
             mock.patch.object(harness.os, "waitpid"),
         ):
             harness._kill_owned_subreaper_children({}, {200: 11})
 
-        self.assertEqual(kill.call_count, 4)
-        self.assertEqual({call.args[0] for call in kill.call_args_list}, {201})
+        kill.assert_not_called()
+        kill_identity.assert_called_once_with(201, 22)
+
+    def test_posix_cleanup_fails_closed_when_an_owned_child_survives(self) -> None:
+        parent = os.getpid()
+        process_map = {201: (parent, 22)}
+        with (
+            mock.patch.object(harness.os, "name", "posix"),
+            mock.patch.object(harness, "_posix_process_map", return_value=process_map),
+            mock.patch.object(harness, "_kill_posix_identity"),
+            mock.patch.object(harness.os, "waitpid"),
+            mock.patch.object(harness.os, "WNOHANG", 1, create=True),
+            mock.patch.object(harness.time, "monotonic", side_effect=[0.0, 0.0, 2.0]),
+            mock.patch.object(harness.time, "sleep"),
+            self.assertRaisesRegex(
+                harness.InstalledWheelFailure, "survived bounded cleanup"
+            ),
+        ):
+            harness._kill_owned_subreaper_children({}, {}, timeout_seconds=1.0)
 
     def test_source_topology_attests_tests_and_rejects_a_dirty_test(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

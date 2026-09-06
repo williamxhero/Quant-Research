@@ -255,6 +255,21 @@ def _snapshot_tree_identity(repository: Path) -> dict[str, object]:
     }
 
 
+def _assert_snapshot_trees(
+    snapshot_root: Path,
+    repositories: dict[str, Path],
+    expected: dict[str, dict[str, object]],
+    *,
+    phase: str,
+) -> None:
+    observed = {
+        repository: _snapshot_tree_identity(snapshot_root / repository)
+        for repository in repositories
+    }
+    if observed != expected:
+        raise TracerFailure(f"attested build snapshot mutated during {phase}")
+
+
 def build_and_run(repository_root: Path) -> dict[str, Any]:
     repository_root = repository_root.resolve()
     root_repository = Path(__file__).resolve().parents[1]
@@ -314,11 +329,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             dist,
             environment,
         )
-        if snapshot_trees != {
-            repository: _snapshot_tree_identity(snapshot_root / repository)
-            for repository in repositories
-        }:
-            raise TracerFailure("attested build snapshot mutated during wheel build")
+        _assert_snapshot_trees(
+            snapshot_root, repositories, snapshot_trees, phase="wheel build"
+        )
         source_topology_after_build = {
             repository: verify_source_topology(path, environment)
             for repository, path in repositories.items()
@@ -354,6 +367,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 cwd=isolated,
                 environment=environment,
                 timeout_seconds=900,
+            )
+            _assert_snapshot_trees(
+                snapshot_root, repositories, snapshot_trees, phase="installed tests"
             )
         stable_identity_transcripts: list[list[dict[str, Any]]] = []
         transcript_environment = dict(environment)
@@ -396,6 +412,12 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             stable_identity_transcripts.append(
                 _validated_identity_transcript(transcript)
             )
+            _assert_snapshot_trees(
+                snapshot_root,
+                repositories,
+                snapshot_trees,
+                phase="stable behavioral tests",
+            )
         if not stable_identity_transcripts[0]:
             raise TracerFailure("stable installed tests emitted no identity transcript")
         if stable_identity_transcripts[0] != stable_identity_transcripts[1]:
@@ -427,6 +449,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             ) from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
+        _assert_snapshot_trees(
+            snapshot_root, repositories, snapshot_trees, phase="installed smoke"
+        )
         result["repositories"] = list(repositories)
         result["installed_tests"] = [
             f"{repository}/{target}"

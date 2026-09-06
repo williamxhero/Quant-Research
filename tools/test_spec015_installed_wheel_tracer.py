@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -121,8 +122,6 @@ class Spec015InstalledWheelTracerTests(unittest.TestCase):
                 tracer._validated_identity_transcript(transcript)
 
     def test_snapshot_tree_identity_detects_added_files(self) -> None:
-        import tempfile
-
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
@@ -130,6 +129,25 @@ class Spec015InstalledWheelTracerTests(unittest.TestCase):
             (root / "generated.py").write_text("VALUE = 2\n", encoding="utf-8")
 
             self.assertNotEqual(before, tracer._snapshot_tree_identity(root))
+
+    def test_snapshot_attestation_fails_after_a_test_mutates_the_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "quant-research"
+            repository.mkdir()
+            (repository / "tool.py").write_text("before\n", encoding="utf-8")
+            expected = {"quant-research": tracer._snapshot_tree_identity(repository)}
+            (repository / "created-by-test.py").write_text("after\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                tracer.TracerFailure, "snapshot mutated during installed tests"
+            ):
+                tracer._assert_snapshot_trees(
+                    root,
+                    {"quant-research": repository},
+                    expected,
+                    phase="installed tests",
+                )
 
 
 if __name__ == "__main__":

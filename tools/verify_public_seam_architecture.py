@@ -1231,6 +1231,51 @@ def _scan_spec015_qualification_seam(
             "apex-research: qualification governance types must come directly from "
             "apex_research.governance"
         )
+    trusted_integrity_imports = {
+        "canonical_sha256": "apex_research.canonical",
+        "verify_publication": "apex_research.evidence_workspace",
+    }
+    for subsystem_path, subsystem_tree in subsystem_trees:
+        loaded_names = {
+            node.id
+            for node in ast.walk(subsystem_tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        }
+        for helper_name, trusted_module in trusted_integrity_imports.items():
+            if helper_name not in loaded_names:
+                continue
+            imported_directly = any(
+                isinstance(node, ast.ImportFrom)
+                and node.module == trusted_module
+                and any(
+                    alias.name == helper_name and alias.asname in {None, helper_name}
+                    for alias in node.names
+                )
+                for node in subsystem_tree.body
+            )
+            rebound = any(
+                isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == helper_name
+                or isinstance(
+                    node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
+                )
+                and any(
+                    helper_name in bound_names(target)
+                    for target in (
+                        tuple(node.targets)
+                        if isinstance(node, ast.Assign)
+                        else (node.target,)
+                    )
+                )
+                or isinstance(node, ast.arg)
+                and node.arg == helper_name
+                for node in ast.walk(subsystem_tree)
+            )
+            if not imported_directly or rebound:
+                raise ArchitectureViolation(
+                    "apex-research: qualification integrity helpers must come directly "
+                    f"from trusted owner modules: {subsystem_path}"
+                )
     for required_name in ("canonical_sha256",):
         if required_name not in names:
             raise ArchitectureViolation(
@@ -3759,17 +3804,18 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         return value.id in safe_publication_values
                     if not isinstance(value, ast.Dict):
                         return False
-                    for key, item in zip(value.keys, value.values, strict=True):
-                        if (
-                            isinstance(key, ast.Constant)
-                            and key.value in {"record_type", "schema_id"}
-                            and isinstance(item, ast.Constant)
-                            and isinstance(item.value, str)
-                        ):
-                            return not item.value.startswith(
-                                "apex-research.qualification-"
-                            )
-                    return False
+                    discriminators = [
+                        item.value
+                        for key, item in zip(value.keys, value.values, strict=True)
+                        if isinstance(key, ast.Constant)
+                        and key.value in {"record_type", "schema_id"}
+                        and isinstance(item, ast.Constant)
+                        and isinstance(item.value, str)
+                    ]
+                    return bool(discriminators) and all(
+                        not item.startswith("apex-research.qualification-")
+                        for item in discriminators
+                    )
 
                 def contains_qualification(
                     value: ast.AST,
@@ -3826,6 +3872,8 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         or assigns_qualification_discriminator
                     ):
                         qualification_values.update(aliases)
+                    if assigns_qualification_discriminator:
+                        safe_publication_values.difference_update(aliases)
                     if value is not None and explicitly_non_owner_record(value):
                         safe_publication_values.update(aliases)
                     if value is not None and (
@@ -4695,9 +4743,19 @@ def validate_constitution() -> None:
     assert specification is not None and specification.loader is not None
     validator = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(validator)
-    validator.validate_policy(
-        validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
-    )
+    policy = validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
+    try:
+        validator.validate_policy(policy)
+        validator.validate_candidate(
+            validator.read_json(
+                ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
+            ),
+            policy,
+        )
+    except Exception as exc:
+        raise ArchitectureViolation(
+            f"quant-research: SPEC-015 architecture admission is invalid: {exc}"
+        ) from exc
 
 
 def run_fixture_checks(repository_root: Path) -> None:

@@ -18,6 +18,49 @@ SPEC.loader.exec_module(verifier)
 
 
 class PublicSeamArchitectureTests(unittest.TestCase):
+    def test_normal_constitution_validation_includes_the_spec015_admission(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            docs = root / "docs"
+            admissions = docs / "architecture-admissions"
+            admissions.mkdir(parents=True)
+            tools = root / "tools"
+            tools.mkdir()
+            (tools / "validate_architecture_constitution.py").write_text(
+                (ROOT / "tools/validate_architecture_constitution.py").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            policy = json.loads(
+                (ROOT / "docs/architecture-constitution.v1.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            candidate = json.loads(
+                (ROOT / "docs/architecture-admissions/spec-015.v1.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            candidate["public_seam"] = ""
+            (docs / "architecture-constitution.v1.json").write_text(
+                json.dumps(policy), encoding="utf-8"
+            )
+            (admissions / "spec-015.v1.json").write_text(
+                json.dumps(candidate), encoding="utf-8"
+            )
+
+            with (
+                mock.patch.object(verifier, "ROOT", root),
+                self.assertRaisesRegex(
+                    verifier.ArchitectureViolation,
+                    "SPEC-015 architecture admission is invalid",
+                ),
+            ):
+                verifier.validate_constitution()
+
     def test_fixture_plan_uses_only_existing_public_module_seams(self) -> None:
         plan = verifier.fixture_plan(ROOT)
         self.assertEqual(
@@ -598,8 +641,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             apex.mkdir(parents=True)
             (apex / "qualification.py").write_text(
                 "from enum import StrEnum\n"
-                "def canonical_sha256(value): return 'id'\n"
-                "def verify_publication(*values, **options): pass\n"
+                "from apex_research.canonical import canonical_sha256\n"
+                "from apex_research.evidence_workspace import verify_publication\n"
                 "from apex_research.governance import ActionReservation, CampaignLedgerReader, GovernanceCoordinator, GovernedAction\n"
                 "class CandidateRecordReader:\n"
                 "    def __init__(self, workspace): pass\n"
@@ -801,6 +844,20 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                         "action.action is not GovernedAction.UNRELATED",
                     ),
                     "action/resource contract is not exact",
+                ),
+                (
+                    accepted.replace(
+                        "from apex_research.canonical import canonical_sha256",
+                        "def canonical_sha256(value): return 'id'",
+                    ),
+                    "integrity helpers must come directly",
+                ),
+                (
+                    accepted.replace(
+                        "from apex_research.evidence_workspace import verify_publication",
+                        "def verify_publication(*values, **options): pass",
+                    ),
+                    "integrity helpers must come directly",
                 ),
                 (
                     accepted.replace(
@@ -1547,6 +1604,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 (
                     "def save(workspace):\n"
                     "    payload={}\n"
+                    "    payload['record_type']='apex-research.qualification-decision.v1'\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={'record_type': 'report-summary.v1', "
+                    "'schema_id': 'apex-research.qualification-decision.v1'}\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={'record_type': 'report-summary.v1'}\n"
                     "    payload['record_type']='apex-research.qualification-decision.v1'\n"
                     "    workspace.publish_record(payload)\n"
                 ),
