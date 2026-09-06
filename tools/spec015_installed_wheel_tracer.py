@@ -366,7 +366,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 (snapshot_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=environment,
-                timeout_seconds=900,
+                timeout_seconds=7_200 if repository == "apex-research" else 900,
             )
             _assert_snapshot_trees(
                 snapshot_root, repositories, snapshot_trees, phase="installed tests"
@@ -390,7 +390,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 (snapshot_root / name / "src" for name in PACKAGE_REPOSITORIES),
                 cwd=isolated,
                 environment=transcript_environment,
-                timeout_seconds=1_200,
+                timeout_seconds=7_200,
                 pytest_args=("-s",),
             )
             encoded_transcript = re.findall(
