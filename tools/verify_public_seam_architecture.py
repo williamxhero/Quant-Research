@@ -1530,7 +1530,24 @@ def _scan_spec015_qualification_seam(
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "publish_record"
         ]
-        if len(governed_returns) != 1 or direct_publications:
+        nested_return_ids = {
+            id(node)
+            for nested in ast.walk(methods[method_name])
+            if isinstance(nested, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and nested is not methods[method_name]
+            for node in ast.walk(nested)
+            if isinstance(node, ast.Return)
+        }
+        all_method_returns = [
+            node
+            for node in ast.walk(methods[method_name])
+            if isinstance(node, ast.Return) and id(node) not in nested_return_ids
+        ]
+        if (
+            len(governed_returns) != 1
+            or all_method_returns != governed_returns
+            or direct_publications
+        ):
             raise ArchitectureViolation(
                 f"apex-research: {method_name} bypasses governed qualification publication"
             )
@@ -2648,6 +2665,23 @@ def _scan_spec015_qualification_seam(
         if lineage_call is not None
         else {}
     )
+    roots_argument = lineage_keywords.get("roots")
+    relations_argument = lineage_keywords.get("relations")
+    lineage_bound_to_root = (
+        lineage_reader is not None
+        and [argument.arg for argument in lineage_reader.args.args[:2]]
+        == ["workspace", "root"]
+        and roots_argument is not None
+        and ast.unparse(roots_argument)
+        == "({'kind': root.record_type, 'id': root.record_id},)"
+        and isinstance(lineage_keywords.get("direction"), ast.Constant)
+        and lineage_keywords["direction"].value == "descendants"
+        and relations_argument is not None
+        and ast.unparse(relations_argument)
+        == "(relation,) if isinstance(relation, str) else relation"
+        and isinstance(lineage_keywords.get("record_types"), ast.Name)
+        and lineage_keywords["record_types"].id == "record_types"
+    )
     lineage_loops = (
         [
             node
@@ -3377,6 +3411,7 @@ def _scan_spec015_qualification_seam(
     if (
         len(lineage_calls) != 1
         or indirect_lineage_queries
+        or not lineage_bound_to_root
         or not {"max_depth", "page_size", "cursor", "snapshot_token"}
         <= set(lineage_keywords)
         or not bounded_page_size
@@ -4419,6 +4454,17 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             *call.args,
                             *(item.value for item in call.keywords),
                         )
+                        if (
+                            isinstance(call.func, ast.Attribute)
+                            and call.func.attr == "update"
+                            and any(
+                                contains_direct_qualification(argument)
+                                for argument in arguments
+                            )
+                        ):
+                            mutated = ast.unparse(call.func.value)
+                            qualification_values.add(mutated)
+                            safe_publication_values.discard(mutated)
                         direct_publish = (
                             isinstance(call.func, ast.Attribute)
                             and call.func.attr == "publish_record"

@@ -821,12 +821,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "    value=QualificationRetirement.model_validate_json(raw)\n"
                 "    verify_publication(raw, _retirement_publication(value))\n"
                 "    return value\n"
-                "def _query_lineage_records(workspace):\n"
+                "def _query_lineage_records(workspace, root, relation='successor-of', record_types=(), max_depth=1):\n"
+                "    if not 1 <= max_depth <= 8: raise RuntimeError('bounded depth')\n"
                 "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n"
                 "    while True:\n"
                 "        if page_count >= 100: raise RuntimeError('bounded')\n"
                 "        page_count += 1\n"
-                "        page=workspace.query_lineage(roots=(), direction='descendants', max_depth=1, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
+                "        page=workspace.query_lineage(roots=({'kind': root.record_type, 'id': root.record_id},), direction='descendants', relations=(relation,) if isinstance(relation, str) else relation, record_types=record_types, max_depth=max_depth, page_size=100, cursor=cursor, snapshot_token=snapshot_token)\n"
                 "        page_token=page.get('snapshot_token')\n"
                 "        if not isinstance(page_token, str) or not page_token: raise RuntimeError('invalid token')\n"
                 "        if snapshot_token is not None and page_token != snapshot_token: raise RuntimeError('drift')\n"
@@ -1121,6 +1122,24 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                     "history reader is disconnected",
                 ),
+                (
+                    accepted.replace(
+                        "roots=({'kind': root.record_type, 'id': root.record_id},)",
+                        "roots=()",
+                        1,
+                    ),
+                    "bounded snapshot pagination",
+                ),
+                (
+                    accepted.replace(
+                        "    def publish_decision(self, evaluation, action): return self._execute_publication(",
+                        "    def publish_decision(self, evaluation, action):\n"
+                        "        if evaluation: return _publish_record(self._workspace)\n"
+                        "        return self._execute_publication(",
+                        1,
+                    ),
+                    "bypasses governed qualification publication",
+                ),
             ):
                 qualification.write_text(bypass, encoding="utf-8")
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, message):
@@ -1177,8 +1196,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             nested_depth_guard = accepted.replace(
-                "def _query_lineage_records(workspace):\n",
-                "def _query_lineage_records(workspace, max_depth=99):\n"
+                "def _query_lineage_records(workspace, root, relation='successor-of', record_types=(), max_depth=1):\n"
+                "    if not 1 <= max_depth <= 8: raise RuntimeError('bounded depth')\n",
+                "def _query_lineage_records(workspace, root, relation='successor-of', record_types=(), max_depth=99):\n"
                 "    def unused():\n"
                 "        if not 1 <= max_depth <= 8: raise RuntimeError('bounded')\n",
             ).replace(
@@ -1584,10 +1604,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "        page_token, safe = ('forged', None)\n",
                 ),
                 accepted.replace(
-                    "def _query_lineage_records(workspace):\n",
+                    "def _query_lineage_records(workspace, root, relation='successor-of', record_types=(), max_depth=1):\n",
                     "def _unbounded(workspace):\n"
                     "    return workspace.query_lineage(page_size=1000000)\n"
-                    "def _query_lineage_records(workspace):\n",
+                    "def _query_lineage_records(workspace, root, relation='successor-of', record_types=(), max_depth=1):\n",
                 ).replace(
                     "    records=[]; seen_cursors=set(); page_count=0; cursor=None; snapshot_token=None\n",
                     "    records=[]; records.extend(_unbounded(workspace)); "
@@ -1846,6 +1866,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "def save(workspace):\n"
                     "    payload={'record_type': 'report-summary.v1'}\n"
                     "    payload['record_type']='apex-research.qualification-decision.v1'\n"
+                    "    workspace.publish_record(payload)\n"
+                ),
+                (
+                    "def save(workspace):\n"
+                    "    payload={'record_type': 'report-summary.v1'}\n"
+                    "    payload.update({'record_type': "
+                    "'apex-research.qualification-decision.v1'})\n"
                     "    workspace.publish_record(payload)\n"
                 ),
                 (
