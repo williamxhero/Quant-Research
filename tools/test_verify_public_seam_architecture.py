@@ -359,11 +359,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             if item.owner == "apex_research" and item.category == "pytest"
         )
         self.assertEqual(apex_pytest.timeout_seconds, 7_200)
+        qualification_wheels = next(
+            item for item in plan if item.owner == "spec015_installed_wheels"
+        )
+        self.assertEqual(qualification_wheels.timeout_seconds, 25_200)
         self.assertTrue(
             all(
                 item.timeout_seconds == 1_800
                 for item in plan
-                if item is not apex_pytest
+                if item is not apex_pytest and item is not qualification_wheels
             )
         )
         self.assertIn("not connected", " ".join(runtime_pytest.command))

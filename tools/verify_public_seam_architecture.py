@@ -409,6 +409,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "tools/spec015_installed_wheel_tracer.py",
         "--repository-root",
         str(repository_root),
+        timeout_seconds=25_200,
     )
     return tuple(commands)
 
