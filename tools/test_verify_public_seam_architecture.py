@@ -306,17 +306,35 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             {"strategy_workspace", "quant_runtime", "strategy_reporting"},
         )
         source_attestations = {
-            item.owner: item for item in plan if item.category == "spec015-source-diff"
+            (item.owner, item.category): item
+            for item in plan
+            if item.category in {"spec015-source-diff", "spec015-worktree-source-diff"}
         }
         self.assertEqual(
             set(source_attestations),
-            {"strategy_workspace", "quant_runtime", "strategy_reporting"},
+            {
+                (owner, category)
+                for owner in (
+                    "strategy_workspace",
+                    "quant_runtime",
+                    "strategy_reporting",
+                )
+                for category in (
+                    "spec015-source-diff",
+                    "spec015-worktree-source-diff",
+                )
+            },
         )
-        for item in source_attestations.values():
+        for (_owner, category), item in source_attestations.items():
             self.assertTrue(item.baseline_only)
             self.assertEqual(item.command[:3], ("git", "diff", "--quiet"))
-            self.assertNotIn("HEAD", item.command)
             self.assertEqual(item.command[-2:], ("--", "src"))
+            if category == "spec015-source-diff":
+                self.assertEqual(item.command[-3], "HEAD")
+                self.assertEqual(len(item.command), 7)
+            else:
+                self.assertEqual(item.command[3], "HEAD")
+                self.assertEqual(len(item.command), 6)
         runtime_pytest = next(
             item
             for item in plan
@@ -695,7 +713,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "from enum import StrEnum\n"
                 "from apex_research.canonical import canonical_sha256\n"
                 "from apex_research.evidence_workspace import verify_publication\n"
-                "from apex_research.governance import ActionReservation, CampaignLedgerReader, GovernanceCoordinator, GovernedAction\n"
+                "from apex_research.governance import ActionReservation, CampaignLedgerReader, GovernanceCoordinator, GovernedAction, ResourceKind, ResourceRef\n"
                 "from apex_research.records import FrozenModel\n"
                 "class CandidateRecordReader:\n"
                 "    def __init__(self, workspace): pass\n"
@@ -748,14 +766,16 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "class QualificationPageCursor:\n"
                 "    current: str\n"
                 "class QualificationService:\n"
-                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_decision(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_held_evaluation(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
-                "    def publish_retirement(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_policy(self, policy, action): return self._execute_publication(action=action, campaign_id=policy.campaign.record_id, target=policy.ref(), idempotency_key=qualification_publication_idempotency_key(policy), preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_decision(self, evaluation, action): return self._execute_publication(action=action, campaign_id=evaluation.campaign.record_id, target=evaluation.ref(), idempotency_key=qualification_publication_idempotency_key(evaluation), preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_held_evaluation(self, evaluation, action): return self._execute_publication(action=action, campaign_id=evaluation.campaign.record_id, target=evaluation.ref(), idempotency_key=qualification_publication_idempotency_key(evaluation), preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
+                "    def publish_retirement(self, request, action): return self._execute_publication(action=action, campaign_id=request.campaign.record_id, target=request.ref(), idempotency_key=qualification_publication_idempotency_key(request), preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n"
                 "    def _execute_publication(self, *, action, campaign_id, target, idempotency_key, preflight, complete):\n"
                 "        expected_resources = qualification_publication_scope(target)\n"
-                "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n"
-                "        def authorize(grant): preflight(); return target\n"
+                "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.campaign_id != campaign_id or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n"
+                "        def authorize(grant):\n"
+                "            if grant.reservation.request != action: raise RuntimeError('grant')\n"
+                "            preflight(); return target\n"
                 "        governance = self._require_governance()\n"
                 "        result = governance.execute(action, authorize)\n"
                 "        if result.status != 'committed' or result.reason != 'success': return result\n"
@@ -763,7 +783,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "        except Exception: return result\n"
                 "        return result\n"
                 "    def _require_governance(self) -> GovernanceCoordinator: return self._governance\n"
-                "def qualification_publication_scope(target): return (target,)\n"
+                "def qualification_publication_scope(reference): return (ResourceRef(kind=ResourceKind.QUALIFICATION_PUBLICATION, resource_id=reference.record_id, version=reference.record_type),)\n"
+                "def qualification_publication_idempotency_key(value): return f'qualification-slot:{canonical_sha256(value)}'\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
                 "def _policy_publication(value): return {'lineage': []}\n"
                 "def _decision_publication(value): return {'lineage': [(value.evaluation.predecessor.record, 'successor-of')]}\n"
@@ -900,6 +921,38 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
+                        "campaign_id=policy.campaign.record_id",
+                        "campaign_id='unrelated'",
+                        1,
+                    ),
+                    "does not bind the governed publication contract",
+                ),
+                (
+                    accepted.replace(
+                        "idempotency_key=qualification_publication_idempotency_key(policy)",
+                        "idempotency_key='fresh-retry-key'",
+                        1,
+                    ),
+                    "does not bind the governed publication contract",
+                ),
+                (
+                    accepted.replace(
+                        "ResourceKind.QUALIFICATION_PUBLICATION",
+                        "ResourceKind.UNRELATED",
+                        1,
+                    ),
+                    "action/resource contract is not exact",
+                ),
+                (
+                    accepted.replace(
+                        "            if grant.reservation.request != action: raise RuntimeError('grant')\n",
+                        "",
+                        1,
+                    ),
+                    "grant must bind the exact action request",
+                ),
+                (
+                    accepted.replace(
                         "from apex_research.canonical import canonical_sha256",
                         "def canonical_sha256(value): return 'id'",
                     ),
@@ -930,9 +983,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
-                        "target=target, idempotency_key='slot'",
-                        "target=(_publish_record(self._workspace), target)[1], "
-                        "idempotency_key='slot'",
+                        "target=policy.ref(), idempotency_key=qualification_publication_idempotency_key(policy)",
+                        "target=(_publish_record(self._workspace), policy.ref())[1], "
+                        "idempotency_key=qualification_publication_idempotency_key(policy)",
                         1,
                     ),
                     "eagerly publishes before governance",
@@ -966,10 +1019,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 (
                     accepted.replace(
                         "        expected_resources = qualification_publication_scope(target)\n"
-                        "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
+                        "        if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.campaign_id != campaign_id or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
                         "        if False:\n"
                         "            expected_resources = qualification_publication_scope(target)\n"
-                        "            if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
+                        "            if action.action is not GovernedAction.QUALIFICATION_PUBLICATION or action.campaign_id != campaign_id or action.resources != expected_resources or action.idempotency_key != idempotency_key: raise RuntimeError('scope')\n",
                     ),
                     "action/resource contract is not exact",
                 ),
@@ -991,6 +1044,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     accepted.replace(
                         "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
                         "def _held_publication(value): return {'lineage': [(value.candidate, 'evaluation-of')]}",
+                    ),
+                    "lineage relation is invalid",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
+                        "def _held_publication(value): return {'lineage': [(forged.predecessor.record, 'evaluation-of')]}",
                     ),
                     "lineage relation is invalid",
                 ),
@@ -1326,8 +1386,8 @@ class PublicSeamArchitectureTests(unittest.TestCase):
 
             for premature_publication in (
                 accepted.replace(
-                    "def publish_policy(self, action, target): return self._execute_publication(",
-                    "def publish_policy(self, action, target): "
+                    "def publish_policy(self, policy, action): return self._execute_publication(",
+                    "def publish_policy(self, policy, action): "
                     "_publish_record(self._workspace); return self._execute_publication(",
                     1,
                 ),
@@ -1370,10 +1430,10 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier._scan_spec015_qualification_seam(root / "apex-research")
 
             named_eager_default = accepted.replace(
-                "    def publish_policy(self, action, target): return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n",
-                "    def publish_policy(self, action, target):\n"
+                "    def publish_policy(self, policy, action): return self._execute_publication(action=action, campaign_id=policy.campaign.record_id, target=policy.ref(), idempotency_key=qualification_publication_idempotency_key(policy), preflight=lambda: None, complete=lambda *_: _publish_record(self._workspace))\n",
+                "    def publish_policy(self, policy, action):\n"
                 "        def done(eager=_publish_record(self._workspace)): return eager\n"
-                "        return self._execute_publication(action=action, campaign_id='id', target=target, idempotency_key='slot', preflight=lambda: None, complete=done)\n",
+                "        return self._execute_publication(action=action, campaign_id=policy.campaign.record_id, target=policy.ref(), idempotency_key=qualification_publication_idempotency_key(policy), preflight=lambda: None, complete=done)\n",
             )
             qualification.write_text(named_eager_default, encoding="utf-8")
             with self.assertRaisesRegex(

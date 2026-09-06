@@ -359,6 +359,19 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
                 "diff",
                 "--quiet",
                 UNCHANGED_REPOSITORY_BASELINES[repository],
+                "HEAD",
+                "--",
+                "src",
+                baseline_only=True,
+            )
+            add(
+                owner,
+                repository,
+                "spec015-worktree-source-diff",
+                "git",
+                "diff",
+                "--quiet",
+                "HEAD",
                 "--",
                 "src",
                 baseline_only=True,
@@ -1476,6 +1489,22 @@ def _scan_spec015_qualification_seam(
             raise ArchitectureViolation(
                 f"apex-research: {method_name} does not bind the governed publication contract"
             )
+        publication_value = {
+            "publish_policy": "policy",
+            "publish_decision": "evaluation",
+            "publish_held_evaluation": "evaluation",
+            "publish_retirement": "request",
+        }[method_name]
+        if (
+            ast.unparse(keywords["action"]) != "action"
+            or ast.unparse(keywords["campaign_id"])
+            != f"{publication_value}.campaign.record_id"
+            or ast.unparse(keywords["idempotency_key"])
+            != f"qualification_publication_idempotency_key({publication_value})"
+        ):
+            raise ArchitectureViolation(
+                f"apex-research: {method_name} does not bind the governed publication contract"
+            )
         if not isinstance(keywords["complete"], (ast.Lambda, ast.Name)):
             raise ArchitectureViolation(
                 f"apex-research: {method_name} eagerly evaluates publication completion"
@@ -1633,6 +1662,23 @@ def _scan_spec015_qualification_seam(
         raise ArchitectureViolation(
             "apex-research: qualification service lacks _execute_publication"
         )
+    scope_function = functions.get("qualification_publication_scope")
+    scope_returns = (
+        [node for node in scope_function.body if isinstance(node, ast.Return)]
+        if scope_function is not None
+        else []
+    )
+    if (
+        scope_function is None
+        or [argument.arg for argument in scope_function.args.args] != ["reference"]
+        or len(scope_returns) != 1
+        or ast.unparse(scope_returns[0].value)
+        != "(ResourceRef(kind=ResourceKind.QUALIFICATION_PUBLICATION, "
+        "resource_id=reference.record_id, version=reference.record_type),)"
+    ):
+        raise ArchitectureViolation(
+            "apex-research: qualification publication action/resource contract is not exact"
+        )
     expected_resource_assignments = [
         (index, statement)
         for index, statement in enumerate(execute_publication.body)
@@ -1702,6 +1748,15 @@ def _scan_spec015_qualification_seam(
         and any(
             exact_attribute_compare(
                 term,
+                left_attribute="campaign_id",
+                operator=ast.NotEq,
+                right_name="campaign_id",
+            )
+            for term in terms
+        )
+        and any(
+            exact_attribute_compare(
+                term,
                 left_attribute="resources",
                 operator=ast.NotEq,
                 right_name="expected_resources",
@@ -1725,6 +1780,22 @@ def _scan_spec015_qualification_seam(
     ):
         raise ArchitectureViolation(
             "apex-research: qualification publication action/resource contract is not exact"
+        )
+    authorize_functions = [
+        node
+        for node in execute_publication.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "authorize"
+    ]
+    exact_grant_guard = len(authorize_functions) == 1 and any(
+        isinstance(statement, ast.If)
+        and ast.unparse(statement.test) == "grant.reservation.request != action"
+        and any(isinstance(item, ast.Raise) for item in statement.body)
+        for statement in authorize_functions[0].body
+    )
+    if not exact_grant_guard:
+        raise ArchitectureViolation(
+            "apex-research: qualification publication grant must bind the exact action request"
         )
     governance_assignments = [
         (index, node)
@@ -3328,13 +3399,34 @@ def _scan_spec015_qualification_seam(
             if relation == required_relation
         ]
 
-        def exact_predecessor_record(value: ast.AST) -> bool:
-            return (
-                isinstance(value, ast.Attribute)
-                and value.attr == "record"
-                and isinstance(value.value, ast.Attribute)
-                and value.value.attr == "predecessor"
+        parameter = function.args.args[0].arg if function is not None else ""
+        predecessor_owner = {
+            "_held_publication": None,
+            "_decision_publication": "evaluation",
+            "_retirement_publication": "request",
+        }[function_name]
+        canonical_sources = {
+            (
+                f"{parameter}.predecessor.record"
+                if predecessor_owner is None
+                else f"{parameter}.{predecessor_owner}.predecessor.record"
             )
+        }
+        if function is not None and predecessor_owner is not None:
+            canonical_sources.update(
+                f"{target.id}.predecessor.record"
+                for assignment in function.body
+                if isinstance(assignment, ast.Assign)
+                and ast.unparse(assignment.value) == f"{parameter}.{predecessor_owner}"
+                for target in assignment.targets
+                if isinstance(target, ast.Name)
+            )
+
+        def exact_predecessor_record(
+            value: ast.AST,
+            expected_sources: frozenset[str] = frozenset(canonical_sources),
+        ) -> bool:
+            return ast.unparse(value) in expected_sources
 
         if (
             len(required_sources) != 1
