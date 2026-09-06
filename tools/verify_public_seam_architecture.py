@@ -1887,6 +1887,21 @@ def _scan_spec015_qualification_seam(
         and len(statement.targets) == 1
         and isinstance(statement.targets[0], ast.Name)
     ]
+    action_rebindings = [
+        node
+        for node in ast.walk(execute_publication)
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+        and any(
+            "action" in bound_names(target)
+            for target in (
+                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+            )
+        )
+    ]
+    if action_rebindings:
+        raise ArchitectureViolation(
+            "apex-research: qualification publication action contract is rebound"
+        )
     governance_rebindings = [
         node
         for index, statement in enumerate(execute_publication.body)
@@ -2346,6 +2361,110 @@ def _scan_spec015_qualification_seam(
             )
             for node in ast.walk(reader)
         )
+
+        def helper_mutates_parameter(
+            helper_name: str,
+            parameter: str,
+            seen: frozenset[tuple[str, str]] = frozenset(),
+        ) -> bool:
+            key = (helper_name, parameter)
+            helper = functions.get(helper_name)
+            if helper is None or key in seen:
+                return False
+            visited = seen | {key}
+
+            def parameter_root(value: ast.AST) -> bool:
+                while isinstance(value, (ast.Attribute, ast.Subscript)):
+                    value = value.value
+                return isinstance(value, ast.Name) and value.id == parameter
+
+            for node in ast.walk(helper):
+                if isinstance(
+                    node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
+                ) and any(
+                    parameter_root(target)
+                    for target in (
+                        tuple(node.targets)
+                        if isinstance(node, ast.Assign)
+                        else (node.target,)
+                    )
+                ):
+                    return True
+                if not isinstance(node, ast.Call):
+                    continue
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and parameter_root(node.func.value)
+                    and node.func.attr
+                    in {
+                        "clear",
+                        "pop",
+                        "remove",
+                        "update",
+                        "append",
+                        "extend",
+                        "__setitem__",
+                    }
+                    or isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "object"
+                    and node.func.attr == "__setattr__"
+                    and bool(node.args)
+                    and parameter_root(node.args[0])
+                ):
+                    return True
+                called = (
+                    node.func.id
+                    if isinstance(node.func, ast.Name)
+                    else node.func.attr
+                    if isinstance(node.func, ast.Attribute)
+                    else ""
+                )
+                nested = functions.get(called)
+                if nested is None:
+                    continue
+                for index, argument in enumerate(node.args):
+                    if (
+                        isinstance(argument, ast.Name)
+                        and argument.id == parameter
+                        and index < len(nested.args.args)
+                        and helper_mutates_parameter(
+                            called, nested.args.args[index].arg, visited
+                        )
+                    ):
+                        return True
+            return False
+
+        post_verify_indirect_mutation = (
+            bool(verify_statements)
+            and bool(returns)
+            and any(
+                verify_statements[0].lineno
+                < getattr(node, "lineno", -1)
+                < returns[0].lineno
+                and isinstance(node, ast.Call)
+                and (
+                    called := (
+                        node.func.id
+                        if isinstance(node.func, ast.Name)
+                        else node.func.attr
+                        if isinstance(node.func, ast.Attribute)
+                        else ""
+                    )
+                )
+                in functions
+                and any(
+                    isinstance(argument, ast.Name)
+                    and argument.id in protected_names
+                    and index < len(functions[called].args.args)
+                    and helper_mutates_parameter(
+                        called, functions[called].args.args[index].arg
+                    )
+                    for index, argument in enumerate(node.args)
+                )
+                for node in ast.walk(reader)
+            )
+        )
         protected_rebound = (
             any(
                 assignment.lineno > typed_line
@@ -2370,6 +2489,7 @@ def _scan_spec015_qualification_seam(
             or not returns_verified
             or protected_rebound
             or post_verify_mutation
+            or post_verify_indirect_mutation
         ):
             raise ArchitectureViolation(
                 f"apex-research: qualification lacks typed canonical readback {reader_name}"

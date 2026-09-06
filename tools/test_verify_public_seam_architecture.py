@@ -1011,6 +1011,15 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
+                        "        governance = self._require_governance()\n",
+                        "        action = forged_action\n"
+                        "        governance = self._require_governance()\n",
+                        1,
+                    ),
+                    "action contract is rebound",
+                ),
+                (
+                    accepted.replace(
                         "    raw=workspace.get_record('id')\n",
                         "    raw=mirror.get_record('id')\n",
                         1,
@@ -1398,6 +1407,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     "    verify_publication(raw, _policy_publication(value))\n",
                     1,
                 ),
+                accepted.replace(
+                    "    verify_publication(raw, _policy_publication(value))\n",
+                    "    verify_publication(raw, _policy_publication(value))\n"
+                    "    mutate(value)\n",
+                    1,
+                )
+                + "\ndef mutate(value): object.__setattr__(value, 'policy_id', 'forged')\n",
             ):
                 qualification.write_text(corrupted_readback, encoding="utf-8")
                 with self.assertRaisesRegex(
