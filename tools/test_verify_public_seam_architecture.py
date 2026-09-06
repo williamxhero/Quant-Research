@@ -18,6 +18,23 @@ SPEC.loader.exec_module(verifier)
 
 
 class PublicSeamArchitectureTests(unittest.TestCase):
+    def test_fixture_runner_preserves_qualification_execution_budgets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = verifier.fixture_plan(root)
+            for check in plan:
+                (root / check.repository).mkdir(exist_ok=True)
+            with mock.patch.object(verifier.HARNESS, "run_command") as runner:
+                verifier.run_fixture_checks(root)
+            self.assertEqual(runner.call_count, len(plan))
+            for check, call in zip(plan, runner.call_args_list, strict=True):
+                expected = {
+                    "apex_research": 7_200,
+                    "spec015_installed_wheels": 25_200,
+                }.get(check.owner, 1_800)
+                self.assertEqual(call.kwargs["timeout_seconds"], expected, check.owner)
+                self.assertEqual(call.args[0], list(check.command))
+
     def test_normal_constitution_validation_includes_the_spec015_admission(
         self,
     ) -> None:

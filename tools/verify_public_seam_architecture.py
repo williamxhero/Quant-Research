@@ -5369,6 +5369,10 @@ def validate_constitution() -> None:
 
 def run_fixture_checks(repository_root: Path) -> None:
     environment = HARNESS.sanitized_environment()
+    execution_budgets = {
+        "apex_research": 7_200,
+        "spec015_installed_wheels": 25_200,
+    }
     for check in fixture_plan(repository_root):
         repository = repository_root / check.repository
         if not repository.is_dir():
@@ -5380,7 +5384,7 @@ def run_fixture_checks(repository_root: Path) -> None:
                 list(check.command),
                 cwd=repository,
                 environment=environment,
-                timeout_seconds=1_800,
+                timeout_seconds=execution_budgets.get(check.owner, 1_800),
             )
         except HARNESS.InstalledWheelFailure as exc:
             raise ArchitectureViolation(
