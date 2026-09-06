@@ -757,9 +757,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "def qualification_publication_scope(target): return (target,)\n"
                 "def _publish_record(workspace): workspace.publish_record({})\n"
                 "def _policy_publication(value): return {'lineage': []}\n"
-                "def _decision_publication(value): return {'lineage': [{'relation': 'successor-of'}]}\n"
-                "def _held_publication(value): return {'lineage': [{'relation': 'evaluation-of'}]}\n"
-                "def _retirement_publication(value): return {'lineage': [{'relation': 'successor-of'}]}\n"
+                "def _decision_publication(value): return {'lineage': [(value.evaluation.predecessor.record, 'successor-of')]}\n"
+                "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}\n"
+                "def _retirement_publication(value): return {'lineage': [(value.request.predecessor.record, 'successor-of')]}\n"
                 "def _read_policy(workspace):\n"
                 "    raw=workspace.get_record('id')\n"
                 "    value=QualificationPolicy.model_validate_json(raw)\n"
@@ -959,10 +959,35 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 (
                     accepted.replace(
-                        "def _held_publication(value): return {'lineage': [{'relation': 'evaluation-of'}]}",
-                        "def _held_publication(value): return {'lineage': [{'relation': 'successor-of'}]}",
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'successor-of')]}",
                     ),
                     "lineage relation is invalid",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of'), (value.predecessor.record, 'evaluation-of')]}",
+                    ),
+                    "lineage relation is invalid",
+                ),
+                (
+                    accepted.replace(
+                        "def _held_publication(value): return {'lineage': [(value.predecessor.record, 'evaluation-of')]}",
+                        "def _held_publication(value): return {'lineage': [(value.candidate, 'evaluation-of')]}",
+                    ),
+                    "lineage relation is invalid",
+                ),
+                (
+                    accepted.replace(
+                        "        result = governance.execute(action, authorize)\n",
+                        "        result = governance.execute(action, authorize)\n"
+                        "        mark_committed(result)\n",
+                    )
+                    + "\ndef mark_committed(result):\n"
+                    "    result.status = 'committed'\n"
+                    "    result.reason = 'success'\n",
+                    "ordering is not governed and committed-first",
                 ),
                 (
                     accepted + "\nclass QualificationAuthority:\n    live: bool\n",
@@ -997,6 +1022,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             qualification.write_text(incomplete_identity, encoding="utf-8")
             with self.assertRaisesRegex(
                 verifier.ArchitectureViolation, "canonical identity omits"
+            ):
+                verifier._scan_spec015_qualification_seam(root / "apex-research")
+
+            substituted_identity = accepted.replace(
+                "        identity={'schema': 'apex-research.qualification-policy.v1', **values}",
+                "        identity={'schema': 'apex-research.qualification-policy.v1', "
+                "**values, 'strategy_class': 'fixed'}",
+                1,
+            )
+            qualification.write_text(substituted_identity, encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "canonical identity"
             ):
                 verifier._scan_spec015_qualification_seam(root / "apex-research")
 

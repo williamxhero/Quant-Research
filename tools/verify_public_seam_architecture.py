@@ -1163,6 +1163,19 @@ def _scan_spec015_qualification_seam(
                         f"apex-research: {class_name}.{method_name} canonical identity omits "
                         + ", ".join(sorted(required_identity - represented))
                     )
+                substituted = (
+                    explicit
+                    & (declared - popped - {identity_id})
+                    - {"schema_id", "scope", "operational_authority"}
+                    if includes_values
+                    else set()
+                )
+                if substituted:
+                    raise ArchitectureViolation(
+                        f"apex-research: {class_name}.{method_name} canonical identity "
+                        "substitutes meaning-bearing fields: "
+                        + ", ".join(sorted(substituted))
+                    )
 
     forbidden_imports = {
         "sqlite3": "second governance ledger",
@@ -1802,6 +1815,25 @@ def _scan_spec015_qualification_seam(
             and not statement.orelse
         )
 
+    noncommitted_guard_indices = [
+        index
+        for index, statement in enumerate(execute_publication.body)
+        if rejects_noncommitted(statement)
+    ]
+    preguard_result_calls = [
+        node
+        for index, statement in enumerate(execute_publication.body)
+        if execute_assignments
+        and noncommitted_guard_indices
+        and execute_assignments[0][0] < index < noncommitted_guard_indices[0]
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Call)
+        and any(
+            isinstance(descendant, ast.Name) and descendant.id == result_name
+            for descendant in ast.walk(node)
+        )
+    ]
+
     completion_uses_result = len(completion_statements) == 1 and any(
         isinstance(statement, ast.Expr)
         and isinstance(statement.value, ast.Call)
@@ -1864,6 +1896,7 @@ def _scan_spec015_qualification_seam(
             and execute_assignments[0][0] < index < completion_statements[0]
             for index, statement in enumerate(execute_publication.body)
         )
+        or preguard_result_calls
         or not completion_uses_result
         or len(all_completion_calls) != 1
         or indirect_precommit_publication
@@ -3195,29 +3228,35 @@ def _scan_spec015_qualification_seam(
                 else None
             )
         returned_relations = (
-            {
-                item.value
+            [
+                (node.elts[1].value, node.elts[0])
                 for node in ast.walk(returned_expression)
-                if isinstance(node, (ast.Tuple, ast.List)) and len(node.elts) >= 2
-                for item in node.elts[1:2]
-                if isinstance(item, ast.Constant) and isinstance(item.value, str)
-            }
-            | {
-                item.value
-                for node in ast.walk(returned_expression)
-                if isinstance(node, ast.Dict)
-                for key, item in zip(node.keys, node.values, strict=True)
-                if isinstance(key, ast.Constant)
-                and key.value == "relation"
-                and isinstance(item, ast.Constant)
-                and isinstance(item.value, str)
-            }
+                if isinstance(node, (ast.Tuple, ast.List))
+                and len(node.elts) >= 2
+                and isinstance(node.elts[1], ast.Constant)
+                and isinstance(node.elts[1].value, str)
+            ]
             if returned_expression is not None
-            else set()
+            else []
         )
+        required_sources = [
+            source
+            for relation, source in returned_relations
+            if relation == required_relation
+        ]
+
+        def exact_predecessor_record(value: ast.AST) -> bool:
+            return (
+                isinstance(value, ast.Attribute)
+                and value.attr == "record"
+                and isinstance(value.value, ast.Attribute)
+                and value.value.attr == "predecessor"
+            )
+
         if (
-            required_relation not in returned_relations
-            or forbidden_relation in returned_relations
+            len(required_sources) != 1
+            or not exact_predecessor_record(required_sources[0])
+            or any(relation == forbidden_relation for relation, _ in returned_relations)
         ):
             raise ArchitectureViolation(
                 f"apex-research: {function_name} qualification lineage relation is invalid"
