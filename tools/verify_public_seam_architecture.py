@@ -27,6 +27,11 @@ UNCHANGED_REPOSITORY_BASELINES = {
     "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
     "strategy-reporting": "255442a9291ca49a67e05afa0123e10e07aeb754",
 }
+SPEC015_CANONICAL_OWNER = "apex_research"
+SPEC015_REQUIRED_PUBLIC_SEAM_MARKERS = (
+    "Apex qualification policy",
+    "WorkspaceClient",
+)
 
 
 class ArchitectureViolation(ValueError):
@@ -308,7 +313,6 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
                 "diff",
                 "--quiet",
                 UNCHANGED_REPOSITORY_BASELINES[repository],
-                "HEAD",
                 "--",
                 "src",
                 baseline_only=True,
@@ -4746,12 +4750,24 @@ def validate_constitution() -> None:
     policy = validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
     try:
         validator.validate_policy(policy)
-        validator.validate_candidate(
-            validator.read_json(
-                ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
-            ),
-            policy,
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
         )
+        validator.validate_candidate(candidate, policy)
+        if candidate["canonical_owner"] != SPEC015_CANONICAL_OWNER:
+            raise validator.ConstitutionError(
+                "SPEC-015 canonical owner must remain apex_research"
+            )
+        public_seam = candidate["public_seam"]
+        missing_seams = [
+            marker
+            for marker in SPEC015_REQUIRED_PUBLIC_SEAM_MARKERS
+            if marker not in public_seam
+        ]
+        if missing_seams:
+            raise validator.ConstitutionError(
+                "SPEC-015 public seam must retain: " + ", ".join(missing_seams)
+            )
     except Exception as exc:
         raise ArchitectureViolation(
             f"quant-research: SPEC-015 architecture admission is invalid: {exc}"

@@ -61,6 +61,49 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.validate_constitution()
 
+    def test_spec015_admission_pins_the_apex_owner_and_workspace_seam(self) -> None:
+        for field, replacement in (
+            ("canonical_owner", "strategy_reporting"),
+            ("public_seam", "not-workspace"),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                docs = root / "docs"
+                admissions = docs / "architecture-admissions"
+                admissions.mkdir(parents=True)
+                tools = root / "tools"
+                tools.mkdir()
+                (tools / "validate_architecture_constitution.py").write_text(
+                    (ROOT / "tools/validate_architecture_constitution.py").read_text(
+                        encoding="utf-8"
+                    ),
+                    encoding="utf-8",
+                )
+                (docs / "architecture-constitution.v1.json").write_text(
+                    (ROOT / "docs/architecture-constitution.v1.json").read_text(
+                        encoding="utf-8"
+                    ),
+                    encoding="utf-8",
+                )
+                candidate = json.loads(
+                    (ROOT / "docs/architecture-admissions/spec-015.v1.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                candidate[field] = replacement
+                (admissions / "spec-015.v1.json").write_text(
+                    json.dumps(candidate), encoding="utf-8"
+                )
+
+                with (
+                    self.assertRaisesRegex(
+                        verifier.ArchitectureViolation,
+                        "SPEC-015 architecture admission is invalid",
+                    ),
+                    mock.patch.object(verifier, "ROOT", root),
+                ):
+                    verifier.validate_constitution()
+
     def test_fixture_plan_uses_only_existing_public_module_seams(self) -> None:
         plan = verifier.fixture_plan(ROOT)
         self.assertEqual(
@@ -264,6 +307,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         for item in source_attestations.values():
             self.assertTrue(item.baseline_only)
             self.assertEqual(item.command[:3], ("git", "diff", "--quiet"))
+            self.assertNotIn("HEAD", item.command)
             self.assertEqual(item.command[-2:], ("--", "src"))
         runtime_pytest = next(
             item
