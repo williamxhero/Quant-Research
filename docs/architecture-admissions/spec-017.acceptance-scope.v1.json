@@ -36,5 +36,17 @@
     "SPEC-014",
     "SPEC-015",
     "SPEC-016"
-  ]
+  ],
+  "historical_heavy_test_exclusions": [
+    "apex-research/tests/test_behavior_descriptors.py",
+    "apex-research/tests/test_evidence_v2.py",
+    "apex-research/tests/test_qualification_cli.py",
+    "apex-research/tests/test_qualification_evaluation.py",
+    "apex-research/tests/test_qualification_fixture_replay.py",
+    "apex-research/tests/test_qualification_history.py",
+    "apex-research/tests/test_qualification_policy.py",
+    "apex-research/tests/test_qualification_robustness.py",
+    "apex-research/tests/test_qualification_validation.py"
+  ],
+  "historical_heavy_exclusion_reason": "SPEC-017 impact-only validation did not change the SPEC-014 Evidence v2, SPEC-015 qualification, or SPEC-016 behavior-descriptor public seams. Their historical-heavy Apex files and installed tracers remain deferred to the final overall release suite; this SPEC runs fast compatibility contracts, SPEC-017 archive tests, and the remaining non-historical-heavy non-OCI suite."
 }

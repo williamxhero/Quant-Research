@@ -193,6 +193,8 @@ class AcceptanceScope(NamedTuple):
     selection_maintenance_paths: tuple[str, ...]
     required_installed_tracers: tuple[str, ...]
     deferred_release_tracers: tuple[str, ...]
+    historical_heavy_test_exclusions: tuple[str, ...]
+    historical_heavy_exclusion_reason: str
 
 
 class ApexSeamPolicy(NamedTuple):
@@ -670,7 +672,14 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         "required_installed_tracers",
         "deferred_release_tracers",
     }
-    if not isinstance(raw, dict) or set(raw) != required:
+    historical_fields = {
+        "historical_heavy_test_exclusions",
+        "historical_heavy_exclusion_reason",
+    }
+    if not isinstance(raw, dict) or set(raw) not in {
+        frozenset(required),
+        frozenset(required | historical_fields),
+    }:
         raise ArchitectureViolation("acceptance scope fields are invalid")
     if raw["schema"] != "quant-research.acceptance-scope.v1":
         raise ArchitectureViolation("acceptance scope schema is invalid")
@@ -718,6 +727,19 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     maintenance = canonical_strings("selection_maintenance_paths", paths=True)
     if set(product) & set(maintenance):
         raise ArchitectureViolation("acceptance scope path classes overlap")
+    exclusions: tuple[str, ...] = ()
+    exclusion_reason = ""
+    if historical_fields <= set(raw):
+        exclusions = canonical_strings("historical_heavy_test_exclusions", paths=True)
+        exclusion_reason_value = raw["historical_heavy_exclusion_reason"]
+        if (
+            not isinstance(exclusion_reason_value, str)
+            or not exclusion_reason_value.strip()
+        ):
+            raise ArchitectureViolation(
+                "acceptance scope historical-heavy exclusion reason is invalid"
+            )
+        exclusion_reason = exclusion_reason_value
     return AcceptanceScope(
         spec=raw["spec"],
         baseline_heads=dict(sorted(baseline_heads.items())),
@@ -725,6 +747,8 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         selection_maintenance_paths=maintenance,
         required_installed_tracers=canonical_strings("required_installed_tracers"),
         deferred_release_tracers=canonical_strings("deferred_release_tracers"),
+        historical_heavy_test_exclusions=exclusions,
+        historical_heavy_exclusion_reason=exclusion_reason,
     )
 
 
@@ -6479,6 +6503,12 @@ def main(argv: list[str] | None = None) -> int:
                         ),
                         "deferred_release_tracers": list(
                             acceptance_scope.deferred_release_tracers
+                        ),
+                        "historical_heavy_test_exclusions": list(
+                            acceptance_scope.historical_heavy_test_exclusions
+                        ),
+                        "historical_heavy_exclusion_reason": (
+                            acceptance_scope.historical_heavy_exclusion_reason
                         ),
                     }
                 ),

@@ -3244,6 +3244,22 @@ def use_lineage(workspace):
             scope.deferred_release_tracers,
             ("SPEC-014", "SPEC-015", "SPEC-016"),
         )
+        self.assertEqual(
+            scope.historical_heavy_test_exclusions,
+            (
+                "apex-research/tests/test_behavior_descriptors.py",
+                "apex-research/tests/test_evidence_v2.py",
+                "apex-research/tests/test_qualification_cli.py",
+                "apex-research/tests/test_qualification_evaluation.py",
+                "apex-research/tests/test_qualification_fixture_replay.py",
+                "apex-research/tests/test_qualification_history.py",
+                "apex-research/tests/test_qualification_policy.py",
+                "apex-research/tests/test_qualification_robustness.py",
+                "apex-research/tests/test_qualification_validation.py",
+            ),
+        )
+        self.assertIn("impact-only", scope.historical_heavy_exclusion_reason)
+        self.assertIn("final overall release", scope.historical_heavy_exclusion_reason)
         self.assertTrue(
             all(
                 not verifier.historical_installed_wheels_required(
