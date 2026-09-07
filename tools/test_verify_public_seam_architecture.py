@@ -174,11 +174,13 @@ class PublicSeamArchitectureTests(unittest.TestCase):
     def test_fixture_runner_preserves_qualification_execution_budgets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            plan = verifier.fixture_plan(root)
+            plan = verifier.fixture_plan(root, historical_mode="release")
             for check in plan:
                 (root / check.repository).mkdir(exist_ok=True)
             with mock.patch.object(verifier.HARNESS, "run_command") as runner:
-                verifier.run_fixture_checks(root)
+                verifier.run_fixture_checks(
+                    root, historical_mode="release", changed_paths=()
+                )
             self.assertEqual(runner.call_count, len(plan))
             for check, call in zip(plan, runner.call_args_list, strict=True):
                 expected = {
@@ -331,7 +333,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier.validate_constitution()
 
     def test_fixture_plan_uses_only_existing_public_module_seams(self) -> None:
-        plan = verifier.fixture_plan(ROOT)
+        plan = verifier.fixture_plan(ROOT, historical_mode="release")
         self.assertEqual(
             [item.owner for item in plan],
             [
@@ -488,7 +490,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("--repository-root", completed.stdout)
         installed = next(
             item
-            for item in verifier.fixture_plan(ROOT)
+            for item in verifier.fixture_plan(ROOT, historical_mode="release")
             if item.owner == "spec015_installed_wheels"
         )
         self.assertIn("tools/spec015_installed_wheel_tracer.py", installed.command)
@@ -504,7 +506,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
     def test_full_gate_plan_covers_every_repository_gate_without_connected_fallback(
         self,
     ) -> None:
-        plan = verifier.full_gate_plan(ROOT)
+        plan = verifier.full_gate_plan(ROOT, historical_mode="release")
         owners = {item.owner for item in plan}
 
         self.assertEqual(
@@ -646,6 +648,59 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             )
         )
 
+    def test_spec016_descriptor_diff_skips_heavy_spec015_tracer(self) -> None:
+        changed = (
+            "apex-research/src/apex_research/behavior_descriptors.py",
+            "strategy-reporting/src/strategy_reporting/adapters/behavior_descriptors.py",
+            "strategy-reporting/src/strategy_reporting/contracts/behavior_descriptors.py",
+            "tools/spec016_installed_wheel_tracer.py",
+        )
+
+        self.assertFalse(verifier.spec015_installed_wheels_required(changed))
+        plan = verifier.full_gate_plan(ROOT, changed_paths=changed)
+        self.assertNotIn("spec015_installed_wheels", {item.owner for item in plan})
+        self.assertIn("spec016_installed_wheels", {item.owner for item in plan})
+        root_pytest = next(
+            item
+            for item in plan
+            if item.owner == "quant_research" and item.category == "pytest"
+        )
+        self.assertIn(
+            "tools/test_validate_architecture_constitution.py", root_pytest.command
+        )
+        self.assertIn(
+            "tools/test_verify_public_seam_architecture.py", root_pytest.command
+        )
+
+    def test_qualification_or_evidence_diff_selects_heavy_spec015_tracer(self) -> None:
+        for changed in (
+            ("apex-research/src/apex_research/qualification.py",),
+            ("apex-research/src/apex_research/evidence_v2.py",),
+            ("strategy-reporting/src/strategy_reporting/contracts/evidence_v2.py",),
+            ("apex-research/pyproject.toml",),
+        ):
+            with self.subTest(changed=changed):
+                self.assertTrue(verifier.spec015_installed_wheels_required(changed))
+                owners = {
+                    item.owner
+                    for item in verifier.full_gate_plan(ROOT, changed_paths=changed)
+                }
+                self.assertIn("spec015_installed_wheels", owners)
+
+    def test_explicit_full_and_release_modes_select_heavy_spec015_tracer(self) -> None:
+        for mode in ("full", "release"):
+            with self.subTest(mode=mode):
+                self.assertTrue(
+                    verifier.spec015_installed_wheels_required(
+                        ("tools/spec016_installed_wheel_tracer.py",),
+                        historical_mode=mode,
+                    )
+                )
+        with self.assertRaisesRegex(
+            verifier.ArchitectureViolation, "unknown historical validation mode"
+        ):
+            verifier.spec015_installed_wheels_required((), historical_mode="guess")
+
     def test_full_gate_runner_uses_the_planned_command_timeout(self) -> None:
         check = verifier.GateCheck(
             "apex_research",
@@ -663,7 +718,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier.HARNESS, "run_command", return_value=""
                 ) as run_command,
             ):
-                verifier.run_full_gate_checks(root)
+                verifier.run_full_gate_checks(root, changed_paths=())
 
         self.assertEqual(run_command.call_args.kwargs["timeout_seconds"], 7_200)
 
@@ -826,7 +881,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                 ),
             ):
-                drift = verifier.run_full_gate_checks(root)
+                drift = verifier.run_full_gate_checks(root, changed_paths=())
             self.assertEqual(drift[0]["status"], "baseline-only-drift")
 
             formatter_text = (
@@ -854,7 +909,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     ),
                 ),
             ):
-                drift = verifier.run_full_gate_checks(root)
+                drift = verifier.run_full_gate_checks(root, changed_paths=())
             self.assertEqual(drift[0]["status"], "baseline-only-drift")
 
             with (
@@ -875,7 +930,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 ),
                 self.assertRaises(verifier.ArchitectureViolation),
             ):
-                verifier.run_full_gate_checks(root)
+                verifier.run_full_gate_checks(root, changed_paths=())
 
     def test_baseline_probe_failure_is_wrapped_as_architecture_violation(self) -> None:
         check = verifier.GateCheck(
@@ -902,7 +957,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                     verifier.ArchitectureViolation, "baseline probe failed"
                 ),
             ):
-                verifier.run_full_gate_checks(root)
+                verifier.run_full_gate_checks(root, changed_paths=())
 
     def test_spec014_source_guard_requires_public_evidence_and_reporting_seams(
         self,

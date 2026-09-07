@@ -152,10 +152,15 @@ class ApexSeamPolicy(NamedTuple):
     required_calls: tuple[str, ...]
 
 
-def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
+def fixture_plan(
+    repository_root: Path,
+    *,
+    changed_paths: tuple[str, ...] = (),
+    historical_mode: str = "impacted",
+) -> tuple[FixtureCheck, ...]:
     """Return public-seam fixture tests without creating shared state or evidence."""
     repository_root = repository_root.resolve()
-    return (
+    plan = (
         FixtureCheck(
             "strategy_workspace",
             "strategy-workspace",
@@ -290,9 +295,19 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
             ),
         ),
     )
+    if not spec015_installed_wheels_required(
+        changed_paths, historical_mode=historical_mode
+    ):
+        plan = tuple(item for item in plan if item.owner != "spec015_installed_wheels")
+    return plan
 
 
-def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
+def full_gate_plan(
+    repository_root: Path,
+    *,
+    changed_paths: tuple[str, ...] = (),
+    historical_mode: str = "impacted",
+) -> tuple[GateCheck, ...]:
     """Return the complete non-connected release gate plan for all five seams."""
     repository_root = repository_root.resolve()
     commands: list[GateCheck] = []
@@ -456,20 +471,23 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "--repository-root",
         str(repository_root),
     )
-    add(
-        "spec015_installed_wheels",
-        ".",
-        "installed-wheel-smoke",
-        "uv",
-        "run",
-        "--python",
-        "3.12",
-        "python",
-        "tools/spec015_installed_wheel_tracer.py",
-        "--repository-root",
-        str(repository_root),
-        timeout_seconds=25_200,
-    )
+    if spec015_installed_wheels_required(
+        changed_paths, historical_mode=historical_mode
+    ):
+        add(
+            "spec015_installed_wheels",
+            ".",
+            "installed-wheel-smoke",
+            "uv",
+            "run",
+            "--python",
+            "3.12",
+            "python",
+            "tools/spec015_installed_wheel_tracer.py",
+            "--repository-root",
+            str(repository_root),
+            timeout_seconds=25_200,
+        )
     add(
         "spec016_installed_wheels",
         ".",
@@ -485,6 +503,87 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         timeout_seconds=7_200,
     )
     return tuple(commands)
+
+
+SPEC015_IMPACT_PREFIXES = (
+    "apex-research/src/apex_research/evidence_",
+    "apex-research/src/apex_research/qualification",
+    "apex-research/tests/test_evidence_v2",
+    "apex-research/tests/test_qualification",
+    "strategy-reporting/src/strategy_reporting/adapters/evidence_v2.py",
+    "strategy-reporting/src/strategy_reporting/contracts/evidence_v2.py",
+    "strategy-reporting/tests/test_evidence_v2",
+    "tools/installed_wheel_harness.py",
+    "tools/spec015_installed_wheel_tracer.py",
+    "tools/test_installed_wheel_harness.py",
+    "tools/test_spec015_installed_wheel_tracer.py",
+)
+PACKAGING_FILENAMES = frozenset(
+    {"pyproject.toml", "uv.lock", "setup.py", "setup.cfg", "MANIFEST.in"}
+)
+
+
+def spec015_installed_wheels_required(
+    changed_paths: tuple[str, ...], *, historical_mode: str = "impacted"
+) -> bool:
+    """Select the heavy historical tracer from normalized repository-relative diffs."""
+    if historical_mode not in {"impacted", "full", "release"}:
+        raise ArchitectureViolation(
+            f"unknown historical validation mode: {historical_mode}"
+        )
+    if historical_mode in {"full", "release"}:
+        return True
+    for raw_path in changed_paths:
+        path = raw_path.replace("\\", "/")
+        while path.startswith("./"):
+            path = path[2:]
+        if not path or path.startswith(("/", "../")) or "/../" in path:
+            raise ArchitectureViolation(f"invalid changed path: {raw_path}")
+        if path.startswith(SPEC015_IMPACT_PREFIXES):
+            return True
+        if Path(path).name in PACKAGING_FILENAMES:
+            return True
+    return False
+
+
+def changed_paths_since_origin(repository_root: Path) -> tuple[str, ...]:
+    """Read committed, staged, unstaged, and untracked paths without mutating repositories."""
+    environment = HARNESS.sanitized_environment()
+    repositories = (
+        ("", repository_root),
+        ("apex-research", repository_root / "apex-research"),
+        ("strategy-reporting", repository_root / "strategy-reporting"),
+        ("strategy-workspace", repository_root / "strategy-workspace"),
+        ("quant-runtime", repository_root / "quant-runtime"),
+    )
+    changed: set[str] = set()
+    for prefix, repository in repositories:
+        if not repository.is_dir():
+            raise ArchitectureViolation(f"gate repository is unavailable: {repository}")
+        commands = (
+            ("git", "diff", "--name-only", "origin/main...HEAD"),
+            ("git", "diff", "--name-only", "HEAD"),
+            ("git", "diff", "--cached", "--name-only"),
+            ("git", "ls-files", "--others", "--exclude-standard"),
+        )
+        try:
+            for command in commands:
+                output = HARNESS.run_command(
+                    list(command),
+                    cwd=repository,
+                    environment=environment,
+                    timeout_seconds=30,
+                )
+                changed.update(
+                    f"{prefix}/{path}" if prefix else path
+                    for path in output.splitlines()
+                    if path
+                )
+        except HARNESS.InstalledWheelFailure as exc:
+            raise ArchitectureViolation(
+                f"cannot determine historical tracer impact for {repository}: {exc}"
+            ) from exc
+    return tuple(sorted(changed))
 
 
 def connected_status_plan() -> tuple[GateCheck, ...]:
@@ -5688,14 +5787,28 @@ def validate_constitution() -> None:
         ) from exc
 
 
-def run_fixture_checks(repository_root: Path) -> None:
+def run_fixture_checks(
+    repository_root: Path,
+    *,
+    historical_mode: str = "impacted",
+    changed_paths: tuple[str, ...] | None = None,
+) -> None:
     environment = HARNESS.sanitized_environment()
     execution_budgets = {
         "apex_research": 7_200,
         "spec015_installed_wheels": 25_200,
         "spec016_installed_wheels": 7_200,
     }
-    for check in fixture_plan(repository_root):
+    selected_paths = (
+        changed_paths_since_origin(repository_root)
+        if changed_paths is None
+        else changed_paths
+    )
+    for check in fixture_plan(
+        repository_root,
+        changed_paths=selected_paths,
+        historical_mode=historical_mode,
+    ):
         repository = repository_root / check.repository
         if not repository.is_dir():
             raise ArchitectureViolation(
@@ -5789,14 +5902,28 @@ def _pytest_terminal_counts(output: str) -> dict[str, int] | None:
     return counts
 
 
-def run_full_gate_checks(repository_root: Path) -> list[dict[str, str]]:
+def run_full_gate_checks(
+    repository_root: Path,
+    *,
+    historical_mode: str = "impacted",
+    changed_paths: tuple[str, ...] | None = None,
+) -> list[dict[str, str]]:
     """Execute every non-connected release gate without retaining build output."""
     baseline_formatter_drift: list[dict[str, str]] = []
     with tempfile.TemporaryDirectory(prefix="spec014-full-gates-") as temporary:
         dist = Path(temporary).resolve()
         repository_root = repository_root.resolve()
         environment = HARNESS.sanitized_environment()
-        for check in full_gate_plan(repository_root):
+        selected_paths = (
+            changed_paths_since_origin(repository_root)
+            if changed_paths is None
+            else changed_paths
+        )
+        for check in full_gate_plan(
+            repository_root,
+            changed_paths=selected_paths,
+            historical_mode=historical_mode,
+        ):
             if check.connected:
                 raise ArchitectureViolation(
                     "connected checks must not enter the full gate plan"
@@ -5933,6 +6060,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-fixtures", action="store_true")
     parser.add_argument("--run-full-gates", action="store_true")
     parser.add_argument("--run-connected-status", action="store_true")
+    parser.add_argument(
+        "--historical-mode",
+        choices=("impacted", "full", "release"),
+        default="impacted",
+        help="Select heavy historical installed tracers by diff impact or explicitly.",
+    )
     arguments = parser.parse_args(argv)
     baseline_formatter_drift: list[dict[str, str]] = []
     connected_statuses: list[dict[str, str]] = []
@@ -5940,9 +6073,13 @@ def main(argv: list[str] | None = None) -> int:
         validate_constitution()
         scan_sources(arguments.repository_root)
         if arguments.run_fixtures:
-            run_fixture_checks(arguments.repository_root)
+            run_fixture_checks(
+                arguments.repository_root, historical_mode=arguments.historical_mode
+            )
         if arguments.run_full_gates:
-            baseline_formatter_drift = run_full_gate_checks(arguments.repository_root)
+            baseline_formatter_drift = run_full_gate_checks(
+                arguments.repository_root, historical_mode=arguments.historical_mode
+            )
         if arguments.run_connected_status:
             connected_statuses = run_connected_status_checks(arguments.repository_root)
     except ArchitectureViolation as exc:
