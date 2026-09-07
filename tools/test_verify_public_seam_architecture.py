@@ -3318,6 +3318,36 @@ def use_lineage(workspace):
                 )
             )
 
+        fixtures_by_owner = {
+            item.owner: item
+            for item in verifier.fixture_plan(ROOT, acceptance_scope=scope)
+        }
+        gates_by_owner = {
+            item.owner: item
+            for item in plan
+            if item.category == "pytest"
+            and item.owner
+            in {
+                "strategy_workspace",
+                "quant_runtime",
+                "apex_research",
+                "strategy_reporting",
+            }
+        }
+        for unchanged_owner in ("strategy_workspace", "quant_runtime"):
+            self.assertEqual(
+                gates_by_owner[unchanged_owner].command,
+                fixtures_by_owner[unchanged_owner].command,
+            )
+        self.assertNotEqual(
+            gates_by_owner["apex_research"].command,
+            fixtures_by_owner["apex_research"].command,
+        )
+        self.assertNotEqual(
+            gates_by_owner["strategy_reporting"].command,
+            fixtures_by_owner["strategy_reporting"].command,
+        )
+
     def test_release_scope_runs_each_heavy_suite_once_through_installed_tracers(
         self,
     ) -> None:
@@ -3351,6 +3381,13 @@ def use_lineage(workspace):
             len(scope.current_spec_heavy_test_exclusions)
             + len(scope.historical_heavy_test_exclusions),
         )
+        runtime_pytest = next(
+            item
+            for item in plan
+            if item.owner == "quant_runtime" and item.category == "pytest"
+        )
+        self.assertIn("-m", runtime_pytest.command)
+        self.assertIn("not connected and not oci", runtime_pytest.command)
 
     def test_acceptance_scope_rejects_uncovered_or_non_apex_heavy_exclusions(
         self,

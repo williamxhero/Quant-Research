@@ -282,6 +282,15 @@ def _fixture_token_is_excluded_apex_test(
     return any(token == path or token.startswith(f"{path}::") for path in exclusions)
 
 
+def _repository_has_product_changes(
+    acceptance_scope: AcceptanceScope, repository: str
+) -> bool:
+    prefix = f"{repository}/"
+    return any(
+        path.startswith(prefix) for path in acceptance_scope.product_changed_paths
+    )
+
+
 def fixture_plan(
     repository_root: Path,
     *,
@@ -517,29 +526,47 @@ def full_gate_plan(
         add(owner, repository, "lint", "uv", "run", *dev_switch, "ruff", "check", ".")
         if owner in {"apex_research", "strategy_reporting"}:
             add(owner, repository, "typing", "uv", "run", *dev_switch, "mypy")
-        marker = {
-            "quant_runtime": "not connected and not oci",
-            "apex_research": "not oci",
-            "strategy_reporting": "not connected",
-        }.get(owner)
-        pytest = ("uv", "run", *dev_switch, "pytest")
-        heavy_ignores = (
-            tuple(
-                f"--ignore={path}"
-                for path in _apex_heavy_test_exclusions(acceptance_scope)
+        use_public_compatibility_slice = (
+            acceptance_scope is not None
+            and historical_mode == "impacted"
+            and not _repository_has_product_changes(acceptance_scope, repository)
+        )
+        if use_public_compatibility_slice:
+            compatibility = next(
+                item
+                for item in fixture_plan(
+                    repository_root,
+                    changed_paths=changed_paths,
+                    historical_mode=historical_mode,
+                    acceptance_scope=acceptance_scope,
+                )
+                if item.owner == owner
             )
-            if owner == "apex_research"
-            else ()
-        )
-        add(
-            owner,
-            repository,
-            "pytest",
-            *pytest,
-            *(("-m", marker) if marker else ()),
-            *heavy_ignores,
-            timeout_seconds=7_200 if owner == "apex_research" else 1_800,
-        )
+            add(owner, repository, "pytest", *compatibility.command)
+        else:
+            marker = {
+                "quant_runtime": "not connected and not oci",
+                "apex_research": "not oci",
+                "strategy_reporting": "not connected",
+            }.get(owner)
+            pytest = ("uv", "run", *dev_switch, "pytest")
+            heavy_ignores = (
+                tuple(
+                    f"--ignore={path}"
+                    for path in _apex_heavy_test_exclusions(acceptance_scope)
+                )
+                if owner == "apex_research"
+                else ()
+            )
+            add(
+                owner,
+                repository,
+                "pytest",
+                *pytest,
+                *(("-m", marker) if marker else ()),
+                *heavy_ignores,
+                timeout_seconds=7_200 if owner == "apex_research" else 1_800,
+            )
         add(
             owner,
             repository,
