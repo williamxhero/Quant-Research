@@ -54,6 +54,16 @@ class TracerFailure(InstalledWheelFailure):
     pass
 
 
+def _progress(message: str) -> None:
+    rendered = f"SPEC017_PROGRESS {message}"
+    print(rendered, file=sys.stderr, flush=True)
+    progress_file = os.environ.get("SPEC017_PROGRESS_FILE")
+    if progress_file:
+        with Path(progress_file).open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(rendered + "\n")
+            stream.flush()
+
+
 def _parse_transcript(output: str, label: str) -> dict[str, Any]:
     prefix = TRANSCRIPT_PREFIXES[label]
     matches = re.findall(r"(?m)^" + re.escape(prefix) + r"(\{[^\r\n]*\})$", output)
@@ -117,11 +127,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             apex_outputs: dict[str, str] = {}
             for test_name in selected:
                 started = time.monotonic()
-                print(
-                    f"SPEC017_PROGRESS replay={replay_index + 1} apex={test_name} start",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                _progress(f"replay={replay_index + 1} apex={test_name} start")
                 apex_outputs[test_name] = HARNESS.run_installed_pytest(
                     python,
                     (Path(f"{apex_test_file}::{test_name}"),),
@@ -132,17 +138,11 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     timeout_seconds=300,
                     pytest_args=("-s",),
                 )
-                print(
-                    f"SPEC017_PROGRESS replay={replay_index + 1} apex={test_name} "
-                    f"passed_seconds={time.monotonic() - started:.1f}",
-                    file=sys.stderr,
-                    flush=True,
+                _progress(
+                    f"replay={replay_index + 1} apex={test_name} "
+                    f"passed_seconds={time.monotonic() - started:.1f}"
                 )
-            print(
-                f"SPEC017_PROGRESS replay={replay_index + 1} reporting=start",
-                file=sys.stderr,
-                flush=True,
-            )
+            _progress(f"replay={replay_index + 1} reporting=start")
             reporting_output = HARNESS.run_installed_pytest(
                 python,
                 (reporting_test_file,),
@@ -153,11 +153,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 timeout_seconds=900,
                 pytest_args=("-s",),
             )
-            print(
-                f"SPEC017_PROGRESS replay={replay_index + 1} reporting=passed",
-                file=sys.stderr,
-                flush=True,
-            )
+            _progress(f"replay={replay_index + 1} reporting=passed")
             replays.append(
                 {
                     "generation": _parse_transcript(
