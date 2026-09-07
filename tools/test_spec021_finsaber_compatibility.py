@@ -10,6 +10,13 @@ ADMISSIONS = ROOT / "docs" / "architecture-admissions"
 
 
 class Spec021CompatibilityTests(unittest.TestCase):
+    ALLOWED_CLASSIFICATIONS = {
+        "exact",
+        "transformable",
+        "auxiliary_only",
+        "incompatible",
+    }
+
     def test_pinned_upstream_manifest_records_real_install_and_removal(self) -> None:
         manifest = json.loads(
             (ADMISSIONS / "spec-021.upstream-manifest.v1.json").read_text(
@@ -201,6 +208,50 @@ class Spec021CompatibilityTests(unittest.TestCase):
         self.assertIn("replays", source)
         self.assertIn("--upstream-python", source)
         self.assertIn("--wheel", source)
+
+    def test_decision_matrix_is_evidence_bound_and_keeps_spec_022_blocked(
+        self,
+    ) -> None:
+        matrix = json.loads(
+            (ADMISSIONS / "spec-021.compatibility-matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            set(matrix["dimensions"]),
+            {
+                "data",
+                "strategy",
+                "timing_order_fill",
+                "cost_slippage_liquidity_margin_rounding",
+                "artifact_metric",
+                "environment_license_security_operations",
+            },
+        )
+        classifications: set[str] = set()
+        for dimension, conclusions in matrix["dimensions"].items():
+            self.assertGreater(len(conclusions), 0, dimension)
+            for seam, conclusion in conclusions.items():
+                label = conclusion["classification"]
+                classifications.add(label)
+                self.assertIn(label, self.ALLOWED_CLASSIFICATIONS)
+                self.assertGreater(len(conclusion["evidence"]), 0, f"{dimension}.{seam}")
+                for evidence in conclusion["evidence"]:
+                    self.assertIn("#", evidence, f"{dimension}.{seam}: {evidence}")
+        self.assertEqual(classifications, self.ALLOWED_CLASSIFICATIONS)
+
+        decision = json.loads(
+            (ADMISSIONS / "spec-021.v1.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(decision["decision"], "no_go")
+        self.assertEqual(decision["adoption_category"], "rejected-dependency")
+        self.assertEqual(decision["spec_022_status"], "blocked")
+        self.assertIsNone(decision["independent_validator_port"])
+        self.assertEqual(decision["formal_truth_namespace"], "formal.nautilus")
+        self.assertNotIn("finsaber", decision["formal_truth_namespace"].lower())
+        self.assertGreater(len(decision["blocking_findings"]), 0)
+        self.assertEqual(decision["claims"], [])
+        self.assertEqual(decision["lifecycle_states"], [])
 
 
 if __name__ == "__main__":

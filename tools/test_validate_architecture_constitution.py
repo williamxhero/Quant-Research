@@ -336,6 +336,21 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_021_rejected_dependency_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-021.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertEqual(candidate["decision"], "no_go")
+        self.assertEqual(candidate["adoption_category"], "rejected-dependency")
+        self.assertEqual(candidate["spec_022_status"], "blocked")
+        self.assertIsNone(candidate["independent_validator_port"])
+        self.assertIn("formal.nautilus", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(
             validator.ConstitutionError, "missing required declarations"
