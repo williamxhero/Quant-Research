@@ -14,6 +14,8 @@ tools/*
 !tools/verify_public_seam_architecture.py
 !tools/spec021_finsaber_compatibility.py
 !tools/test_spec021_finsaber_compatibility.py
+!tools/spec023_installed_wheel_tracer.py
+!tools/test_spec023_installed_wheel_tracer.py
 !docs/
 docs/*
 !docs/agents/
@@ -25,3 +27,5 @@ docs/architecture-admissions/*
 !docs/architecture-admissions/spec-021.compatibility-matrix.v1.json
 !docs/architecture-admissions/spec-021.prototype-transcript.v1.json
 !docs/architecture-admissions/spec-021.upstream-manifest.v1.json
+!docs/architecture-admissions/spec-023.v1.json
+!docs/architecture-admissions/spec-023.acceptance.v1.json
