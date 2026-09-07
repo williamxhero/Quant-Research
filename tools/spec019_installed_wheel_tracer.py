@@ -44,6 +44,7 @@ APEX_NODES = (
     "test_denied_panel_request_has_zero_port_call_and_zero_empirical_result",
     "test_closed_task_family_is_deterministic_and_typed",
     "test_task_contract_rejects_implicit_semantics_and_nonfinite_inputs",
+    "test_reference_factor_lag_is_applied_by_entity_and_time",
     "test_structured_output_is_workspace_owned_verified_and_bounded",
     "test_outcome_bounds_partial_items_and_namespace_isolation",
     "test_external_discovery_and_execution_only_cross_the_governed_runner",
