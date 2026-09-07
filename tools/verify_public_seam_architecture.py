@@ -210,7 +210,11 @@ class ApexSeamPolicy(NamedTuple):
 
 
 _LEGACY_INSTALLED_TRACERS = ("SPEC-014", "SPEC-015", "SPEC-016", "SPEC-017")
-_INSTALLED_TRACER_TIMEOUTS = {"SPEC-014": 1_800, "SPEC-015": 25_200}
+_INSTALLED_TRACER_TIMEOUTS = {
+    "SPEC-014": 1_800,
+    "SPEC-015": 25_200,
+    "SPEC-018": 3_600,
+}
 
 
 def _installed_tracer_check(
@@ -455,6 +459,7 @@ def full_gate_plan(
         "tools/spec015_installed_wheel_tracer.py",
         "tools/spec016_installed_wheel_tracer.py",
         "tools/spec017_installed_wheel_tracer.py",
+        "tools/spec018_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -1040,6 +1045,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-017.v1.json"
         ).is_file(),
     )
+    _scan_spec018_evolution_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-018.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -1054,6 +1065,13 @@ def scan_sources(repository_root: Path) -> None:
     if constitution.is_file() and not spec017_admission.is_file():
         raise ArchitectureViolation(
             "quant-research: SPEC-017 architecture admission is missing"
+        )
+    spec018_admission = (
+        repository_root / "docs" / "architecture-admissions" / "spec-018.v1.json"
+    )
+    if constitution.is_file() and not spec018_admission.is_file():
+        raise ArchitectureViolation(
+            "quant-research: SPEC-018 architecture admission is missing"
         )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
@@ -1361,6 +1379,97 @@ def _scan_spec017_archive_seams(
     if forbidden_reporting_names & actual_reporting_names:
         raise ArchitectureViolation("SPEC-017 Reporting calculates archive semantics")
     _scan_spec017_non_owner_repositories(repository_root)
+
+
+def _scan_spec018_evolution_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex = repository_root / "apex-research/src/apex_research/evolution.py"
+    reporting_contract = (
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/contracts/evolution.py"
+    )
+    reporting_adapter = (
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/adapters/evolution.py"
+    )
+    paths = (apex, reporting_contract, reporting_adapter)
+    if not required and not any(path.is_file() for path in paths):
+        return
+    if not all(path.is_file() for path in paths):
+        raise ArchitectureViolation("SPEC-018 owner or presentation seam is missing")
+    trees = {
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in paths
+    }
+    _reject_spec016_forbidden_imports(
+        trees[apex],
+        path=apex,
+        forbidden={
+            "quant_runtime": "Runtime import or invocation",
+            "strategy_workspace.storage": "private Workspace storage",
+            "strategy_workspace.core": "private Workspace storage",
+            "sqlite3": "parallel evolution persistence",
+            "subprocess": "Runtime or adapter invocation",
+        },
+    )
+    required_apex = {
+        "EvolutionPolicy",
+        "EvolutionIsland",
+        "EvolutionGenerationPlan",
+        "EvolutionDescendant",
+        "EvolutionPromotionFrontier",
+        "EvolutionFormalOutcome",
+        "EvolutionLifecycleEvent",
+        "EvolutionResearchService",
+    }
+    apex_classes = {
+        node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)
+    }
+    if not required_apex <= apex_classes:
+        raise ArchitectureViolation("SPEC-018 Apex evolution seam is incomplete")
+    service = next(
+        node
+        for node in ast.walk(trees[apex])
+        if isinstance(node, ast.ClassDef) and node.name == "EvolutionResearchService"
+    )
+    methods = {
+        node.name
+        for node in service.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    required_methods = {
+        "publish_generation_plan",
+        "publish_descendant",
+        "publish_promotion_frontier",
+        "publish_formal_outcome",
+        "publish_lifecycle_event",
+        "recover_island",
+    }
+    if not required_methods <= methods:
+        raise ArchitectureViolation("SPEC-018 evolution service seam is incomplete")
+    for path in (reporting_contract, reporting_adapter):
+        _reject_spec016_forbidden_imports(
+            trees[path],
+            path=path,
+            forbidden={
+                "apex_research": "private Apex import",
+                "quant_runtime": "Runtime import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "statistics": "evolution calculation",
+                "numpy": "evolution calculation",
+                "pandas": "evolution calculation",
+                "sqlite3": "parallel evolution persistence",
+                "subprocess": "subprocess-based owner access",
+            },
+        )
+    if not any(
+        isinstance(node, ast.ClassDef)
+        and node.name == "EvolutionProgressReadModelBuilder"
+        for node in ast.walk(trees[reporting_adapter])
+    ):
+        raise ArchitectureViolation("SPEC-018 Reporting read-model seam is incomplete")
 
 
 def _scan_spec017_non_owner_repositories(repository_root: Path) -> None:

@@ -3504,6 +3504,67 @@ def use_lineage(workspace):
             {"status": "not_evaluated"},
         )
 
+    def test_spec018_acceptance_scope_selects_current_tracer_and_defers_history(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-018.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-018")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-018",))
+        self.assertEqual(
+            scope.deferred_release_tracers,
+            ("SPEC-014", "SPEC-015", "SPEC-016", "SPEC-017"),
+        )
+        self.assertEqual(
+            scope.current_spec_heavy_test_exclusions,
+            ("apex-research/tests/test_evolution_research.py",),
+        )
+        self.assertIn(
+            "already passed current-spec installed heavy",
+            scope.current_spec_heavy_exclusion_reason,
+        )
+        self.assertIn(
+            "deferred to the final overall release suite",
+            scope.historical_heavy_exclusion_reason,
+        )
+        plan = verifier.full_gate_plan(ROOT, acceptance_scope=scope)
+        owners = {item.owner for item in plan}
+        self.assertIn("spec018_installed_wheels", owners)
+        self.assertNotIn("spec017_installed_wheels", owners)
+        apex = next(
+            item
+            for item in plan
+            if item.owner == "apex_research" and item.category == "pytest"
+        )
+        self.assertIn("--ignore=tests/test_evolution_research.py", apex.command)
+
+    def test_spec018_guard_requires_owner_and_presentation_seams(self) -> None:
+        verifier._scan_spec018_evolution_seams(ROOT, required=True)
+
+    def test_spec018_installed_tracer_is_nodeized_and_bounded(self) -> None:
+        tracer = ROOT / "tools/spec018_installed_wheel_tracer.py"
+        completed = subprocess.run(
+            [sys.executable, "-I", str(tracer), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        source = tracer.read_text(encoding="utf-8")
+        self.assertIn("SPEC018_PROGRESS", source)
+        self.assertIn("NODE_TIMEOUT_SECONDS", source)
+        self.assertIn("test_evolution_research.py", source)
+        self.assertIn("test_evolution_read_model.py", source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("replays", source)
+        self.assertIn("PYTHONPATH", source)
+        self.assertNotIn("spec017_installed_wheel_tracer.py", source)
+
 
 if __name__ == "__main__":
     unittest.main()
