@@ -20,6 +20,16 @@ SPEC.loader.exec_module(tracer)
 
 
 class Spec015InstalledWheelTracerTests(unittest.TestCase):
+    def test_historical_tracer_does_not_freeze_future_reporting_modules(self) -> None:
+        self.assertEqual(
+            set(tracer.UNCHANGED_SOURCE_BASELINES),
+            {"quant-runtime", "strategy-workspace"},
+        )
+        self.assertIn(
+            ("strategy-reporting", ("tests/test_workspace_roundtrip.py",)),
+            tracer.INSTALLED_TESTS,
+        )
+
     def test_cli_preserves_validated_replays_when_identity_comparison_fails(
         self,
     ) -> None:
