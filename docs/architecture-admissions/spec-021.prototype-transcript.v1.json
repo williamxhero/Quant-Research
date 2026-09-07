@@ -227,5 +227,136 @@
       "backtest/strategy/timing_llm/base_strategy_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
       "real installed-wheel equity probe 2026-09-08"
     ]
+  },
+  "execution_probe": {
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "quant_runtime_head": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "cost_liquidity": {
+      "config": {
+        "commission_per_share": 0.01,
+        "min_commission": 1.0,
+        "max_commission_rate": 0.01,
+        "slippage_perc": 0.001,
+        "slippage_impact": 0.1,
+        "liquidity_lookback_days": 5,
+        "liquidity_min_history_days": 5,
+        "liquidity_cap_pct": 0.1
+      },
+      "entry": {
+        "signal_date": "2024-01-09",
+        "execution_date": "2024-01-10",
+        "base_price": 106.0,
+        "requested_quantity": 1000,
+        "executed_quantity": 100,
+        "average_volume": 1000.0,
+        "volume_observations": 5,
+        "participation_rate": 0.1,
+        "fill_price": 106.212,
+        "commission": 1.0,
+        "slippage_cost": 21.20000000000033
+      },
+      "forced_exit": {
+        "execution_date": "2024-01-31",
+        "base_price": 121.5,
+        "executed_quantity": 100,
+        "fill_price": 121.257,
+        "commission": 1.0,
+        "slippage_cost": 24.2999999999995
+      },
+      "metrics": {
+        "final_value": 101502.5,
+        "total_return": 0.015025000000000066,
+        "total_commission": 2.0,
+        "total_slippage": 45.49999999999983,
+        "total_trading_cost": 47.49999999999983
+      },
+      "worked_formula": {
+        "capped_quantity": "floor(1000 * 0.1) = 100",
+        "entry_slippage_rate": "0.001 + 0.1 * (100 / 1000)^2 = 0.002",
+        "entry_fill": "106 * (1 + 0.002) = 106.212",
+        "entry_commission": "min(max(100 * 0.01, 1), 100 * 106.212 * 0.01) = 1",
+        "total_cost": "1 + 1 + 21.2 + 24.3 = 47.5"
+      }
+    },
+    "insufficient_history": {
+      "signal_date": "2024-01-02",
+      "execution_date": "2024-01-03",
+      "requested_quantity": 100,
+      "executed_quantity": 0,
+      "rejection_reason": "insufficient_liquidity_history"
+    },
+    "incompatible_margin_rounding_edge": {
+      "margin": {
+        "requirement": "200 shares at 100 with 50% initial margin",
+        "requested_quantity": 200,
+        "executed_quantity": 100,
+        "observed_behavior": "cash-only resize; no margin contract"
+      },
+      "board_lot": {
+        "requirement": "quantity must be a multiple of 100",
+        "requested_quantity": 150,
+        "executed_quantity": 150,
+        "observed_behavior": "no lot-size validation or rounding"
+      },
+      "tick_size": {
+        "requirement": "price increment 0.01",
+        "input_price": 100.003,
+        "observed_fill": 100.003,
+        "observed_behavior": "no tick-size validation or rounding"
+      },
+      "classification": "incompatible",
+      "reason": "The real wheel cannot represent Quant Runtime's explicit margin, lot-size, tick-size, and per-fill rounding owner facts without semantic loss.",
+      "mock_or_fallback": "none"
+    },
+    "classifications": {
+      "commission": {
+        "classification": "incompatible",
+        "evidence": "FINSABER uses float per-share/min/max-rate US commission; Quant Runtime requires typed CNY rate, sell stamp duty, and per-fill half-away-from-zero cent rounding."
+      },
+      "slippage": {
+        "classification": "transformable",
+        "evidence": "A fixed adverse percentage maps to the simple equity fixture; participation-squared impact has no identical Quant Runtime owner fact."
+      },
+      "liquidity_cap": {
+        "classification": "auxiliary_only",
+        "evidence": "The real wheel capped 1000 requested shares to 100 from five prior 1000-share bars, but this heuristic is not Nautilus formal truth."
+      },
+      "rejections": {
+        "classification": "incompatible",
+        "evidence": "FINSABER has local string reasons and lacks Quant Runtime's suspension, listing, price-band, venue, and typed order-state semantics."
+      },
+      "cash_long_only": {
+        "classification": "transformable",
+        "evidence": "Cash affordability and held-share sells can be mapped for a restricted long-only equity subset."
+      },
+      "shorting": {
+        "classification": "incompatible",
+        "evidence": "Sell quantity is capped to current holdings; no short-position model is exposed."
+      },
+      "margin": {
+        "classification": "incompatible",
+        "evidence": "A 200-share margin-backed request was silently resized to 100 cash-funded shares."
+      },
+      "lot_size": {
+        "classification": "incompatible",
+        "evidence": "A 150-share request executed unchanged despite the required 100-share lot."
+      },
+      "tick_size": {
+        "classification": "incompatible",
+        "evidence": "A 100.003 fill executed unchanged despite the required 0.01 tick."
+      },
+      "rounding": {
+        "classification": "incompatible",
+        "evidence": "Float arithmetic and int truncation cannot reproduce Decimal per-fill half-away-from-zero fee and market increment rules."
+      }
+    },
+    "source_evidence": [
+      "backtest/toolkit/execution.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/toolkit/backtest_framework_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "quant-runtime/src/quant_runtime/adapters/formal/nautilus/china_market_rules.py@c97428c51e8f7265b006872c15999800e5ae1fc9",
+      "quant-runtime/src/quant_runtime/adapters/formal/nautilus/runner.py@c97428c51e8f7265b006872c15999800e5ae1fc9",
+      "quant-runtime/src/quant_runtime/adapters/formal/nautilus/futures_config.py@c97428c51e8f7265b006872c15999800e5ae1fc9",
+      "real installed-wheel execution probe 2026-09-08"
+    ]
   }
 }

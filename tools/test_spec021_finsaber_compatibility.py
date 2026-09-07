@@ -130,6 +130,39 @@ class Spec021CompatibilityTests(unittest.TestCase):
             "incompatible",
         )
 
+    def test_cost_probe_is_worked_and_margin_rounding_edge_is_incompatible(self) -> None:
+        transcript = json.loads(
+            (ADMISSIONS / "spec-021.prototype-transcript.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        probe = transcript["execution_probe"]
+        cost = probe["cost_liquidity"]
+
+        self.assertEqual(cost["entry"]["requested_quantity"], 1000)
+        self.assertEqual(cost["entry"]["executed_quantity"], 100)
+        self.assertAlmostEqual(cost["entry"]["average_volume"], 1000.0)
+        self.assertAlmostEqual(cost["entry"]["participation_rate"], 0.1)
+        self.assertAlmostEqual(cost["entry"]["fill_price"], 106.212)
+        self.assertAlmostEqual(cost["entry"]["commission"], 1.0)
+        self.assertAlmostEqual(cost["entry"]["slippage_cost"], 21.2)
+        self.assertAlmostEqual(cost["metrics"]["total_commission"], 2.0)
+        self.assertAlmostEqual(cost["metrics"]["total_slippage"], 45.5)
+        self.assertAlmostEqual(cost["metrics"]["total_trading_cost"], 47.5)
+        self.assertEqual(
+            probe["insufficient_history"]["rejection_reason"],
+            "insufficient_liquidity_history",
+        )
+
+        edge = probe["incompatible_margin_rounding_edge"]
+        self.assertEqual(edge["margin"]["requested_quantity"], 200)
+        self.assertEqual(edge["margin"]["executed_quantity"], 100)
+        self.assertEqual(edge["board_lot"]["requested_quantity"], 150)
+        self.assertEqual(edge["board_lot"]["executed_quantity"], 150)
+        self.assertEqual(edge["tick_size"]["observed_fill"], 100.003)
+        self.assertEqual(edge["classification"], "incompatible")
+        self.assertEqual(edge["mock_or_fallback"], "none")
+
 
 if __name__ == "__main__":
     unittest.main()
