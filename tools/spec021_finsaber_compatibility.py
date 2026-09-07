@@ -12,7 +12,6 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
 HARNESS_SPEC = importlib.util.spec_from_file_location(
     "installed_wheel_harness", HARNESS_PATH
@@ -24,6 +23,14 @@ HARNESS_SPEC.loader.exec_module(HARNESS)
 EXPECTED_WHEEL_SHA256 = (
     "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140"
 )
+EXPECTED_SEMANTIC_SHA256 = (
+    "8e6e0e63170b9cb0b5d8641661dfa8ef33413c8f4c2dda079c842eddde3341ae"
+)
+EXPECTED_EDGE = {
+    "margin_executed": 100,
+    "board_lot_executed": 150,
+    "tick_fill": 100.003,
+}
 NODE_TIMEOUT_SECONDS = 30
 RESULT_PREFIX = "SPEC021_RESULT="
 
@@ -173,7 +180,7 @@ def artifacts(output: Path):
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "manifest": json.loads(manifest.read_text(encoding="utf-8")),
         "config": config,
-        "files": sorted(str(path.relative_to(output)) for path in output.rglob("*") if path.is_file()),
+        "files": sorted(path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()),
     }
 
 
@@ -226,7 +233,9 @@ def custom_log_base(output: Path):
     return {
         "error": error,
         "files_written_before_error": sorted(
-            str(path.relative_to(output)) for path in output.rglob("*") if path.is_file()
+            path.relative_to(output).as_posix()
+            for path in output.rglob("*")
+            if path.is_file()
         ),
     }
 
@@ -335,9 +344,17 @@ def run(upstream_python: Path, wheel: Path) -> dict[str, Any]:
         )
         semantic = _run_node(upstream_python, probe, "semantic", environment)
         edge = _run_node(upstream_python, probe, "edge", environment)
+        if edge != EXPECTED_EDGE:
+            raise TracerFailure("margin, lot, or tick incompatibility observation drifted")
         custom_log = _run_node(
             upstream_python, probe, "custom-log", environment, root / "custom-log"
         )
+        if (
+            not isinstance(custom_log.get("error"), dict)
+            or custom_log["error"].get("type") != "FileNotFoundError"
+            or len(custom_log.get("files_written_before_error", [])) != 9
+        ):
+            raise TracerFailure("custom output-root failure observation drifted")
         artifact_replays = [
             _run_node(
                 upstream_python,
@@ -355,7 +372,10 @@ def run(upstream_python: Path, wheel: Path) -> dict[str, Any]:
             ).hexdigest()
             for item in semantics
         ]
-        if semantic != semantics[0] or semantic_hashes[0] != semantic_hashes[1]:
+        if (
+            semantic != semantics[0]
+            or semantic_hashes != [EXPECTED_SEMANTIC_SHA256] * 2
+        ):
             raise TracerFailure("meaning-bearing FINSABER transcript drifted on replay")
         manifest_hashes = [item["manifest_sha256"] for item in artifact_replays]
         if manifest_hashes[0] == manifest_hashes[1]:
@@ -365,7 +385,14 @@ def run(upstream_python: Path, wheel: Path) -> dict[str, Any]:
             "wheel_sha256": EXPECTED_WHEEL_SHA256,
             "pythonpath": "cleared",
             "node_timeout_seconds": NODE_TIMEOUT_SECONDS,
-            "nodes": ["provenance", "semantic", "edge", "custom-log", "artifacts"],
+            "nodes": [
+                "provenance",
+                "semantic",
+                "edge",
+                "custom-log",
+                "artifacts",
+                "artifacts",
+            ],
             "replays": 2,
             "verified_installed_files": verified_files,
             "provenance": provenance,

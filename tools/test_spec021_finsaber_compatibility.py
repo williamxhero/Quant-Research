@@ -3,14 +3,14 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
-
+from typing import ClassVar
 
 ROOT = Path(__file__).parents[1]
 ADMISSIONS = ROOT / "docs" / "architecture-admissions"
 
 
 class Spec021CompatibilityTests(unittest.TestCase):
-    ALLOWED_CLASSIFICATIONS = {
+    ALLOWED_CLASSIFICATIONS: ClassVar[set[str]] = {
         "exact",
         "transformable",
         "auxiliary_only",
@@ -204,6 +204,9 @@ class Spec021CompatibilityTests(unittest.TestCase):
         )
         self.assertIn("SPEC021_PROGRESS", source)
         self.assertIn("NODE_TIMEOUT_SECONDS", source)
+        self.assertIn("EXPECTED_SEMANTIC_SHA256", source)
+        self.assertIn("EXPECTED_EDGE", source)
+        self.assertIn("custom output-root failure observation drifted", source)
         self.assertIn("PYTHONPATH", source)
         self.assertIn("replays", source)
         self.assertIn("--upstream-python", source)

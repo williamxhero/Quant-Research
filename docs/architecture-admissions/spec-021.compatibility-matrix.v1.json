@@ -36,7 +36,7 @@
         "classification": "auxiliary_only",
         "evidence": [
           "transcript#data_probe.quantresearch_frozen_facts",
-          "source#backtest/data_util/trading_data.py@4d3be1e0"
+          "source#backtest/data_util/trading_data.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
         ]
       },
       "missing_bar_and_intraday_semantics": {
@@ -56,7 +56,7 @@
         "classification": "transformable",
         "evidence": [
           "transcript#strategy_probe.candidate",
-          "source#backtest/strategy/timing_llm/base_strategy_iso.py@4d3be1e0"
+          "source#backtest/strategy/timing_llm/base_strategy_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
         ]
       },
       "date_level_decision_time": {
@@ -90,7 +90,7 @@
       "typed_order_state_and_time_in_force": {
         "classification": "incompatible",
         "evidence": [
-          "source#backtest/toolkit/backtest_framework_iso.py@4d3be1e0",
+          "source#backtest/toolkit/backtest_framework_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
           "transcript#execution_probe.classifications.rejections"
         ]
       },
@@ -112,7 +112,7 @@
         "classification": "incompatible",
         "evidence": [
           "transcript#execution_probe.classifications.commission",
-          "source#quant-runtime/china_market_rules.py@c97428c5"
+          "source#quant-runtime/china_market_rules.py@c97428c51e8f7265b006872c15999800e5ae1fc9"
         ]
       },
       "margin_and_shorting": {
@@ -127,7 +127,7 @@
         "evidence": [
           "transcript#execution_probe.incompatible_margin_rounding_edge.board_lot",
           "transcript#execution_probe.incompatible_margin_rounding_edge.tick_size",
-          "source#quant-runtime/china_market_rules.py@c97428c5"
+          "source#quant-runtime/china_market_rules.py@c97428c51e8f7265b006872c15999800e5ae1fc9"
         ]
       },
       "rejection_taxonomy": {
@@ -151,7 +151,7 @@
         "classification": "auxiliary_only",
         "evidence": [
           "transcript#artifact_metric_probe.metric_units",
-          "source#backtest/toolkit/evaluation.py@4d3be1e0"
+          "source#backtest/toolkit/evaluation.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
         ]
       },
       "artifact_identity_and_determinism": {
