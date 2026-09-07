@@ -253,6 +253,37 @@ class Spec021CompatibilityTests(unittest.TestCase):
         self.assertEqual(decision["claims"], [])
         self.assertEqual(decision["lifecycle_states"], [])
 
+    def test_acceptance_scope_changes_only_root_research_seams(self) -> None:
+        acceptance = json.loads(
+            (ADMISSIONS / "spec-021.acceptance.v1.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(acceptance["spec"], "SPEC-021")
+        self.assertEqual(acceptance["production_changed_paths"], [])
+        self.assertEqual(acceptance["changed_repositories"], ["quant-research"])
+        self.assertEqual(
+            acceptance["unchanged_repository_heads"],
+            {
+                "apex-research": "8a21c23cdaecb35f914b9611cc90653da067ae20",
+                "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+                "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+                "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+            },
+        )
+        self.assertIn("SPEC-021", acceptance["required_targeted_validation"])
+        self.assertEqual(
+            acceptance["deferred_historical_heavy"],
+            [
+                "SPEC-014",
+                "SPEC-015",
+                "SPEC-016",
+                "SPEC-017",
+                "SPEC-018",
+                "SPEC-019",
+                "SPEC-020",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
