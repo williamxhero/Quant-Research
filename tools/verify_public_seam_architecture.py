@@ -120,6 +120,50 @@ SPEC016_ADMISSION_CONTRACT = {
     "claims": [],
     "lifecycle_states": [],
 }
+SPEC017_ADMISSION_CONTRACT = {
+    "schema": "quant-research.future-spec-admission.v1",
+    "spec": "SPEC-017",
+    "canonical_owner": "apex_research",
+    "public_seam": (
+        "Apex QualityDiversityArchiveService and strict typed archive records / "
+        "WorkspaceClient immutable publication, canonical record readback, exact lineage, "
+        "and artifact verification / Strategy Reporting read models"
+    ),
+    "identity_impact": (
+        "Policies, considerations, decisions, events, entries, and snapshots occupy two "
+        "distinct archive families whose identities independently freeze archive family, "
+        "Candidate revision, taxonomy and descriptor revision, evidence tier, niche, capacity, "
+        "objective policy, exact quality owner facts, comparability group, logical generation "
+        "order, predecessors, replacements, retirement, and lineage while excluding timestamps, "
+        "wall-clock arrival, local paths, storage metadata, presentation metadata, and evidence "
+        "currency guesses."
+    ),
+    "evidence_level": (
+        "The Exploration Archive preserves discovery-tier explorers or discovery leaders for "
+        "coverage and later test selection only; the Evidence Archive preserves historical "
+        "formal evidence leaders or champions only from completed comparable Nautilus owner "
+        "facts at the declared historical maturity threshold, without implying current currency, "
+        "qualification, production approval, or operational authority."
+    ),
+    "fail_closed_behavior": (
+        "Keep Exploration and Evidence policies, identities, labels, events, snapshots, and "
+        "presentation distinct; require strict canonical public owner readback and deterministic "
+        "arrival-order-independent replay; reject mixed-tier cells, discovery-to-formal relabeling, "
+        "missing or incomparable formal facts, metric or qualification reconstruction, destructive "
+        "history, and cross-family lineage substitution. Until SPEC-032 supplies an exact currency "
+        "owner fact, any currency-required Evidence eligibility is not_evaluated or blocked and "
+        "the empty current active Evidence view is mandatory; never infer current or stale from "
+        "timestamps, local TTLs, package age, or local state and never predefine a SPEC-032 schema."
+    ),
+    "compatibility": [
+        "spec-014-evidence-v2",
+        "spec-015-qualification",
+        "spec-016-behavior-descriptors",
+        "spec-032-currency-separate",
+    ],
+    "claims": [],
+    "lifecycle_states": [],
+}
 
 
 class ArchitectureViolation(ValueError):
@@ -259,6 +303,7 @@ def fixture_plan(
                 "tests/test_research_reporting.py::test_statistical_external_readback_tamper_fails_closed",
                 "tests/test_evidence_v2_read_model.py",
                 "tests/test_behavior_descriptor_read_model.py",
+                "tests/test_quality_diversity_archive_read_model.py",
             ),
         ),
         FixtureCheck(
@@ -303,11 +348,27 @@ def fixture_plan(
                 str(repository_root),
             ),
         ),
+        FixtureCheck(
+            "spec017_installed_wheels",
+            ".",
+            (
+                "uv",
+                "run",
+                "--python",
+                "3.12",
+                "python",
+                "tools/spec017_installed_wheel_tracer.py",
+                "--repository-root",
+                str(repository_root),
+            ),
+        ),
     )
-    if not spec015_installed_wheels_required(
-        changed_paths, historical_mode=historical_mode
-    ):
-        plan = tuple(item for item in plan if item.owner != "spec015_installed_wheels")
+    for spec in ("SPEC-014", "SPEC-015", "SPEC-016"):
+        if not historical_installed_wheels_required(
+            spec, changed_paths, historical_mode=historical_mode
+        ):
+            owner = f"spec{spec[-3:]}_installed_wheels"
+            plan = tuple(item for item in plan if item.owner != owner)
     return plan
 
 
@@ -345,6 +406,7 @@ def full_gate_plan(
         "tools/spec014_installed_wheel_tracer.py",
         "tools/spec015_installed_wheel_tracer.py",
         "tools/spec016_installed_wheel_tracer.py",
+        "tools/spec017_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -467,8 +529,29 @@ def full_gate_plan(
                 "src",
                 baseline_only=True,
             )
+    historical_timeouts = {"SPEC-014": 1_800, "SPEC-015": 25_200, "SPEC-016": 7_200}
+    for spec in ("SPEC-014", "SPEC-015", "SPEC-016"):
+        if historical_installed_wheels_required(
+            spec, changed_paths, historical_mode=historical_mode
+        ):
+            owner = f"spec{spec[-3:]}_installed_wheels"
+            tracer = f"tools/spec{spec[-3:]}_installed_wheel_tracer.py"
+            add(
+                owner,
+                ".",
+                "installed-wheel-smoke",
+                "uv",
+                "run",
+                "--python",
+                "3.12",
+                "python",
+                tracer,
+                "--repository-root",
+                str(repository_root),
+                timeout_seconds=historical_timeouts[spec],
+            )
     add(
-        "spec014_installed_wheels",
+        "spec017_installed_wheels",
         ".",
         "installed-wheel-smoke",
         "uv",
@@ -476,37 +559,7 @@ def full_gate_plan(
         "--python",
         "3.12",
         "python",
-        "tools/spec014_installed_wheel_tracer.py",
-        "--repository-root",
-        str(repository_root),
-    )
-    if spec015_installed_wheels_required(
-        changed_paths, historical_mode=historical_mode
-    ):
-        add(
-            "spec015_installed_wheels",
-            ".",
-            "installed-wheel-smoke",
-            "uv",
-            "run",
-            "--python",
-            "3.12",
-            "python",
-            "tools/spec015_installed_wheel_tracer.py",
-            "--repository-root",
-            str(repository_root),
-            timeout_seconds=25_200,
-        )
-    add(
-        "spec016_installed_wheels",
-        ".",
-        "installed-wheel-smoke",
-        "uv",
-        "run",
-        "--python",
-        "3.12",
-        "python",
-        "tools/spec016_installed_wheel_tracer.py",
+        "tools/spec017_installed_wheel_tracer.py",
         "--repository-root",
         str(repository_root),
         timeout_seconds=7_200,
@@ -514,18 +567,40 @@ def full_gate_plan(
     return tuple(commands)
 
 
-SPEC015_IMPACT_PREFIXES = (
-    "apex-research/src/apex_research/evidence_",
-    "apex-research/src/apex_research/qualification",
-    "apex-research/tests/test_evidence_v2",
-    "apex-research/tests/test_qualification",
-    "strategy-reporting/src/strategy_reporting/adapters/evidence_v2.py",
-    "strategy-reporting/src/strategy_reporting/contracts/evidence_v2.py",
-    "strategy-reporting/tests/test_evidence_v2",
+HISTORICAL_IMPACT_PREFIXES = {
+    "SPEC-014": (
+        "apex-research/src/apex_research/evidence_v2.py",
+        "apex-research/tests/test_evidence_v2",
+        "strategy-reporting/src/strategy_reporting/adapters/evidence_v2.py",
+        "strategy-reporting/src/strategy_reporting/contracts/evidence_v2.py",
+        "strategy-reporting/tests/test_evidence_v2",
+        "tools/spec014_installed_wheel_tracer.py",
+    ),
+    "SPEC-015": (
+        "apex-research/src/apex_research/evidence_",
+        "apex-research/src/apex_research/qualification",
+        "apex-research/tests/test_evidence_v2",
+        "apex-research/tests/test_qualification",
+        "strategy-reporting/src/strategy_reporting/adapters/evidence_v2.py",
+        "strategy-reporting/src/strategy_reporting/contracts/evidence_v2.py",
+        "strategy-reporting/tests/test_evidence_v2",
+        "tools/installed_wheel_harness.py",
+        "tools/spec015_installed_wheel_tracer.py",
+        "tools/test_installed_wheel_harness.py",
+        "tools/test_spec015_installed_wheel_tracer.py",
+    ),
+    "SPEC-016": (
+        "apex-research/src/apex_research/behavior_descriptors.py",
+        "apex-research/tests/test_behavior_descriptors.py",
+        "strategy-reporting/src/strategy_reporting/adapters/behavior_descriptors.py",
+        "strategy-reporting/src/strategy_reporting/contracts/behavior_descriptors.py",
+        "strategy-reporting/tests/test_behavior_descriptor_read_model.py",
+        "tools/spec016_installed_wheel_tracer.py",
+    ),
+}
+HISTORICAL_HARNESS_PREFIXES = (
     "tools/installed_wheel_harness.py",
-    "tools/spec015_installed_wheel_tracer.py",
     "tools/test_installed_wheel_harness.py",
-    "tools/test_spec015_installed_wheel_tracer.py",
 )
 PACKAGING_FILENAMES = frozenset(
     {"pyproject.toml", "uv.lock", "setup.py", "setup.cfg", "MANIFEST.in"}
@@ -535,16 +610,32 @@ PACKAGING_FILENAMES = frozenset(
 def spec015_installed_wheels_required(
     changed_paths: tuple[str, ...], *, historical_mode: str = "impacted"
 ) -> bool:
-    """Select the heavy historical tracer from normalized repository-relative diffs."""
+    """Backward-compatible SPEC-015 selector."""
+    return historical_installed_wheels_required(
+        "SPEC-015", changed_paths, historical_mode=historical_mode
+    )
+
+
+def historical_installed_wheels_required(
+    spec: str,
+    changed_paths: tuple[str, ...],
+    *,
+    historical_mode: str = "impacted",
+) -> bool:
+    """Select one historical heavy tracer from its actual product-impact paths."""
     if historical_mode not in {"impacted", "full", "release"}:
         raise ArchitectureViolation(
             f"unknown historical validation mode: {historical_mode}"
         )
     if historical_mode in {"full", "release"}:
         return True
+    if spec not in HISTORICAL_IMPACT_PREFIXES:
+        raise ArchitectureViolation(f"unknown historical tracer: {spec}")
     for raw_path in changed_paths:
         path = _normalized_changed_path(raw_path)
-        if path.startswith(SPEC015_IMPACT_PREFIXES):
+        if path.startswith(HISTORICAL_IMPACT_PREFIXES[spec]):
+            return True
+        if path.startswith(HISTORICAL_HARNESS_PREFIXES):
             return True
         if Path(path).name in PACKAGING_FILENAMES:
             return True
@@ -816,6 +907,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
         ).is_file(),
     )
+    _scan_spec017_archive_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-017.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -823,6 +920,13 @@ def scan_sources(repository_root: Path) -> None:
     if constitution.is_file() and not admission.is_file():
         raise ArchitectureViolation(
             "quant-research: SPEC-016 architecture admission is missing"
+        )
+    spec017_admission = (
+        repository_root / "docs" / "architecture-admissions" / "spec-017.v1.json"
+    )
+    if constitution.is_file() and not spec017_admission.is_file():
+        raise ArchitectureViolation(
+            "quant-research: SPEC-017 architecture admission is missing"
         )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
@@ -1009,6 +1113,157 @@ def _scan_spec016_descriptor_seams(
         for node in ast.walk(adapter_tree)
     ):
         raise ArchitectureViolation("SPEC-016 Reporting read-model seam is incomplete")
+
+
+def _scan_spec017_archive_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex = (
+        repository_root
+        / "apex-research"
+        / "src"
+        / "apex_research"
+        / "quality_diversity_archives.py"
+    )
+    reporting_contract = (
+        repository_root
+        / "strategy-reporting"
+        / "src"
+        / "strategy_reporting"
+        / "contracts"
+        / "quality_diversity_archives.py"
+    )
+    reporting_adapter = (
+        repository_root
+        / "strategy-reporting"
+        / "src"
+        / "strategy_reporting"
+        / "adapters"
+        / "quality_diversity_archives.py"
+    )
+    paths = (apex, reporting_contract, reporting_adapter)
+    if not required and not any(path.is_file() for path in paths):
+        return
+    if not all(path.is_file() for path in paths):
+        raise ArchitectureViolation("SPEC-017 owner or presentation seam is missing")
+    trees = {
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for path in paths
+    }
+    _reject_spec016_forbidden_imports(
+        trees[apex],
+        path=apex,
+        forbidden={
+            "quant_runtime": "Runtime import or invocation",
+            "strategy_workspace.storage": "private Workspace storage",
+            "strategy_workspace.core": "private Workspace storage",
+            "sqlite3": "parallel archive persistence",
+            "subprocess": "Runtime import or invocation",
+        },
+    )
+    for path in (reporting_contract, reporting_adapter):
+        _reject_spec016_forbidden_imports(
+            trees[path],
+            path=path,
+            forbidden={
+                "apex_research": "private Apex import",
+                "quant_runtime": "Runtime import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "statistics": "archive calculation",
+                "numpy": "archive calculation",
+                "pandas": "archive calculation",
+                "sqlite3": "parallel archive persistence",
+                "subprocess": "subprocess-based upstream access",
+            },
+        )
+    apex_classes = {
+        node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)
+    }
+    required_apex = {
+        "ExplorationArchivePolicy",
+        "EvidenceArchivePolicy",
+        "ExplorationArchiveEvent",
+        "EvidenceArchiveEvent",
+        "ExplorationArchiveSnapshot",
+        "EvidenceArchiveSnapshot",
+        "QualityDiversityArchiveService",
+    }
+    if not required_apex <= apex_classes:
+        raise ArchitectureViolation(
+            "SPEC-017 Apex archive owner contract is incomplete"
+        )
+    source = apex.read_text(encoding="utf-8")
+    for marker in (
+        "apex-research.exploration-archive.v1",
+        "apex-research.evidence-archive.v1",
+        "SPEC-032 exact currency owner fact unavailable",
+    ):
+        if marker not in source:
+            raise ArchitectureViolation(
+                f"SPEC-017 Apex archive invariant is missing: {marker}"
+            )
+    reporting_classes = {
+        node.name
+        for path in (reporting_contract, reporting_adapter)
+        for node in ast.walk(trees[path])
+        if isinstance(node, ast.ClassDef)
+    }
+    if (
+        not {
+            "ExplorationArchiveReadModel",
+            "EvidenceArchiveReadModel",
+            "QualityDiversityArchiveReadModelBuilder",
+        }
+        <= reporting_classes
+    ):
+        raise ArchitectureViolation("SPEC-017 Reporting read-model seam is incomplete")
+    forbidden_reporting_names = {
+        "decide_archive_entry",
+        "pareto_dominates",
+        "quality_values",
+        "evaluate_evidence_decision",
+        "evaluate_exploration_generation",
+    }
+    actual_reporting_names = {
+        node.name
+        for path in (reporting_contract, reporting_adapter)
+        for node in ast.walk(trees[path])
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    if forbidden_reporting_names & actual_reporting_names:
+        raise ArchitectureViolation("SPEC-017 Reporting calculates archive semantics")
+    _scan_spec017_non_owner_repositories(repository_root)
+
+
+def _scan_spec017_non_owner_repositories(repository_root: Path) -> None:
+    owner_markers = (
+        "qualitydiversityarchiveservice",
+        "explorationarchivepolicy",
+        "evidencearchivepolicy",
+        "explorationarchiveevent",
+        "evidencearchiveevent",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in sorted(source_root.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            names = {
+                _normalize_identifier(node.name)
+                for node in ast.walk(tree)
+                if isinstance(
+                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+                )
+            }
+            if any(marker in name for marker in owner_markers for name in names):
+                raise ArchitectureViolation(
+                    f"{repository}: archive ownership outside Apex Research: {path}"
+                )
 
 
 def _scan_spec016_non_owner_repositories(repository_root: Path) -> None:
@@ -5871,6 +6126,7 @@ def validate_constitution() -> None:
         for spec, contract in (
             ("SPEC-015", SPEC015_ADMISSION_CONTRACT),
             ("SPEC-016", SPEC016_ADMISSION_CONTRACT),
+            ("SPEC-017", SPEC017_ADMISSION_CONTRACT),
         ):
             candidate = validator.read_json(
                 ROOT / "docs" / "architecture-admissions" / f"{spec.lower()}.v1.json"

@@ -344,6 +344,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "spec014_installed_wheels",
                 "spec015_installed_wheels",
                 "spec016_installed_wheels",
+                "spec017_installed_wheels",
             ],
         )
         command_by_owner = {item.owner: item.command[:5] for item in plan}
@@ -421,6 +422,9 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         )
         self.assertIn("tests/test_evidence_v2_read_model.py", reporting.command)
         self.assertIn("tests/test_behavior_descriptor_read_model.py", reporting.command)
+        self.assertIn(
+            "tests/test_quality_diversity_archive_read_model.py", reporting.command
+        )
         installed = next(
             item for item in plan if item.owner == "spec014_installed_wheels"
         )
@@ -520,6 +524,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "spec014_installed_wheels",
                 "spec015_installed_wheels",
                 "spec016_installed_wheels",
+                "spec017_installed_wheels",
             },
         )
         commands = {token for item in plan for token in item.command}
@@ -594,8 +599,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         descriptor_wheels = next(
             item for item in plan if item.owner == "spec016_installed_wheels"
         )
+        archive_wheels = next(
+            item for item in plan if item.owner == "spec017_installed_wheels"
+        )
         self.assertEqual(qualification_wheels.timeout_seconds, 25_200)
         self.assertEqual(descriptor_wheels.timeout_seconds, 7_200)
+        self.assertEqual(archive_wheels.timeout_seconds, 7_200)
         self.assertTrue(
             all(
                 item.timeout_seconds == 1_800
@@ -603,6 +612,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 if item is not apex_pytest
                 and item is not qualification_wheels
                 and item is not descriptor_wheels
+                and item is not archive_wheels
             )
         )
         self.assertIn("not connected", " ".join(runtime_pytest.command))
@@ -3190,6 +3200,121 @@ def use_lineage(workspace):
                 strategy.write_text(required + source_text)
                 with self.assertRaisesRegex(verifier.ArchitectureViolation, reason):
                     verifier.scan_sources(root)
+
+    def test_spec017_archive_diff_selects_only_current_heavy_tracer(self) -> None:
+        changed = (
+            "apex-research/src/apex_research/__init__.py",
+            "apex-research/src/apex_research/cli.py",
+            "apex-research/src/apex_research/quality_diversity_archives.py",
+            "apex-research/tests/test_quality_diversity_archives.py",
+            "strategy-reporting/src/strategy_reporting/__init__.py",
+            "strategy-reporting/src/strategy_reporting/adapters/quality_diversity_archives.py",
+            "strategy-reporting/src/strategy_reporting/cli.py",
+            "strategy-reporting/src/strategy_reporting/contracts/quality_diversity_archives.py",
+            "strategy-reporting/tests/test_quality_diversity_archive_read_model.py",
+        )
+
+        self.assertFalse(
+            verifier.historical_installed_wheels_required("SPEC-014", changed)
+        )
+        self.assertFalse(
+            verifier.historical_installed_wheels_required("SPEC-015", changed)
+        )
+        self.assertFalse(
+            verifier.historical_installed_wheels_required("SPEC-016", changed)
+        )
+        for plan in (
+            verifier.fixture_plan(ROOT, changed_paths=changed),
+            verifier.full_gate_plan(ROOT, changed_paths=changed),
+        ):
+            owners = {item.owner for item in plan}
+            self.assertIn("spec017_installed_wheels", owners)
+            self.assertNotIn("spec014_installed_wheels", owners)
+            self.assertNotIn("spec015_installed_wheels", owners)
+            self.assertNotIn("spec016_installed_wheels", owners)
+
+    def test_spec017_acceptance_scope_freezes_impact_selection(self) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-017.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-017")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-017",))
+        self.assertEqual(
+            scope.deferred_release_tracers,
+            ("SPEC-014", "SPEC-015", "SPEC-016"),
+        )
+        self.assertTrue(
+            all(
+                not verifier.historical_installed_wheels_required(
+                    spec, scope.product_changed_paths
+                )
+                for spec in ("SPEC-014", "SPEC-015", "SPEC-016")
+            )
+        )
+
+    def test_spec017_guard_requires_apex_owner_and_reporting_presentation(self) -> None:
+        verifier._scan_spec017_archive_seams(ROOT, required=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = (
+                root / "apex-research/src/apex_research/quality_diversity_archives.py"
+            )
+            contract = (
+                root
+                / "strategy-reporting/src/strategy_reporting/contracts/quality_diversity_archives.py"
+            )
+            adapter = (
+                root
+                / "strategy-reporting/src/strategy_reporting/adapters/quality_diversity_archives.py"
+            )
+            for path in (apex, contract, adapter):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            apex.write_text(
+                "class ExplorationArchivePolicy: pass\n"
+                "class EvidenceArchivePolicy: pass\n"
+                "class ExplorationArchiveEvent: pass\n"
+                "class EvidenceArchiveEvent: pass\n"
+                "class ExplorationArchiveSnapshot: pass\n"
+                "class EvidenceArchiveSnapshot: pass\n"
+                "class QualityDiversityArchiveService: pass\n",
+                encoding="utf-8",
+            )
+            contract.write_text(
+                "class ExplorationArchiveReadModel: pass\n"
+                "class EvidenceArchiveReadModel: pass\n",
+                encoding="utf-8",
+            )
+            adapter.write_text(
+                "import apex_research\n"
+                "class QualityDiversityArchiveReadModelBuilder: pass\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "private Apex import"
+            ):
+                verifier._scan_spec017_archive_seams(root, required=True)
+
+    def test_spec017_installed_tracer_uses_archive_only_wheel_targets(self) -> None:
+        tracer = ROOT / "tools/spec017_installed_wheel_tracer.py"
+        completed = subprocess.run(
+            [sys.executable, "-I", str(tracer), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        source = tracer.read_text(encoding="utf-8")
+        self.assertIn("test_quality_diversity_archives.py", source)
+        self.assertIn("test_quality_diversity_archive_read_model.py", source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("PYTHONPATH", source)
+        self.assertNotIn("spec014_installed_wheel_tracer.py", source)
+        self.assertNotIn("spec015_installed_wheel_tracer.py", source)
+        self.assertNotIn("spec016_installed_wheel_tracer.py", source)
 
 
 if __name__ == "__main__":

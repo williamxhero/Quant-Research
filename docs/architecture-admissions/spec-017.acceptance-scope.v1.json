@@ -1,0 +1,40 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-017",
+  "baseline_heads": {
+    "apex-research": "2ae71be2b4e8f211887b7ba09d85d81c7393fdd9",
+    "quant-research": "45461a38c61070acb351ee51c6d117e9af2bcb7f",
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "bd082daa47e9d5160a200f7713bd8c1f10c0183e",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/cli.py",
+    "apex-research/src/apex_research/quality_diversity_archives.py",
+    "apex-research/tests/test_quality_diversity_archives.py",
+    "docs/architecture-admissions/spec-017.v1.json",
+    "docs/architecture-constitution.v1.json",
+    "strategy-reporting/src/strategy_reporting/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/quality_diversity_archives.py",
+    "strategy-reporting/src/strategy_reporting/cli.py",
+    "strategy-reporting/src/strategy_reporting/contracts/__init__.py",
+    "strategy-reporting/src/strategy_reporting/contracts/quality_diversity_archives.py",
+    "strategy-reporting/tests/test_quality_diversity_archive_read_model.py"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-017.acceptance-scope.v1.json",
+    "tools/spec017_installed_wheel_tracer.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-017"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016"
+  ]
+}
