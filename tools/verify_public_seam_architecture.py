@@ -1439,6 +1439,7 @@ def _scan_spec018_evolution_seams(
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     required_methods = {
+        "publish_evolution_policy",
         "publish_generation_plan",
         "publish_descendant",
         "publish_promotion_frontier",
