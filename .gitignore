@@ -21,6 +21,7 @@ docs/*
 !docs/architecture-admissions/
 docs/architecture-admissions/*
 !docs/architecture-admissions/spec-021.v1.json
+!docs/architecture-admissions/spec-021.acceptance.v1.json
 !docs/architecture-admissions/spec-021.acceptance-scope.v1.json
 !docs/architecture-admissions/spec-021.compatibility-matrix.v1.json
 !docs/architecture-admissions/spec-021.prototype-transcript.v1.json

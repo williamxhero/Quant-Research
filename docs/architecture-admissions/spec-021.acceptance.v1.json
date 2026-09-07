@@ -1,0 +1,56 @@
+{
+  "schema": "quant-research.spec-021-acceptance.v1",
+  "spec": "SPEC-021",
+  "baseline_heads": {
+    "quant-research": "ef7b339d8dfc6549eacb3faefec92bc906710b93",
+    "apex-research": "8a21c23cdaecb35f914b9611cc90653da067ae20",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6"
+  },
+  "changed_repositories": ["quant-research"],
+  "unchanged_repository_heads": {
+    "apex-research": "8a21c23cdaecb35f914b9611cc90653da067ae20",
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "production_changed_paths": [],
+  "research_changed_paths": [
+    ".gitignore",
+    "docs/architecture-admissions/spec-021.acceptance.v1.json",
+    "docs/architecture-admissions/spec-021.compatibility-matrix.v1.json",
+    "docs/architecture-admissions/spec-021.prototype-transcript.v1.json",
+    "docs/architecture-admissions/spec-021.upstream-manifest.v1.json",
+    "docs/architecture-admissions/spec-021.v1.json",
+    "tools/spec021_finsaber_compatibility.py",
+    "tools/test_spec021_finsaber_compatibility.py",
+    "tools/test_validate_architecture_constitution.py"
+  ],
+  "required_targeted_validation": [
+    "SPEC-021",
+    "architecture-constitution",
+    "public-seam-static",
+    "python-compile",
+    "diff-check"
+  ],
+  "current_spec_tracer": {
+    "command": "python -I tools/spec021_finsaber_compatibility.py --upstream-python <isolated-python> --wheel <pinned-wheel>",
+    "result": "passed",
+    "nodes": ["provenance", "semantic", "edge", "custom-log", "artifacts", "artifacts"],
+    "semantic_replays": 2,
+    "pythonpath": "cleared",
+    "installed_files_verified": 72,
+    "node_timeout_seconds": 30
+  },
+  "deferred_historical_heavy": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020"
+  ],
+  "defer_reason": "SPEC-021 changes only root research records, a throwaway tracer, and focused tests. Historical production adapters and installed-wheel tracers are unchanged and remain for final overall release validation."
+}
