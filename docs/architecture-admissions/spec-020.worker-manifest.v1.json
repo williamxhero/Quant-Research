@@ -1,0 +1,50 @@
+{
+  "schema": "quant-research.qrafti-worker-manifest.v1",
+  "status": "blocked",
+  "production_ready": false,
+  "blockers": [
+    "official upstream publishes no release or tag",
+    "official requirements are not a complete hash-locked dependency set",
+    "no digest-pinned QRAFTI worker OCI image is published or reproducibly built"
+  ],
+  "source": {
+    "repository": "https://github.com/terence-lim/quant-agents",
+    "release_tag": null,
+    "commit": "0760c453287c025960bf278d2970557c88cb9de9",
+    "license": "MIT",
+    "license_notice_sha256": "ed193da6443c5be25eed416a9321bf36cde8ae4f3d379926aaae9f0543aafe94",
+    "requirements_sha256": "a20bdcfc977b030b5e67908cd9143dd04e3d526f807fedbd48c02c65579c3bb0",
+    "research_server_sha256": "51cd8aa0fa0aca81e8c91bb314e011c8959d9231444eaffbc329f115a8ac99aa"
+  },
+  "dependency_lock": {
+    "complete": false,
+    "hash_locked": false,
+    "digest": null
+  },
+  "worker": {
+    "protocol": "apex-research.qrafti-worker-protocol.v1",
+    "implementation_digest": null,
+    "mcp_versions": [
+      "mcp==1.27.0",
+      "fastmcp==3.2.4"
+    ],
+    "capability_snapshot_id": "63009a0d1c492ef68ab3e62fd1de187e6546d2ef361b9816d87089c3e74a48fc",
+    "mapping_matrix_id": "dfed9dda733a77b902b43059fbbe283ba386a5666c85fa2132fcfc50b8b5e3eb",
+    "replication_mapping_id": "7b0f918b69566d60187427889496a637dd7bd0bcb4c8dfbb2396c1f9e7472a88",
+    "invocation_allowlist": [
+      "Panel_binary_op",
+      "Panel_unary_op"
+    ]
+  },
+  "oci": {
+    "base_image": null,
+    "base_image_digest": null,
+    "image_config_digest": null,
+    "final_image_digest": null
+  },
+  "connected_test": {
+    "status": "blocked",
+    "reason": "production image and complete dependency lock are unavailable",
+    "fixture_substitution": false
+  }
+}

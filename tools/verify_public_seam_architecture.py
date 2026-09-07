@@ -461,6 +461,7 @@ def full_gate_plan(
         "tools/spec017_installed_wheel_tracer.py",
         "tools/spec018_installed_wheel_tracer.py",
         "tools/spec019_installed_wheel_tracer.py",
+        "tools/spec020_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -1058,6 +1059,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-019.v1.json"
         ).is_file(),
     )
+    _scan_spec020_qrafti_seam(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -1086,6 +1093,13 @@ def scan_sources(repository_root: Path) -> None:
     if constitution.is_file() and not spec019_admission.is_file():
         raise ArchitectureViolation(
             "quant-research: SPEC-019 architecture admission is missing"
+        )
+    spec020_admission = (
+        repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
+    )
+    if constitution.is_file() and not spec020_admission.is_file():
+        raise ArchitectureViolation(
+            "quant-research: SPEC-020 architecture admission is missing"
         )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
@@ -1566,6 +1580,106 @@ def _scan_spec019_empirical_seams(
             if any(marker in compact for marker in markers):
                 raise ArchitectureViolation(
                     f"SPEC-019 empirical owner leaked into {repository}: {path}"
+                )
+
+
+def _scan_spec020_qrafti_seam(repository_root: Path, *, required: bool = False) -> None:
+    apex = repository_root / "apex-research/src/apex_research/adapters/qrafti.py"
+    if not apex.is_file():
+        if required:
+            raise ArchitectureViolation("SPEC-020 QRAFTI adapter seam is missing")
+        return
+    tree = ast.parse(apex.read_text(encoding="utf-8"), filename=str(apex))
+    _reject_spec016_forbidden_imports(
+        tree,
+        path=apex,
+        forbidden={
+            "quant_agents": "direct QRAFTI import",
+            "qrafti": "direct QRAFTI import",
+            "mcp": "non-runner MCP",
+            "fastmcp": "non-runner MCP",
+            "subprocess": "direct external execution",
+            "socket": "direct network access",
+            "requests": "direct network access",
+            "httpx": "direct network access",
+            "urllib": "direct network access",
+            "sqlite3": "parallel adapter persistence",
+            "quant_runtime": "formal execution",
+            "strategy_reporting": "reporting ownership",
+            "strategy_workspace.storage": "private Workspace storage",
+        },
+    )
+    classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    required_classes = {
+        "QraftiAdapterConfig",
+        "QraftiMappingMatrix",
+        "QraftiMcpCapabilitySnapshot",
+        "QraftiObservedIdentity",
+        "QraftiReplicationTranscript",
+        "QraftiRuntimeIdentity",
+        "QraftiSourceIdentity",
+    }
+    functions = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+    required_functions = {
+        "create_qrafti_capability_policy",
+        "create_qrafti_empirical_port",
+        "production_qrafti_config",
+        "qrafti_capability_discovery_task",
+        "qrafti_mapping_decision",
+        "validate_qrafti_replication_result",
+    }
+    if not required_classes <= classes or not required_functions <= functions:
+        raise ArchitectureViolation(
+            "SPEC-020 QRAFTI public adapter contract is incomplete"
+        )
+    allowlists = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_QRAFTI_INVOCATION_ALLOWLIST"
+            for target in node.targets
+        )
+    ]
+    if len(allowlists) != 1 or ast.literal_eval(allowlists[0].value) != (
+        "Panel_binary_op",
+        "Panel_unary_op",
+    ):
+        raise ArchitectureViolation("SPEC-020 QRAFTI invocation allowlist drifted")
+    forbidden_calls = {
+        "register_package",
+        "submit_run",
+        "retry_run",
+        "publish_decision",
+        "publish_report",
+    }
+    actual_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    if forbidden_calls & actual_calls:
+        raise ArchitectureViolation("SPEC-020 QRAFTI adapter crosses an owner boundary")
+    markers = (
+        "qraftiadapterconfig",
+        "qraftimappingmatrix",
+        "qraftireplicationtranscript",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+        ("strategy-reporting", "strategy_reporting"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if any(marker in compact for marker in markers):
+                raise ArchitectureViolation(
+                    f"SPEC-020 QRAFTI owner leaked into {repository}: {path}"
                 )
 
 
@@ -6372,12 +6486,22 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                 raise ArchitectureViolation(
                     f"apex-research: external adapter bypasses runner interface: {path}"
                 )
-            if external_adapter and not any(
-                marker in source for marker in ("production = True", "production=True")
-            ):
-                raise ArchitectureViolation(
-                    f"apex-research: external adapter must declare production execution: {path}"
+            if external_adapter:
+                production_enabled = any(
+                    marker in source
+                    for marker in ("production = True", "production=True")
                 )
+                qrafti_disabled = (
+                    path.name == "qrafti.py"
+                    and "production = False" in source
+                    and "QRAFTI_PRODUCTION_BLOCKER" in source
+                    and "production_qrafti_config" in source
+                )
+                if not production_enabled and not qrafti_disabled:
+                    raise ArchitectureViolation(
+                        "apex-research: external adapter must declare production execution: "
+                        f"{path}"
+                    )
             if external_adapter:
                 forbidden_adapter_seams = (
                     ("import socket", "network"),

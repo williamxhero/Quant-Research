@@ -3618,6 +3618,68 @@ def use_lineage(workspace):
         self.assertIn("PYTHONPATH", source)
         self.assertNotIn("spec018_installed_wheel_tracer.py", source)
 
+    def test_spec020_acceptance_scope_selects_qrafti_and_defers_history(self) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-020.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-020")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-020",))
+        self.assertEqual(
+            scope.deferred_release_tracers,
+            ("SPEC-014", "SPEC-015", "SPEC-016", "SPEC-017", "SPEC-018", "SPEC-019"),
+        )
+        plan = verifier.full_gate_plan(ROOT, acceptance_scope=scope)
+        owners = {item.owner for item in plan}
+        self.assertIn("spec020_installed_wheels", owners)
+        self.assertNotIn("spec019_installed_wheels", owners)
+
+    def test_spec020_worker_manifest_is_explicitly_blocked(self) -> None:
+        manifest = json.loads(
+            (
+                ROOT / "docs/architecture-admissions/spec-020.worker-manifest.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(manifest["status"], "blocked")
+        self.assertIs(manifest["production_ready"], False)
+        self.assertIs(manifest["dependency_lock"]["hash_locked"], False)
+        self.assertIsNone(manifest["oci"]["final_image_digest"])
+        self.assertIs(manifest["connected_test"]["fixture_substitution"], False)
+
+    def test_spec020_guard_rejects_direct_qrafti_runtime_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "apex-research/src/apex_research/adapters/qrafti.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("import fastmcp\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "non-runner MCP"
+            ):
+                verifier._scan_spec020_qrafti_seam(root, required=True)
+
+    def test_spec020_installed_tracer_is_nodeized_bounded_and_wheel_only(self) -> None:
+        tracer = ROOT / "tools/spec020_installed_wheel_tracer.py"
+        completed = subprocess.run(
+            [sys.executable, "-I", str(tracer), "--help"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        source = tracer.read_text(encoding="utf-8")
+        self.assertIn("SPEC020_PROGRESS", source)
+        self.assertIn("NODE_TIMEOUT_SECONDS", source)
+        self.assertIn("test_qrafti_adapter.py", source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("replays", source)
+        self.assertIn("PYTHONPATH", source)
+        self.assertNotIn("spec019_installed_wheel_tracer.py", source)
+
 
 if __name__ == "__main__":
     unittest.main()
