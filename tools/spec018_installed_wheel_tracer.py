@@ -38,10 +38,10 @@ APEX_NODES = (
     "test_seeded_island_is_immutable_deterministic_and_workspace_roundtrippable",
     "test_variation_plan_freezes_owner_inputs_and_is_arrival_order_independent",
     "test_engine_and_static_gate_facts_must_match_the_published_intent",
+    "test_generation_executes_through_real_orchestrator_engine_and_candidate_gate",
     "test_bounded_promotion_frontier_preserves_the_whole_discovery_population",
     "test_only_promoted_candidates_may_attach_comparable_nautilus_evidence",
     "test_migration_stop_and_recovery_are_append_only_and_exactly_once",
-    "test_evolution_identity_transcript_is_deterministic",
 )
 REPORTING_NODES = (
     "test_evolution_progress_is_complete_honest_and_deterministic",
@@ -49,7 +49,7 @@ REPORTING_NODES = (
     "test_evolution_reporting_identity_transcript_is_deterministic",
 )
 TRANSCRIPT_NODES = {
-    "apex": APEX_NODES[-1],
+    "apex": "test_generation_executes_through_real_orchestrator_engine_and_candidate_gate",
     "reporting": REPORTING_NODES[-1],
 }
 TRANSCRIPT_PREFIXES = {
