@@ -66,7 +66,7 @@ def _progress(message: str) -> None:
 
 def _parse_transcript(output: str, label: str) -> dict[str, Any]:
     prefix = TRANSCRIPT_PREFIXES[label]
-    matches = re.findall(r"(?m)^" + re.escape(prefix) + r"(\{[^\r\n]*\})$", output)
+    matches = re.findall(re.escape(prefix) + r"(\{[^\r\n]*\})", output)
     if len(matches) != 1 or output.count(prefix) != 1:
         raise TracerFailure(f"{label} identity transcript framing is invalid")
     try:

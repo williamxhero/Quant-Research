@@ -3319,6 +3319,25 @@ def use_lineage(workspace):
         self.assertNotIn("spec015_installed_wheel_tracer.py", source)
         self.assertNotIn("spec016_installed_wheel_tracer.py", source)
 
+    def test_spec017_transcript_parser_accepts_pytest_progress_prefix_only(
+        self,
+    ) -> None:
+        module_path = ROOT / "tools/spec017_installed_wheel_tracer.py"
+        module_spec = importlib.util.spec_from_file_location(
+            "spec017_tracer", module_path
+        )
+        assert module_spec is not None and module_spec.loader is not None
+        tracer = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(tracer)
+
+        self.assertEqual(
+            tracer._parse_transcript(
+                '..SPEC017_REPORTING_TRANSCRIPT={"status":"not_evaluated"}\n.',
+                "reporting",
+            ),
+            {"status": "not_evaluated"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
