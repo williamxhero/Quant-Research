@@ -154,7 +154,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         root_file = (
             snapshot / "quant-research/tools/test_validate_architecture_constitution.py"
         )
-        root_node = "test_spec_018_evolution_research_admission_is_valid"
+        root_node = (
+            "ConstitutionValidationTests::"
+            "test_spec_018_evolution_research_admission_is_valid"
+        )
         transcripts: list[dict[str, dict[str, Any]]] = []
         for replay in (1, 2):
             outputs: dict[str, str] = {}
