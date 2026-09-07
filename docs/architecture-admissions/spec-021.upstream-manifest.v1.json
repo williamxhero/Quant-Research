@@ -1,0 +1,128 @@
+{
+  "schema": "quant-research.finsaber-upstream.v1",
+  "observed_at": "2026-09-08",
+  "repository": "https://github.com/waylonli/FINSABER",
+  "release_tag": "v2.0.1",
+  "release_name": "FINSABER 2.0.1: FINSABER-2 Upgrade",
+  "release_published_at": "2026-05-24T01:11:19Z",
+  "release_commit": "4d3be1e0168224d678151eb7aee72bee3c7930d1",
+  "stable_contract": {
+    "source": "Git tag v2.0.1 at 4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "distribution": "finsaber==2.0.1",
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140"
+  },
+  "main_drift": {
+    "observed_commit": "b0e97d26c2415583160a5af5da152f742c1a2a7a",
+    "observed_commit_date": "2026-08-05T14:39:29Z",
+    "contract_status": "not_part_of_pinned_baseline"
+  },
+  "pypi_wheel": {
+    "filename": "finsaber-2.0.1-py3-none-any.whl",
+    "sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "size_bytes": 95732,
+    "uploaded_at": "2026-05-11T23:02:22.993392Z",
+    "yanked": false
+  },
+  "pypi_sdist": {
+    "filename": "finsaber-2.0.1.tar.gz",
+    "sha256": "50b830a24ed95b80842a7a31b6ac7fec8c202640caec3ad53070fae834903bd6",
+    "size_bytes": 81130,
+    "uploaded_at": "2026-05-11T23:02:24.109776Z",
+    "yanked": false
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "license_file_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "notice_file_present": false,
+    "redistribution_obligations": [
+      "provide a copy of the license",
+      "mark modified files",
+      "retain applicable notices",
+      "carry NOTICE attribution if an upstream NOTICE is later introduced"
+    ]
+  },
+  "python": {
+    "requires": ">=3.10",
+    "wheel_tag": "py3-none-any",
+    "quant_runtime_target": ">=3.12,<3.13"
+  },
+  "declared_runtime_dependencies": [
+    "backtrader>=1.9.78",
+    "colorlog>=6.0",
+    "matplotlib>=3.8",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "python-dotenv>=1.0",
+    "rich>=13",
+    "tabulate>=0.9",
+    "tqdm>=4.66"
+  ],
+  "dependency_reproducibility": {
+    "complete_hash_lock": false,
+    "reason": "The v2.0.1 metadata declares lower bounds only and publishes no complete hash-locked dependency set.",
+    "isolated_resolution_is_observation_only": true
+  },
+  "isolated_observation": {
+    "python": "3.12.13",
+    "resolver": "uv 0.11.2",
+    "pythonpath_present": false,
+    "installed": true,
+    "public_imports": true,
+    "removed": true,
+    "removed_import_names": [
+      "backtest",
+      "finsaber"
+    ],
+    "resolved_versions": [
+      "backtrader==1.9.78.123",
+      "colorama==0.4.6",
+      "colorlog==6.12.0",
+      "contourpy==1.3.3",
+      "cycler==0.12.1",
+      "fonttools==4.64.0",
+      "kiwisolver==1.5.1",
+      "markdown-it-py==4.2.0",
+      "matplotlib==3.11.1",
+      "mdurl==0.1.2",
+      "numpy==2.5.3",
+      "packaging==26.3",
+      "pandas==3.0.5",
+      "pillow==12.3.0",
+      "pyarrow==25.0.1",
+      "pygments==2.21.0",
+      "pyparsing==3.3.2",
+      "python-dateutil==2.9.0.post0",
+      "python-dotenv==1.2.3",
+      "rich==15.0.0",
+      "six==1.17.0",
+      "tabulate==0.10.0",
+      "tqdm==4.70.0",
+      "tzdata==2026.3"
+    ],
+    "public_import_observation": {
+      "imports": [
+        "FINSABER",
+        "FinsaberDataset",
+        "TradeConfig"
+      ],
+      "network_connect_events": 0,
+      "child_process_events": 0,
+      "cwd_files_added": 0,
+      "cwd_files_removed": 0,
+      "environment_keys_added": 0,
+      "environment_keys_changed": 0,
+      "warnings": [
+        "backtrader emitted two SyntaxWarning diagnostics under Python 3.12"
+      ]
+    }
+  },
+  "source_evidence": [
+    "https://github.com/waylonli/FINSABER/releases/tag/v2.0.1",
+    "https://github.com/waylonli/FINSABER/tree/4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "https://pypi.org/project/finsaber/2.0.1/",
+    "pyproject.toml@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "LICENSE@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "isolated-install-import-uninstall transcript 2026-09-08"
+  ]
+}
