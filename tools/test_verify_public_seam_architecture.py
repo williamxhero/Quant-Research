@@ -672,6 +672,34 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             "tools/test_verify_public_seam_architecture.py", root_pytest.command
         )
 
+        scope = verifier.load_acceptance_scope(
+            ROOT
+            / "docs"
+            / "architecture-admissions"
+            / "spec-016.acceptance-scope.v1.json"
+        )
+        self.assertEqual(scope.spec, "SPEC-016")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-014", "SPEC-016"))
+        self.assertEqual(scope.deferred_release_tracers, ("SPEC-015",))
+        self.assertFalse(
+            verifier.spec015_installed_wheels_required(scope.product_changed_paths)
+        )
+
+    def test_acceptance_scope_manifest_fails_closed_on_noncanonical_paths(self) -> None:
+        source = ROOT / "docs/architecture-admissions/spec-016.acceptance-scope.v1.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["product_changed_paths"] = [
+            "strategy-reporting/src/z.py",
+            "apex-research/src/a.py",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "scope.json"
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "not canonical"
+            ):
+                verifier.load_acceptance_scope(manifest)
+
     def test_qualification_or_evidence_diff_selects_heavy_spec015_tracer(self) -> None:
         for changed in (
             ("apex-research/src/apex_research/qualification.py",),

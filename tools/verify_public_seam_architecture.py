@@ -142,6 +142,15 @@ class GateCheck(NamedTuple):
     timeout_seconds: int = 1_800
 
 
+class AcceptanceScope(NamedTuple):
+    spec: str
+    baseline_heads: dict[str, str]
+    product_changed_paths: tuple[str, ...]
+    selection_maintenance_paths: tuple[str, ...]
+    required_installed_tracers: tuple[str, ...]
+    deferred_release_tracers: tuple[str, ...]
+
+
 class ApexSeamPolicy(NamedTuple):
     component: str
     forbidden_imports: tuple[tuple[str, str], ...]
@@ -534,16 +543,107 @@ def spec015_installed_wheels_required(
     if historical_mode in {"full", "release"}:
         return True
     for raw_path in changed_paths:
-        path = raw_path.replace("\\", "/")
-        while path.startswith("./"):
-            path = path[2:]
-        if not path or path.startswith(("/", "../")) or "/../" in path:
-            raise ArchitectureViolation(f"invalid changed path: {raw_path}")
+        path = _normalized_changed_path(raw_path)
         if path.startswith(SPEC015_IMPACT_PREFIXES):
             return True
         if Path(path).name in PACKAGING_FILENAMES:
             return True
     return False
+
+
+def load_acceptance_scope(path: Path) -> AcceptanceScope:
+    """Read one strict, canonically ordered changed-path manifest."""
+
+    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ArchitectureViolation(f"duplicate acceptance-scope key: {key}")
+            result[key] = value
+        return result
+
+    try:
+        raw = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ArchitectureViolation(
+            f"cannot read acceptance scope {path}: {exc}"
+        ) from exc
+    required = {
+        "schema",
+        "spec",
+        "baseline_heads",
+        "product_changed_paths",
+        "selection_maintenance_paths",
+        "required_installed_tracers",
+        "deferred_release_tracers",
+    }
+    if not isinstance(raw, dict) or set(raw) != required:
+        raise ArchitectureViolation("acceptance scope fields are invalid")
+    if raw["schema"] != "quant-research.acceptance-scope.v1":
+        raise ArchitectureViolation("acceptance scope schema is invalid")
+    if not isinstance(raw["spec"], str) or not re.fullmatch(
+        r"SPEC-\d{3}[A-Z]?", raw["spec"]
+    ):
+        raise ArchitectureViolation("acceptance scope spec is invalid")
+    baseline_heads = raw["baseline_heads"]
+    if (
+        not isinstance(baseline_heads, dict)
+        or set(baseline_heads)
+        != {
+            "quant-research",
+            "apex-research",
+            "strategy-workspace",
+            "quant-runtime",
+            "strategy-reporting",
+        }
+        or any(
+            not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value)
+            for value in baseline_heads.values()
+        )
+    ):
+        raise ArchitectureViolation("acceptance scope baseline heads are invalid")
+
+    def canonical_strings(field: str, *, paths: bool = False) -> tuple[str, ...]:
+        values = raw[field]
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value for value in values)
+            or values != sorted(set(values))
+        ):
+            raise ArchitectureViolation(f"acceptance scope {field} is not canonical")
+        result = tuple(values)
+        if paths:
+            for value in result:
+                if _normalized_changed_path(value) != value:
+                    raise ArchitectureViolation(
+                        f"acceptance scope path is not normalized: {value}"
+                    )
+        return result
+
+    product = canonical_strings("product_changed_paths", paths=True)
+    maintenance = canonical_strings("selection_maintenance_paths", paths=True)
+    if set(product) & set(maintenance):
+        raise ArchitectureViolation("acceptance scope path classes overlap")
+    return AcceptanceScope(
+        spec=raw["spec"],
+        baseline_heads=dict(sorted(baseline_heads.items())),
+        product_changed_paths=product,
+        selection_maintenance_paths=maintenance,
+        required_installed_tracers=canonical_strings("required_installed_tracers"),
+        deferred_release_tracers=canonical_strings("deferred_release_tracers"),
+    )
+
+
+def _normalized_changed_path(raw_path: str) -> str:
+    path = raw_path.replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    if not path or path.startswith(("/", "../")) or "/../" in path:
+        raise ArchitectureViolation(f"invalid changed path: {raw_path}")
+    return path
 
 
 def changed_paths_since_origin(repository_root: Path) -> tuple[str, ...]:
@@ -6066,19 +6166,34 @@ def main(argv: list[str] | None = None) -> int:
         default="impacted",
         help="Select heavy historical installed tracers by diff impact or explicitly.",
     )
+    parser.add_argument(
+        "--changed-path-manifest",
+        type=Path,
+        help="Use a reviewed product-impact scope instead of maintenance-inclusive Git diff.",
+    )
     arguments = parser.parse_args(argv)
     baseline_formatter_drift: list[dict[str, str]] = []
     connected_statuses: list[dict[str, str]] = []
+    acceptance_scope: AcceptanceScope | None = None
     try:
+        if arguments.changed_path_manifest is not None:
+            acceptance_scope = load_acceptance_scope(arguments.changed_path_manifest)
+        selected_paths = (
+            None if acceptance_scope is None else acceptance_scope.product_changed_paths
+        )
         validate_constitution()
         scan_sources(arguments.repository_root)
         if arguments.run_fixtures:
             run_fixture_checks(
-                arguments.repository_root, historical_mode=arguments.historical_mode
+                arguments.repository_root,
+                historical_mode=arguments.historical_mode,
+                changed_paths=selected_paths,
             )
         if arguments.run_full_gates:
             baseline_formatter_drift = run_full_gate_checks(
-                arguments.repository_root, historical_mode=arguments.historical_mode
+                arguments.repository_root,
+                historical_mode=arguments.historical_mode,
+                changed_paths=selected_paths,
             )
         if arguments.run_connected_status:
             connected_statuses = run_connected_status_checks(arguments.repository_root)
@@ -6091,6 +6206,26 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "fixtures": arguments.run_fixtures,
                 "full_gates": arguments.run_full_gates,
+                "historical_mode": arguments.historical_mode,
+                "acceptance_scope": (
+                    None
+                    if acceptance_scope is None
+                    else {
+                        "spec": acceptance_scope.spec,
+                        "product_changed_paths": list(
+                            acceptance_scope.product_changed_paths
+                        ),
+                        "selection_maintenance_paths": list(
+                            acceptance_scope.selection_maintenance_paths
+                        ),
+                        "required_installed_tracers": list(
+                            acceptance_scope.required_installed_tracers
+                        ),
+                        "deferred_release_tracers": list(
+                            acceptance_scope.deferred_release_tracers
+                        ),
+                    }
+                ),
                 "baseline_formatter_drift": baseline_formatter_drift,
                 "connected_statuses": connected_statuses,
             }
