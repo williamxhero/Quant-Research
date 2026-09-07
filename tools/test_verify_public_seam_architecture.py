@@ -3311,6 +3311,8 @@ def use_lineage(workspace):
         self.assertIn("test_quality_diversity_archives.py", source)
         self.assertIn("test_quality_diversity_archive_read_model.py", source)
         self.assertIn("run_installed_pytest", source)
+        self.assertIn("APEX_ARCHIVE_TESTS", source)
+        self.assertIn("flush=True", source)
         self.assertIn("PYTHONPATH", source)
         self.assertNotIn("spec014_installed_wheel_tracer.py", source)
         self.assertNotIn("spec015_installed_wheel_tracer.py", source)

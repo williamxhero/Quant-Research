@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,16 @@ TRANSCRIPT_PREFIXES = {
     "evidence": "SPEC017_APEX_EVIDENCE_TRANSCRIPT=",
     "reporting": "SPEC017_REPORTING_TRANSCRIPT=",
 }
+APEX_ARCHIVE_TESTS = (
+    "test_first_exploration_insertion_is_immutable_and_not_formal",
+    "test_exploration_lifecycle_views_require_explicit_events_and_preserve_history",
+    "test_public_exports_and_strict_archive_cli_cover_pure_evaluate_publish_and_replay",
+    "test_lexicographic_policy_records_capacity_reject_tie_and_replacement",
+    "test_pareto_policy_records_nondominance_unavailable_and_incomparable",
+    "test_complete_generation_is_arrival_order_independent_and_strictly_replayable",
+    "test_evidence_archive_publishes_only_historical_leader_and_blocks_current_view",
+)
+REPLAY_TESTS = APEX_ARCHIVE_TESTS[-2:]
 
 
 class TracerFailure(InstalledWheelFailure):
@@ -92,30 +103,49 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         transcript_environment["SPEC017_IDENTITY_TRANSCRIPT"] = "1"
         replays: list[dict[str, dict[str, Any]]] = []
         source_roots = tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES)
-        for _ in range(2):
-            apex_output = HARNESS.run_installed_pytest(
-                python,
-                (
-                    snapshot
-                    / "apex-research"
-                    / "tests"
-                    / "test_quality_diversity_archives.py",
-                ),
-                PACKAGE_REPOSITORIES,
-                source_roots,
-                cwd=isolated,
-                environment=transcript_environment,
-                timeout_seconds=3_600,
-                pytest_args=("-s",),
+        apex_test_file = (
+            snapshot / "apex-research" / "tests" / "test_quality_diversity_archives.py"
+        )
+        reporting_test_file = (
+            snapshot
+            / "strategy-reporting"
+            / "tests"
+            / "test_quality_diversity_archive_read_model.py"
+        )
+        for replay_index in range(2):
+            selected = APEX_ARCHIVE_TESTS if replay_index == 0 else REPLAY_TESTS
+            apex_outputs: dict[str, str] = {}
+            for test_name in selected:
+                started = time.monotonic()
+                print(
+                    f"SPEC017_PROGRESS replay={replay_index + 1} apex={test_name} start",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                apex_outputs[test_name] = HARNESS.run_installed_pytest(
+                    python,
+                    (Path(f"{apex_test_file}::{test_name}"),),
+                    PACKAGE_REPOSITORIES,
+                    source_roots,
+                    cwd=isolated,
+                    environment=transcript_environment,
+                    timeout_seconds=300,
+                    pytest_args=("-s",),
+                )
+                print(
+                    f"SPEC017_PROGRESS replay={replay_index + 1} apex={test_name} "
+                    f"passed_seconds={time.monotonic() - started:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            print(
+                f"SPEC017_PROGRESS replay={replay_index + 1} reporting=start",
+                file=sys.stderr,
+                flush=True,
             )
             reporting_output = HARNESS.run_installed_pytest(
                 python,
-                (
-                    snapshot
-                    / "strategy-reporting"
-                    / "tests"
-                    / "test_quality_diversity_archive_read_model.py",
-                ),
+                (reporting_test_file,),
                 PACKAGE_REPOSITORIES,
                 source_roots,
                 cwd=isolated,
@@ -123,10 +153,19 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 timeout_seconds=900,
                 pytest_args=("-s",),
             )
+            print(
+                f"SPEC017_PROGRESS replay={replay_index + 1} reporting=passed",
+                file=sys.stderr,
+                flush=True,
+            )
             replays.append(
                 {
-                    "generation": _parse_transcript(apex_output, "generation"),
-                    "evidence": _parse_transcript(apex_output, "evidence"),
+                    "generation": _parse_transcript(
+                        apex_outputs[REPLAY_TESTS[0]], "generation"
+                    ),
+                    "evidence": _parse_transcript(
+                        apex_outputs[REPLAY_TESTS[1]], "evidence"
+                    ),
                     "reporting": _parse_transcript(reporting_output, "reporting"),
                 }
             )
