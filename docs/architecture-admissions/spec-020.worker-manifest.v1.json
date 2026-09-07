@@ -28,12 +28,31 @@
       "mcp==1.27.0",
       "fastmcp==3.2.4"
     ],
-    "capability_snapshot_id": "63009a0d1c492ef68ab3e62fd1de187e6546d2ef361b9816d87089c3e74a48fc",
-    "mapping_matrix_id": "dfed9dda733a77b902b43059fbbe283ba386a5666c85fa2132fcfc50b8b5e3eb",
+    "capability_snapshot_id": "e47ebe08796906e8ca7f6ed0a47ffbb4b6dc0071bec648409a25042aafbc889e",
+    "mapping_matrix_id": "301af866653db1d39c5726f4dc19f7e33afc3e9fac964bb694c065fb6dd7cb84",
     "replication_mapping_id": "7b0f918b69566d60187427889496a637dd7bd0bcb4c8dfbb2396c1f9e7472a88",
     "invocation_allowlist": [
       "Panel_binary_op",
       "Panel_unary_op"
+    ],
+    "allowlisted_contracts": [
+      {
+        "name": "Panel_binary_op",
+        "arguments": [
+          "op:string:closed-enum",
+          "left:string|integer|number|boolean",
+          "right:string|integer|number|boolean"
+        ],
+        "result_envelope": "json-string-panel-reference-or-error.v1"
+      },
+      {
+        "name": "Panel_unary_op",
+        "arguments": [
+          "op:string:closed-enum",
+          "panel_id:string|integer|number|boolean"
+        ],
+        "result_envelope": "json-string-panel-reference-or-error.v1"
+      }
     ]
   },
   "oci": {
