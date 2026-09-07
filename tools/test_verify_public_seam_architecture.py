@@ -3245,6 +3245,14 @@ def use_lineage(workspace):
             ("SPEC-014", "SPEC-015", "SPEC-016"),
         )
         self.assertEqual(
+            scope.current_spec_heavy_test_exclusions,
+            ("apex-research/tests/test_quality_diversity_archives.py",),
+        )
+        self.assertIn(
+            "already passed current-spec installed heavy",
+            scope.current_spec_heavy_exclusion_reason,
+        )
+        self.assertEqual(
             scope.historical_heavy_test_exclusions,
             (
                 "apex-research/tests/test_behavior_descriptors.py",

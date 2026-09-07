@@ -37,6 +37,10 @@
     "SPEC-015",
     "SPEC-016"
   ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_quality_diversity_archives.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already passed current-spec installed heavy: the updated SPEC-017 installed-wheel tracer ran every archive node from this file, then replayed generation, Evidence, and Reporting transcripts in a second clean wheel-only environment with identical canonical identities.",
   "historical_heavy_test_exclusions": [
     "apex-research/tests/test_behavior_descriptors.py",
     "apex-research/tests/test_evidence_v2.py",

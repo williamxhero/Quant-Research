@@ -193,6 +193,8 @@ class AcceptanceScope(NamedTuple):
     selection_maintenance_paths: tuple[str, ...]
     required_installed_tracers: tuple[str, ...]
     deferred_release_tracers: tuple[str, ...]
+    current_spec_heavy_test_exclusions: tuple[str, ...]
+    current_spec_heavy_exclusion_reason: str
     historical_heavy_test_exclusions: tuple[str, ...]
     historical_heavy_exclusion_reason: str
 
@@ -676,10 +678,22 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         "historical_heavy_test_exclusions",
         "historical_heavy_exclusion_reason",
     }
-    if not isinstance(raw, dict) or set(raw) not in {
-        frozenset(required),
-        frozenset(required | historical_fields),
-    }:
+    current_fields = {
+        "current_spec_heavy_test_exclusions",
+        "current_spec_heavy_exclusion_reason",
+    }
+    optional = historical_fields | current_fields
+    keys = set(raw) if isinstance(raw, dict) else set()
+    partial_optional_group = any(
+        bool(keys & group) and not group <= keys
+        for group in (historical_fields, current_fields)
+    )
+    if (
+        not isinstance(raw, dict)
+        or not required <= keys
+        or bool(keys - required - optional)
+        or partial_optional_group
+    ):
         raise ArchitectureViolation("acceptance scope fields are invalid")
     if raw["schema"] != "quant-research.acceptance-scope.v1":
         raise ArchitectureViolation("acceptance scope schema is invalid")
@@ -727,6 +741,21 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     maintenance = canonical_strings("selection_maintenance_paths", paths=True)
     if set(product) & set(maintenance):
         raise ArchitectureViolation("acceptance scope path classes overlap")
+    current_exclusions: tuple[str, ...] = ()
+    current_exclusion_reason = ""
+    if current_fields <= set(raw):
+        current_exclusions = canonical_strings(
+            "current_spec_heavy_test_exclusions", paths=True
+        )
+        current_reason_value = raw["current_spec_heavy_exclusion_reason"]
+        if (
+            not isinstance(current_reason_value, str)
+            or not current_reason_value.strip()
+        ):
+            raise ArchitectureViolation(
+                "acceptance scope current-spec-heavy exclusion reason is invalid"
+            )
+        current_exclusion_reason = current_reason_value
     exclusions: tuple[str, ...] = ()
     exclusion_reason = ""
     if historical_fields <= set(raw):
@@ -747,6 +776,8 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         selection_maintenance_paths=maintenance,
         required_installed_tracers=canonical_strings("required_installed_tracers"),
         deferred_release_tracers=canonical_strings("deferred_release_tracers"),
+        current_spec_heavy_test_exclusions=current_exclusions,
+        current_spec_heavy_exclusion_reason=current_exclusion_reason,
         historical_heavy_test_exclusions=exclusions,
         historical_heavy_exclusion_reason=exclusion_reason,
     )
@@ -6503,6 +6534,12 @@ def main(argv: list[str] | None = None) -> int:
                         ),
                         "deferred_release_tracers": list(
                             acceptance_scope.deferred_release_tracers
+                        ),
+                        "current_spec_heavy_test_exclusions": list(
+                            acceptance_scope.current_spec_heavy_test_exclusions
+                        ),
+                        "current_spec_heavy_exclusion_reason": (
+                            acceptance_scope.current_spec_heavy_exclusion_reason
                         ),
                         "historical_heavy_test_exclusions": list(
                             acceptance_scope.historical_heavy_test_exclusions
