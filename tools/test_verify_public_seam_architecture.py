@@ -43,6 +43,98 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.scan_sources(root)
 
+    def test_spec016_owner_guard_ignores_comments_and_explanatory_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for repository, package in (
+                ("strategy-workspace", "strategy_workspace"),
+                ("quant-runtime", "quant_runtime"),
+            ):
+                source = root / repository / "src" / package / "notes.py"
+                source.parent.mkdir(parents=True)
+                source.write_text(
+                    "# BehaviorTaxonomy remains owned by Apex.\n"
+                    'BOUNDARY_NOTE = "FormalBehaviorDescriptor is not owned here."\n',
+                    encoding="utf-8",
+                )
+
+            verifier._scan_spec016_non_owner_repositories(root)
+
+    def test_spec016_guard_rejects_runtime_invocation_and_metric_reconstruction(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            reporting = root / "strategy-reporting/src/strategy_reporting"
+            apex.mkdir(parents=True)
+            reporting.mkdir(parents=True)
+            owner = apex / "behavior_descriptors.py"
+            owner.write_text(
+                "import quant_runtime\n"
+                "from statistics import mean\n"
+                "class BehaviorTaxonomy: pass\n"
+                "class DiscoveryBehaviorDescriptor: pass\n"
+                "class FormalBehaviorDescriptor: pass\n"
+                "class BehaviorDescriptorService:\n"
+                "    def assign_discovery(self): pass\n"
+                "    def assign_formal(self): return mean([1, 2])\n"
+                "    def read_discovery(self): pass\n"
+                "    def read_formal(self): pass\n",
+                encoding="utf-8",
+            )
+            contract = reporting / "contracts/behavior_descriptors.py"
+            contract.parent.mkdir()
+            contract.write_text(
+                "class BehaviorDescriptorReadModel: pass\n", encoding="utf-8"
+            )
+            adapter = reporting / "adapters/behavior_descriptors.py"
+            adapter.parent.mkdir()
+            adapter.write_text(
+                "class BehaviorDescriptorReadModelBuilder: pass\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "Runtime import|metric reconstruction"
+            ):
+                verifier._scan_spec016_descriptor_seams(root)
+
+    def test_spec016_guard_rejects_archive_or_currency_authority(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            reporting = root / "strategy-reporting/src/strategy_reporting"
+            apex.mkdir(parents=True)
+            reporting.mkdir(parents=True)
+            (apex / "behavior_descriptors.py").write_text(
+                "class BehaviorTaxonomy: pass\n"
+                "class DiscoveryBehaviorDescriptor: pass\n"
+                "class FormalBehaviorDescriptor: pass\n"
+                "class BehaviorDescriptorService:\n"
+                "    def assign_discovery(self): pass\n"
+                "    def assign_formal(self): pass\n"
+                "    def read_discovery(self): pass\n"
+                "    def read_formal(self): pass\n"
+                "class ArchiveChampionSelector: pass\n",
+                encoding="utf-8",
+            )
+            contract = reporting / "contracts/behavior_descriptors.py"
+            contract.parent.mkdir()
+            contract.write_text(
+                "class BehaviorDescriptorReadModel: pass\n", encoding="utf-8"
+            )
+            adapter = reporting / "adapters/behavior_descriptors.py"
+            adapter.parent.mkdir()
+            adapter.write_text(
+                "class BehaviorDescriptorReadModelBuilder: pass\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation,
+                "archive, currency, or production authority",
+            ):
+                verifier._scan_spec016_descriptor_seams(root)
+
     def test_spec016_guard_rejects_reporting_descriptor_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

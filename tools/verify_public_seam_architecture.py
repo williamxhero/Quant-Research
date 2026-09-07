@@ -84,7 +84,7 @@ SPEC016_ADMISSION_CONTRACT = {
     "public_seam": (
         "Apex BehaviorDescriptorService, strict typed behavior taxonomy and descriptor "
         "records / WorkspaceClient immutable publication, canonical record readback, "
-        "bounded lineage query, and artifact verification"
+        "exact source readback, and artifact verification"
     ),
     "identity_impact": (
         "The behavior taxonomy and descriptor identities freeze the taxonomy version, "
@@ -539,9 +539,6 @@ SOURCE_RULES = {
         ("researchengineport", "Workspace must not own ResearchEnginePort"),
         ("research-engine-request", "Workspace must not own research-engine contracts"),
         ("research-engine-result", "Workspace must not own research-engine contracts"),
-        ("behaviortaxonomy", "Workspace must not own descriptor ownership"),
-        ("behaviordescriptorservice", "Workspace must not own descriptor ownership"),
-        ("formal-behavior-descriptor", "Workspace must not own descriptor ownership"),
     ),
     "quant-runtime": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -560,9 +557,6 @@ SOURCE_RULES = {
         ("researchengineport", "Runtime must not own ResearchEnginePort"),
         ("research-engine-request", "Runtime must not own research-engine contracts"),
         ("research-engine-result", "Runtime must not own research-engine contracts"),
-        ("behaviortaxonomy", "Runtime must not own descriptor ownership"),
-        ("behaviordescriptorservice", "Runtime must not own descriptor ownership"),
-        ("formal-behavior-descriptor", "Runtime must not own descriptor ownership"),
     ),
     "apex-research": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -616,6 +610,7 @@ def scan_sources(repository_root: Path) -> None:
     _scan_validation_matrix_seams(repository_root / "apex-research")
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
+    _scan_spec016_non_owner_repositories(repository_root)
     _scan_spec016_descriptor_seams(
         repository_root,
         required=(
@@ -669,6 +664,47 @@ def _scan_spec016_descriptor_seams(
     if not all(path.is_file() for path in paths):
         raise ArchitectureViolation("SPEC-016 owner seam is missing")
     apex_tree = ast.parse(apex.read_text(encoding="utf-8"), filename=str(apex))
+    _reject_spec016_forbidden_imports(
+        apex_tree,
+        path=apex,
+        forbidden={
+            "quant_runtime": "Runtime import or invocation",
+            "strategy_workspace.storage": "private Workspace storage",
+            "strategy_workspace.core": "private Workspace storage",
+            "statistics": "metric reconstruction",
+            "numpy": "metric reconstruction",
+            "pandas": "metric reconstruction",
+            "sqlite3": "parallel descriptor persistence",
+            "subprocess": "Runtime import or invocation",
+        },
+    )
+    apex_calls = {
+        node.func.attr
+        if isinstance(node.func, ast.Attribute)
+        else node.func.id
+        if isinstance(node.func, ast.Name)
+        else ""
+        for node in ast.walk(apex_tree)
+        if isinstance(node, ast.Call)
+    }
+    metric_reconstruction_calls = {
+        "mean",
+        "median",
+        "stdev",
+        "variance",
+        "quantile",
+        "percentile",
+        "corrcoef",
+    }
+    runtime_invocation_calls = {"submit_run", "execute_run", "get_run", "get_result"}
+    if apex_calls & metric_reconstruction_calls:
+        raise ArchitectureViolation(
+            f"SPEC-016 Apex performs metric reconstruction: {apex}"
+        )
+    if apex_calls & runtime_invocation_calls:
+        raise ArchitectureViolation(
+            f"SPEC-016 Apex performs Runtime import or invocation: {apex}"
+        )
     apex_classes = {
         node.name for node in ast.walk(apex_tree) if isinstance(node, ast.ClassDef)
     }
@@ -681,6 +717,14 @@ def _scan_spec016_descriptor_seams(
     if not required_apex <= apex_classes:
         raise ArchitectureViolation(
             "SPEC-016 Apex descriptor owner contract is incomplete"
+        )
+    if any(
+        "candidate" in _normalize_identifier(name)
+        and name not in {"DiscoveryBehaviorDescriptor", "FormalBehaviorDescriptor"}
+        for name in apex_classes
+    ):
+        raise ArchitectureViolation(
+            f"SPEC-016 declares a second Candidate truth: {apex}"
         )
     service = next(
         node
@@ -701,6 +745,21 @@ def _scan_spec016_descriptor_seams(
         )
     for path in (reporting_contract, reporting_adapter):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "apex_research": "private Apex import",
+                "quant_runtime": "Runtime import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "statistics": "descriptor calculation",
+                "numpy": "descriptor calculation",
+                "pandas": "descriptor calculation",
+                "sqlite3": "parallel descriptor persistence",
+                "subprocess": "subprocess-based upstream access",
+            },
+        )
         forbidden_names = {
             node.name
             for node in ast.walk(tree)
@@ -718,15 +777,95 @@ def _scan_spec016_descriptor_seams(
             raise ArchitectureViolation(
                 f"Reporting calculates descriptor semantics: {path}: {sorted(forbidden_names)}"
             )
+    contract_tree = ast.parse(
+        reporting_contract.read_text(encoding="utf-8"), filename=str(reporting_contract)
+    )
     adapter_tree = ast.parse(
         reporting_adapter.read_text(encoding="utf-8"), filename=str(reporting_adapter)
     )
+    authority_names = {
+        _normalize_identifier(node.name)
+        for tree in (apex_tree, contract_tree, adapter_tree)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    authority_markers = (
+        "archivechampion",
+        "championselection",
+        "qualityranking",
+        "evidencecurrency",
+        "currentevidence",
+        "productionapproval",
+        "liveorder",
+        "orderexecution",
+        "positionmanager",
+    )
+    if any(marker in name for marker in authority_markers for name in authority_names):
+        raise ArchitectureViolation(
+            "SPEC-016 declares archive, currency, or production authority"
+        )
     if not any(
         isinstance(node, ast.ClassDef)
         and node.name == "BehaviorDescriptorReadModelBuilder"
         for node in ast.walk(adapter_tree)
     ):
         raise ArchitectureViolation("SPEC-016 Reporting read-model seam is incomplete")
+
+
+def _scan_spec016_non_owner_repositories(repository_root: Path) -> None:
+    owner_markers = (
+        "behaviortaxonomy",
+        "behaviordescriptorservice",
+        "discoverybehaviordescriptor",
+        "formalbehaviordescriptor",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in sorted(source_root.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            semantic_names = {
+                _normalize_identifier(node.name)
+                for node in ast.walk(tree)
+                if isinstance(
+                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+                )
+            }
+            semantic_names.update(
+                _normalize_identifier(node.id)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+            )
+            if any(
+                marker in name for marker in owner_markers for name in semantic_names
+            ):
+                raise ArchitectureViolation(
+                    f"{repository}: descriptor ownership outside Apex Research: {path}"
+                )
+
+
+def _reject_spec016_forbidden_imports(
+    tree: ast.Module, *, path: Path, forbidden: dict[str, str]
+) -> None:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules = (alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            modules = (node.module or "",)
+        else:
+            continue
+        for module in modules:
+            for prefix, reason in forbidden.items():
+                if module == prefix or module.startswith(prefix + "."):
+                    raise ArchitectureViolation(f"SPEC-016 {reason}: {path}")
+
+
+def _normalize_identifier(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
 
 
 def _ast_rule_present(tree: ast.Module, forbidden: str) -> bool:
