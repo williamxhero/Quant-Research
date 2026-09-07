@@ -98,6 +98,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     / "apex-research"
                     / "tests"
                     / "test_behavior_descriptors.py::test_public_exports_and_strict_cli_cover_taxonomy_and_both_descriptor_tiers",
+                    snapshot
+                    / "apex-research"
+                    / "tests"
+                    / "test_behavior_descriptors.py::test_formal_assignment_rejects_unit_mismatch_and_non_pit_regime",
                 ),
                 PACKAGE_REPOSITORIES,
                 tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES),
