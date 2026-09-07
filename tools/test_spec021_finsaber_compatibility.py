@@ -81,6 +81,55 @@ class Spec021CompatibilityTests(unittest.TestCase):
         self.assertEqual(edge["classification"], "incompatible")
         self.assertEqual(edge["fallback_or_substitution"], "none")
 
+    def test_representative_candidate_replays_signal_fill_and_equity_path(self) -> None:
+        transcript = json.loads(
+            (ADMISSIONS / "spec-021.prototype-transcript.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        probe = transcript["strategy_probe"]
+
+        self.assertEqual(probe["candidate"]["kind"], "long_only_fixed_shares")
+        self.assertEqual(probe["sessions"], 22)
+        self.assertEqual(
+            probe["trades"],
+            [
+                {
+                    "commission": 0.0,
+                    "execution_date": "2024-01-03",
+                    "price": 101.0,
+                    "quantity": 10,
+                    "side": "buy",
+                    "signal_date": "2024-01-02",
+                    "slippage_cost": 0.0,
+                },
+                {
+                    "commission": 0.0,
+                    "execution_date": "2024-01-31",
+                    "price": 121.5,
+                    "quantity": 10,
+                    "side": "sell",
+                    "signal_date": "2024-01-31",
+                    "slippage_cost": 0.0,
+                },
+            ],
+        )
+        self.assertEqual(probe["equity"][0]["equity"], 10000.0)
+        self.assertEqual(probe["equity"][1]["equity"], 10005.0)
+        self.assertEqual(probe["equity"][-1]["equity"], 10205.0)
+        self.assertAlmostEqual(probe["metrics"]["final_value"], 10205.0)
+        self.assertAlmostEqual(probe["metrics"]["total_return"], 0.0205)
+        self.assertEqual(probe["rejected_orders"], [])
+        self.assertEqual(probe["classifications"]["next_open"]["classification"], "exact")
+        self.assertEqual(
+            probe["classifications"]["strategy_interface"]["classification"],
+            "transformable",
+        )
+        self.assertEqual(
+            probe["classifications"]["forced_terminal_exit"]["classification"],
+            "incompatible",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

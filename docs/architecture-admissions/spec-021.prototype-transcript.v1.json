@@ -110,5 +110,122 @@
       "docs/data.md@4d3be1e0168224d678151eb7aee72bee3c7930d1",
       "real installed-wheel data probe 2026-09-08"
     ]
+  },
+  "strategy_probe": {
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "candidate": {
+      "kind": "long_only_fixed_shares",
+      "rule": "On the first frozen daily bar, request a market buy of exactly 10 shares; make no later strategy request.",
+      "initial_cash": 10000.0,
+      "execution_timing": "next_open",
+      "costs": "zero for timing isolation"
+    },
+    "sessions": 22,
+    "trades": [
+      {
+        "commission": 0.0,
+        "execution_date": "2024-01-03",
+        "price": 101.0,
+        "quantity": 10,
+        "side": "buy",
+        "signal_date": "2024-01-02",
+        "slippage_cost": 0.0
+      },
+      {
+        "commission": 0.0,
+        "execution_date": "2024-01-31",
+        "price": 121.5,
+        "quantity": 10,
+        "side": "sell",
+        "signal_date": "2024-01-31",
+        "slippage_cost": 0.0
+      }
+    ],
+    "equity": [
+      {"date": "2024-01-02", "equity": 10000.0},
+      {"date": "2024-01-03", "equity": 10005.0},
+      {"date": "2024-01-04", "equity": 10015.0},
+      {"date": "2024-01-05", "equity": 10025.0},
+      {"date": "2024-01-08", "equity": 10035.0},
+      {"date": "2024-01-09", "equity": 10045.0},
+      {"date": "2024-01-10", "equity": 10055.0},
+      {"date": "2024-01-11", "equity": 10065.0},
+      {"date": "2024-01-12", "equity": 10075.0},
+      {"date": "2024-01-15", "equity": 10085.0},
+      {"date": "2024-01-16", "equity": 10095.0},
+      {"date": "2024-01-17", "equity": 10105.0},
+      {"date": "2024-01-18", "equity": 10115.0},
+      {"date": "2024-01-19", "equity": 10125.0},
+      {"date": "2024-01-22", "equity": 10135.0},
+      {"date": "2024-01-23", "equity": 10145.0},
+      {"date": "2024-01-24", "equity": 10155.0},
+      {"date": "2024-01-25", "equity": 10165.0},
+      {"date": "2024-01-26", "equity": 10175.0},
+      {"date": "2024-01-29", "equity": 10185.0},
+      {"date": "2024-01-30", "equity": 10195.0},
+      {"date": "2024-01-31", "equity": 10205.0}
+    ],
+    "metrics": {
+      "annual_return": 0.2616794016850186,
+      "annual_volatility": 0.0017002344868054125,
+      "final_value": 10205.0,
+      "max_drawdown": 0.0,
+      "sharpe_ratio": 125.64826192882866,
+      "sortino_ratio": 0,
+      "total_commission": 0.0,
+      "total_return": 0.020499999999999963,
+      "total_slippage": 0.0,
+      "total_trading_cost": 0.0
+    },
+    "rejected_orders": [],
+    "semantic_sha256": "6ae727238432a452bb3a22125ae074f4d7b536c9716131d1d82e7f17f96acbd2",
+    "classifications": {
+      "strategy_interface": {
+        "classification": "transformable",
+        "evidence": "The frozen rule was rewritten as a FINSABER BaseStrategyIso subclass; no Strategy Package executes unchanged."
+      },
+      "signal_behavior": {
+        "classification": "exact",
+        "evidence": "The first supplied bar produced exactly one buy request and no later candidate request."
+      },
+      "decision_time": {
+        "classification": "transformable",
+        "evidence": "The strategy receives a date-level daily dictionary with no explicit exchange timestamp; the fixture interprets observation as end-of-session."
+      },
+      "warm_up": {
+        "classification": "incompatible",
+        "evidence": "The Python engine rejects every run shorter than 21 rows independently of the candidate's declared warm-up."
+      },
+      "next_open": {
+        "classification": "exact",
+        "evidence": "The 2024-01-02 signal filled on 2024-01-03 at the independently expected adjusted open 101.0."
+      },
+      "market_order_action": {
+        "classification": "transformable",
+        "evidence": "A fixed-share market intent maps to framework.buy, but there is no typed order intent carrying venue or time-in-force."
+      },
+      "fill_price": {
+        "classification": "exact",
+        "evidence": "With zero costs, the observed entry price equals the next adjusted open exactly."
+      },
+      "fixed_share_sizing": {
+        "classification": "exact",
+        "evidence": "The requested and executed entry quantity are both 10 shares."
+      },
+      "entry": {
+        "classification": "exact",
+        "evidence": "The entry signal date, execution date, side, quantity, and price match the worked fixture."
+      },
+      "forced_terminal_exit": {
+        "classification": "incompatible",
+        "evidence": "FINSABER injected a final-close sell on 2024-01-31 although the candidate made no exit request, and force=True bypasses liquidity limits."
+      }
+    },
+    "source_evidence": [
+      "backtest/finsaber.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/toolkit/backtest_framework_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/strategy/timing_llm/base_strategy_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "real installed-wheel equity probe 2026-09-08"
+    ]
   }
 }
