@@ -299,7 +299,9 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("two distinct archive families", candidate["identity_impact"])
         self.assertIn("historical formal evidence", candidate["evidence_level"])
         self.assertIn("SPEC-032", candidate["fail_closed_behavior"])
-        self.assertIn("empty current active Evidence view", candidate["fail_closed_behavior"])
+        self.assertIn(
+            "empty current active Evidence view", candidate["fail_closed_behavior"]
+        )
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
