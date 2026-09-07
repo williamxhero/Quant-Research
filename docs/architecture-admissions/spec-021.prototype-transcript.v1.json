@@ -1,0 +1,114 @@
+{
+  "schema": "quant-research.finsaber-prototype-transcript.v1",
+  "purpose": "Throwaway compatibility evidence only; not a production validator, backtester, runner, registry, ledger, or evidence truth.",
+  "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+  "release_commit": "4d3be1e0168224d678151eb7aee72bee3c7930d1",
+  "environment": {
+    "python": "3.12.13",
+    "pythonpath": "cleared",
+    "installed_wheel_only": true
+  },
+  "data_probe": {
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "quantresearch_frozen_facts": {
+      "snapshot_ref": "fixture://spec-021/equity-daily-v1",
+      "instrument_id": "AAPL.XNAS",
+      "calendar": "XNAS",
+      "frequency": "1d",
+      "adjustment": "split-adjusted OHLC derived by adjusted_close / raw_close",
+      "as_of": "2024-01-04T00:00:00Z",
+      "pit": "fixture bars only; no future rows",
+      "missing_bar_policy": "absence is classified before execution",
+      "provider_provenance": "fixture-owned; no external fetch"
+    },
+    "daily": {
+      "tickers": [
+        "AAPL.XNAS"
+      ],
+      "dates": [
+        "2024-01-02",
+        "2024-01-03"
+      ],
+      "adjusted_rows": [
+        {
+          "close": 51.0,
+          "date": "2024-01-02",
+          "high": 51.5,
+          "low": 49.5,
+          "open": 50.0,
+          "symbol": "AAPL.XNAS",
+          "volume": 1000
+        },
+        {
+          "close": 53.0,
+          "date": "2024-01-03",
+          "high": 54.0,
+          "low": 51.0,
+          "open": 52.0,
+          "symbol": "AAPL.XNAS",
+          "volume": 1200
+        }
+      ],
+      "network_fetches": 0
+    },
+    "unsupported_intraday": {
+      "dates": [
+        "2024-01-02T09:30:00",
+        "2024-01-02T09:31:00"
+      ],
+      "loader_accepted": true,
+      "frequency_contract_field": false,
+      "classification": "incompatible",
+      "reason": "The loader accepts two timestamp keys but the v2.0.1 engine and metrics treat each row as a daily decision period; accepting the shape does not preserve 1m semantics.",
+      "fallback_or_substitution": "none"
+    },
+    "classifications": {
+      "instrument_identifier": {
+        "classification": "transformable",
+        "evidence": "The public loader preserves the opaque AAPL.XNAS string, but defines no canonical venue/instrument identity contract."
+      },
+      "calendar_sessions": {
+        "classification": "transformable",
+        "evidence": "The supplied date sequence is preserved, while calendar identity remains outside TradingData."
+      },
+      "daily_frequency": {
+        "classification": "transformable",
+        "evidence": "Daily dates execute as intended, but no frequency field binds their meaning."
+      },
+      "adjusted_ohlc": {
+        "classification": "transformable",
+        "evidence": "Observed adjusted OHLC exactly equals raw OHLC multiplied by adjusted_close/raw_close; the adjustment policy identity remains external."
+      },
+      "raw_volume": {
+        "classification": "exact",
+        "evidence": "The two supplied raw share-volume integers were returned unchanged."
+      },
+      "as_of_identity": {
+        "classification": "auxiliary_only",
+        "evidence": "TradingData has no as-of field; the frozen owner fact can accompany, but cannot be independently enforced by, FINSABER."
+      },
+      "pit_availability": {
+        "classification": "auxiliary_only",
+        "evidence": "Date-first access prevents direct future-row queries in this fixture, but no availability timestamp or PIT lineage is represented."
+      },
+      "missing_bar_semantics": {
+        "classification": "incompatible",
+        "evidence": "TradingData does not distinguish holiday, listing boundary, exclusion, or data incident; engine iteration uses only present keys."
+      },
+      "provider_provenance": {
+        "classification": "auxiliary_only",
+        "evidence": "Provider and immutable snapshot identity are not part of the public TradingData contract or result config."
+      },
+      "intraday_frequency": {
+        "classification": "incompatible",
+        "evidence": "The real loader accepted two intraday keys without a frequency contract although annualization is fixed to 252 periods."
+      }
+    },
+    "source_evidence": [
+      "backtest/data_util/trading_data.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/data_util/finsaber_dataset.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "docs/data.md@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "real installed-wheel data probe 2026-09-08"
+    ]
+  }
+}

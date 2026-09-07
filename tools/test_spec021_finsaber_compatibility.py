@@ -40,6 +40,47 @@ class Spec021CompatibilityTests(unittest.TestCase):
         )
         self.assertNotIn("main", manifest["stable_contract"])
 
+    def test_frozen_equity_data_maps_adjusted_bars_but_rejects_intraday_semantics(
+        self,
+    ) -> None:
+        transcript = json.loads(
+            (ADMISSIONS / "spec-021.prototype-transcript.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        data = transcript["data_probe"]
+
+        self.assertEqual(data["wheel_sha256"], transcript["wheel_sha256"])
+        self.assertEqual(data["daily"]["tickers"], ["AAPL.XNAS"])
+        self.assertEqual(
+            data["daily"]["adjusted_rows"],
+            [
+                {
+                    "close": 51.0,
+                    "date": "2024-01-02",
+                    "high": 51.5,
+                    "low": 49.5,
+                    "open": 50.0,
+                    "symbol": "AAPL.XNAS",
+                    "volume": 1000,
+                },
+                {
+                    "close": 53.0,
+                    "date": "2024-01-03",
+                    "high": 54.0,
+                    "low": 51.0,
+                    "open": 52.0,
+                    "symbol": "AAPL.XNAS",
+                    "volume": 1200,
+                },
+            ],
+        )
+        edge = data["unsupported_intraday"]
+        self.assertTrue(edge["loader_accepted"])
+        self.assertFalse(edge["frequency_contract_field"])
+        self.assertEqual(edge["classification"], "incompatible")
+        self.assertEqual(edge["fallback_or_substitution"], "none")
+
 
 if __name__ == "__main__":
     unittest.main()
