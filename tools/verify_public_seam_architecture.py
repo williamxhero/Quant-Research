@@ -460,6 +460,7 @@ def full_gate_plan(
         "tools/spec016_installed_wheel_tracer.py",
         "tools/spec017_installed_wheel_tracer.py",
         "tools/spec018_installed_wheel_tracer.py",
+        "tools/spec019_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -1051,6 +1052,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-018.v1.json"
         ).is_file(),
     )
+    _scan_spec019_empirical_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-019.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -1072,6 +1079,13 @@ def scan_sources(repository_root: Path) -> None:
     if constitution.is_file() and not spec018_admission.is_file():
         raise ArchitectureViolation(
             "quant-research: SPEC-018 architecture admission is missing"
+        )
+    spec019_admission = (
+        repository_root / "docs" / "architecture-admissions" / "spec-019.v1.json"
+    )
+    if constitution.is_file() and not spec019_admission.is_file():
+        raise ArchitectureViolation(
+            "quant-research: SPEC-019 architecture admission is missing"
         )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
@@ -1471,6 +1485,88 @@ def _scan_spec018_evolution_seams(
         for node in ast.walk(trees[reporting_adapter])
     ):
         raise ArchitectureViolation("SPEC-018 Reporting read-model seam is incomplete")
+
+
+def _scan_spec019_empirical_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex = repository_root / "apex-research/src/apex_research/empirical.py"
+    if not apex.is_file():
+        if required:
+            raise ArchitectureViolation("SPEC-019 Apex empirical seam is missing")
+        return
+    tree = ast.parse(apex.read_text(encoding="utf-8"), filename=str(apex))
+    _reject_spec016_forbidden_imports(
+        tree,
+        path=apex,
+        forbidden={
+            "quant_runtime": "Runtime import or formal execution",
+            "strategy_workspace.storage": "private Workspace storage",
+            "strategy_workspace.core": "private Workspace storage",
+            "sqlite3": "parallel empirical persistence",
+            "subprocess": "direct external execution",
+            "requests": "direct network access",
+            "httpx": "direct network access",
+            "socket": "direct network access",
+        },
+    )
+    classes = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
+    required_classes = {
+        "EmpiricalCapabilityPolicy",
+        "EmpiricalRequest",
+        "EmpiricalPortResult",
+        "EmpiricalResearchPort",
+        "InMemoryEmpiricalResearchPort",
+        "RunnerBackedEmpiricalResearchPort",
+        "EmpiricalResearchApplication",
+    }
+    if not required_classes <= classes:
+        raise ArchitectureViolation("SPEC-019 Apex empirical contract is incomplete")
+    port = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "EmpiricalResearchPort"
+    )
+    port_methods = {
+        node.name
+        for node in port.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    if port_methods != {"capabilities", "execute"}:
+        raise ArchitectureViolation("SPEC-019 empirical Port surface drifted")
+    forbidden_calls = {
+        "register_package",
+        "submit_run",
+        "retry_run",
+        "publish_decision",
+        "publish_report",
+    }
+    actual_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    if forbidden_calls & actual_calls:
+        raise ArchitectureViolation("SPEC-019 empirical seam crosses an owner boundary")
+    markers = (
+        "empiricalresearchapplication",
+        "empiricalresearchport",
+        "empiricalcapabilitypolicy",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+        ("strategy-reporting", "strategy_reporting"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if any(marker in compact for marker in markers):
+                raise ArchitectureViolation(
+                    f"SPEC-019 empirical owner leaked into {repository}: {path}"
+                )
 
 
 def _scan_spec017_non_owner_repositories(repository_root: Path) -> None:
