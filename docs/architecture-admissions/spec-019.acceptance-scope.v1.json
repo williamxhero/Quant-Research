@@ -33,7 +33,7 @@
   "current_spec_heavy_test_exclusions": [
     "apex-research/tests/test_empirical_research.py"
   ],
-  "current_spec_heavy_exclusion_reason": "already passed current-spec installed heavy: the SPEC-019 tracer runs every empirical contract node with bounded timeouts from built wheels and replays the canonical identity transcript twice.",
+  "current_spec_heavy_exclusion_reason": "already passed current-spec installed heavy: the SPEC-019 tracer runs every empirical contract node with bounded timeouts from built wheels and replays the canonical identity transcript twice. Cross-fresh-workspace comparison excludes only reservation and settlement IDs plus port-outcome/result record IDs derived from lease/publication observation time; it compares capability policy, request, normalized outcome, final-result semantics, artifact refs, semantic lineage, and proves both owner IDs are stable on canonical replay within each Workspace.",
   "historical_heavy_test_exclusions": [
     "apex-research/tests/test_behavior_descriptors.py",
     "apex-research/tests/test_evidence_v2.py",
