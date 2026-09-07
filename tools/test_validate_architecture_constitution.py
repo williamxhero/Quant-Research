@@ -272,6 +272,22 @@ class ConstitutionValidationTests(unittest.TestCase):
             ],
         )
 
+    def test_spec_016_behavior_descriptor_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-016.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("WorkspaceClient", candidate["public_seam"])
+        self.assertIn("behavior taxonomy", candidate["identity_impact"])
+        self.assertIn("discovery", candidate["evidence_level"])
+        self.assertIn("formal", candidate["evidence_level"])
+        self.assertIn("distinct typed records", candidate["fail_closed_behavior"])
+        self.assertIn("currency", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(
             validator.ConstitutionError, "missing required declarations"

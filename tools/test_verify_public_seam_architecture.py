@@ -78,6 +78,53 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             ):
                 verifier.validate_constitution()
 
+    def test_normal_constitution_validation_includes_the_spec016_admission(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            docs = root / "docs"
+            admissions = docs / "architecture-admissions"
+            admissions.mkdir(parents=True)
+            tools = root / "tools"
+            tools.mkdir()
+            (tools / "validate_architecture_constitution.py").write_text(
+                (ROOT / "tools/validate_architecture_constitution.py").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            (docs / "architecture-constitution.v1.json").write_text(
+                (ROOT / "docs/architecture-constitution.v1.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            (admissions / "spec-015.v1.json").write_text(
+                (ROOT / "docs/architecture-admissions/spec-015.v1.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            candidate = json.loads(
+                (ROOT / "docs/architecture-admissions/spec-016.v1.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            candidate["public_seam"] = ""
+            (admissions / "spec-016.v1.json").write_text(
+                json.dumps(candidate), encoding="utf-8"
+            )
+
+            with (
+                mock.patch.object(verifier, "ROOT", root),
+                self.assertRaisesRegex(
+                    verifier.ArchitectureViolation,
+                    "SPEC-016 architecture admission is invalid",
+                ),
+            ):
+                verifier.validate_constitution()
+
     def test_spec015_admission_pins_the_complete_machine_contract(self) -> None:
         for field, replacement in (
             ("schema", "other-schema.v1"),

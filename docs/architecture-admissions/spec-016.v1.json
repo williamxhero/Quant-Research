@@ -1,0 +1,20 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-016",
+  "canonical_owner": "apex_research",
+  "public_seam": "Apex BehaviorDescriptorService, strict typed behavior taxonomy and descriptor records / WorkspaceClient immutable publication, canonical record readback, bounded lineage query, and artifact verification",
+  "identity_impact": "The behavior taxonomy and descriptor identities freeze the taxonomy version, exact dimensions, selectors, transformations, units, categories or bins, boundary and missing-value conventions, evidence tier, exact typed owner sources, Candidate revision, dimension outcomes, and niche assignment while excluding publication timestamps, local paths, storage metadata, current evidence currency, and archive champion selection.",
+  "evidence_level": "Discovery descriptors use only declared Candidate-native facts; formal descriptors use only completed comparable Nautilus owner facts already published in Apex evidence, with discovery and formal represented as distinct typed records.",
+  "fail_closed_behavior": "Require strict canonical taxonomy, Candidate, Evidence v2, validation, and Workspace publication readback; preserve discovery and formal as distinct typed records; reject unknown fields, undeclared selectors, overlapping bins, guessed values, caller metadata, discovery-to-formal relabeling, incomplete or incomparable formal facts, metric reconstruction, qualification inference, current evidence currency, and archive champion selection.",
+  "compatibility": [
+    "spec-009-candidate-gate",
+    "spec-012-validation-matrix",
+    "spec-013-statistical-control",
+    "spec-014-evidence-v2",
+    "spec-015-qualification",
+    "spec-028-candidate-ir",
+    "spec-032-currency-separate"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}

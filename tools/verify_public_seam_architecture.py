@@ -78,6 +78,49 @@ SPEC015_ADMISSION_CONTRACT = {
         "retired",
     ],
 }
+SPEC016_ADMISSION_CONTRACT = {
+    "schema": "quant-research.future-spec-admission.v1",
+    "spec": "SPEC-016",
+    "canonical_owner": "apex_research",
+    "public_seam": (
+        "Apex BehaviorDescriptorService, strict typed behavior taxonomy and descriptor "
+        "records / WorkspaceClient immutable publication, canonical record readback, "
+        "bounded lineage query, and artifact verification"
+    ),
+    "identity_impact": (
+        "The behavior taxonomy and descriptor identities freeze the taxonomy version, "
+        "exact dimensions, selectors, transformations, units, categories or bins, "
+        "boundary and missing-value conventions, evidence tier, exact typed owner "
+        "sources, Candidate revision, dimension outcomes, and niche assignment while "
+        "excluding publication timestamps, local paths, storage metadata, current "
+        "evidence currency, and archive champion selection."
+    ),
+    "evidence_level": (
+        "Discovery descriptors use only declared Candidate-native facts; formal "
+        "descriptors use only completed comparable Nautilus owner facts already "
+        "published in Apex evidence, with discovery and formal represented as distinct "
+        "typed records."
+    ),
+    "fail_closed_behavior": (
+        "Require strict canonical taxonomy, Candidate, Evidence v2, validation, and "
+        "Workspace publication readback; preserve discovery and formal as distinct "
+        "typed records; reject unknown fields, undeclared selectors, overlapping bins, "
+        "guessed values, caller metadata, discovery-to-formal relabeling, incomplete "
+        "or incomparable formal facts, metric reconstruction, qualification inference, "
+        "current evidence currency, and archive champion selection."
+    ),
+    "compatibility": [
+        "spec-009-candidate-gate",
+        "spec-012-validation-matrix",
+        "spec-013-statistical-control",
+        "spec-014-evidence-v2",
+        "spec-015-qualification",
+        "spec-028-candidate-ir",
+        "spec-032-currency-separate",
+    ],
+    "claims": [],
+    "lifecycle_states": [],
+}
 
 
 class ArchitectureViolation(ValueError):
@@ -538,12 +581,12 @@ def scan_sources(repository_root: Path) -> None:
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
     admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-015.v1.json"
+        repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
     constitution = repository_root / "docs" / "architecture-constitution.v1.json"
     if constitution.is_file() and not admission.is_file():
         raise ArchitectureViolation(
-            "quant-research: SPEC-015 architecture admission is missing"
+            "quant-research: SPEC-016 architecture admission is missing"
         )
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
@@ -5353,17 +5396,25 @@ def validate_constitution() -> None:
     policy = validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
     try:
         validator.validate_policy(policy)
-        candidate = validator.read_json(
-            ROOT / "docs" / "architecture-admissions" / "spec-015.v1.json"
-        )
-        validator.validate_candidate(candidate, policy)
-        if candidate != SPEC015_ADMISSION_CONTRACT:
-            raise validator.ConstitutionError(
-                "SPEC-015 machine admission contract drifted"
+        for spec, contract in (
+            ("SPEC-015", SPEC015_ADMISSION_CONTRACT),
+            ("SPEC-016", SPEC016_ADMISSION_CONTRACT),
+        ):
+            candidate = validator.read_json(
+                ROOT
+                / "docs"
+                / "architecture-admissions"
+                / f"{spec.lower()}.v1.json"
             )
+            validator.validate_candidate(candidate, policy)
+            if candidate != contract:
+                raise validator.ConstitutionError(
+                    f"{spec} machine admission contract drifted"
+                )
     except Exception as exc:
+        failed_spec = locals().get("spec", "SPEC-016")
         raise ArchitectureViolation(
-            f"quant-research: SPEC-015 architecture admission is invalid: {exc}"
+            f"quant-research: {failed_spec} architecture admission is invalid: {exc}"
         ) from exc
 
 
