@@ -25,7 +25,6 @@ HARNESS_SPEC.loader.exec_module(HARNESS)
 UNCHANGED_REPOSITORY_BASELINES = {
     "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
     "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
-    "strategy-reporting": "255442a9291ca49a67e05afa0123e10e07aeb754",
 }
 SPEC015_ADMISSION_CONTRACT = {
     "schema": "quant-research.future-spec-admission.v1",
@@ -227,6 +226,7 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_qualification_robustness.py",
                 "tests/test_qualification_history.py",
                 "tests/test_qualification_cli.py",
+                "tests/test_behavior_descriptors.py",
             ),
         ),
         FixtureCheck(
@@ -244,6 +244,7 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
                 "tests/test_research_reporting.py::test_statistical_assessment_is_read_back_and_displayed_without_recalculation",
                 "tests/test_research_reporting.py::test_statistical_external_readback_tamper_fails_closed",
                 "tests/test_evidence_v2_read_model.py",
+                "tests/test_behavior_descriptor_read_model.py",
             ),
         ),
         FixtureCheck(
@@ -270,6 +271,20 @@ def fixture_plan(repository_root: Path) -> tuple[FixtureCheck, ...]:
                 "3.12",
                 "python",
                 "tools/spec015_installed_wheel_tracer.py",
+                "--repository-root",
+                str(repository_root),
+            ),
+        ),
+        FixtureCheck(
+            "spec016_installed_wheels",
+            ".",
+            (
+                "uv",
+                "run",
+                "--python",
+                "3.12",
+                "python",
+                "tools/spec016_installed_wheel_tracer.py",
                 "--repository-root",
                 str(repository_root),
             ),
@@ -305,6 +320,7 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         "tools/installed_wheel_harness.py",
         "tools/spec014_installed_wheel_tracer.py",
         "tools/spec015_installed_wheel_tracer.py",
+        "tools/spec016_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -454,6 +470,20 @@ def full_gate_plan(repository_root: Path) -> tuple[GateCheck, ...]:
         str(repository_root),
         timeout_seconds=25_200,
     )
+    add(
+        "spec016_installed_wheels",
+        ".",
+        "installed-wheel-smoke",
+        "uv",
+        "run",
+        "--python",
+        "3.12",
+        "python",
+        "tools/spec016_installed_wheel_tracer.py",
+        "--repository-root",
+        str(repository_root),
+        timeout_seconds=7_200,
+    )
     return tuple(commands)
 
 
@@ -509,6 +539,9 @@ SOURCE_RULES = {
         ("researchengineport", "Workspace must not own ResearchEnginePort"),
         ("research-engine-request", "Workspace must not own research-engine contracts"),
         ("research-engine-result", "Workspace must not own research-engine contracts"),
+        ("behaviortaxonomy", "Workspace must not own descriptor ownership"),
+        ("behaviordescriptorservice", "Workspace must not own descriptor ownership"),
+        ("formal-behavior-descriptor", "Workspace must not own descriptor ownership"),
     ),
     "quant-runtime": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -527,6 +560,9 @@ SOURCE_RULES = {
         ("researchengineport", "Runtime must not own ResearchEnginePort"),
         ("research-engine-request", "Runtime must not own research-engine contracts"),
         ("research-engine-result", "Runtime must not own research-engine contracts"),
+        ("behaviortaxonomy", "Runtime must not own descriptor ownership"),
+        ("behaviordescriptorservice", "Runtime must not own descriptor ownership"),
+        ("formal-behavior-descriptor", "Runtime must not own descriptor ownership"),
     ),
     "apex-research": (
         ("strategy_workspace.storage", "private Workspace access"),
@@ -580,6 +616,12 @@ def scan_sources(repository_root: Path) -> None:
     _scan_validation_matrix_seams(repository_root / "apex-research")
     _scan_statistical_control_seams(repository_root / "apex-research")
     _scan_spec014_evidence_seams(repository_root)
+    _scan_spec016_descriptor_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -593,6 +635,98 @@ def scan_sources(repository_root: Path) -> None:
         required=constitution.is_file() or admission.is_file(),
     )
     _scan_spec015_non_owner_repositories(repository_root)
+
+
+def _scan_spec016_descriptor_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex = (
+        repository_root
+        / "apex-research"
+        / "src"
+        / "apex_research"
+        / "behavior_descriptors.py"
+    )
+    reporting_contract = (
+        repository_root
+        / "strategy-reporting"
+        / "src"
+        / "strategy_reporting"
+        / "contracts"
+        / "behavior_descriptors.py"
+    )
+    reporting_adapter = (
+        repository_root
+        / "strategy-reporting"
+        / "src"
+        / "strategy_reporting"
+        / "adapters"
+        / "behavior_descriptors.py"
+    )
+    paths = (apex, reporting_contract, reporting_adapter)
+    if not required and not any(path.is_file() for path in paths):
+        return
+    if not all(path.is_file() for path in paths):
+        raise ArchitectureViolation("SPEC-016 owner seam is missing")
+    apex_tree = ast.parse(apex.read_text(encoding="utf-8"), filename=str(apex))
+    apex_classes = {
+        node.name for node in ast.walk(apex_tree) if isinstance(node, ast.ClassDef)
+    }
+    required_apex = {
+        "BehaviorTaxonomy",
+        "DiscoveryBehaviorDescriptor",
+        "FormalBehaviorDescriptor",
+        "BehaviorDescriptorService",
+    }
+    if not required_apex <= apex_classes:
+        raise ArchitectureViolation(
+            "SPEC-016 Apex descriptor owner contract is incomplete"
+        )
+    service = next(
+        node
+        for node in ast.walk(apex_tree)
+        if isinstance(node, ast.ClassDef) and node.name == "BehaviorDescriptorService"
+    )
+    methods = {
+        node.name
+        for node in service.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    if (
+        not {"assign_discovery", "assign_formal", "read_discovery", "read_formal"}
+        <= methods
+    ):
+        raise ArchitectureViolation(
+            "SPEC-016 Apex descriptor service seam is incomplete"
+        )
+    for path in (reporting_contract, reporting_adapter):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        forbidden_names = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.name
+            in {
+                "_bin_contains",
+                "assign_discovery",
+                "assign_formal",
+                "BehaviorTaxonomyService",
+                "BehaviorDescriptorService",
+            }
+        }
+        if forbidden_names:
+            raise ArchitectureViolation(
+                f"Reporting calculates descriptor semantics: {path}: {sorted(forbidden_names)}"
+            )
+    adapter_tree = ast.parse(
+        reporting_adapter.read_text(encoding="utf-8"), filename=str(reporting_adapter)
+    )
+    if not any(
+        isinstance(node, ast.ClassDef)
+        and node.name == "BehaviorDescriptorReadModelBuilder"
+        for node in ast.walk(adapter_tree)
+    ):
+        raise ArchitectureViolation("SPEC-016 Reporting read-model seam is incomplete")
 
 
 def _ast_rule_present(tree: ast.Module, forbidden: str) -> bool:
@@ -5401,10 +5535,7 @@ def validate_constitution() -> None:
             ("SPEC-016", SPEC016_ADMISSION_CONTRACT),
         ):
             candidate = validator.read_json(
-                ROOT
-                / "docs"
-                / "architecture-admissions"
-                / f"{spec.lower()}.v1.json"
+                ROOT / "docs" / "architecture-admissions" / f"{spec.lower()}.v1.json"
             )
             validator.validate_candidate(candidate, policy)
             if candidate != contract:
@@ -5423,6 +5554,7 @@ def run_fixture_checks(repository_root: Path) -> None:
     execution_budgets = {
         "apex_research": 7_200,
         "spec015_installed_wheels": 25_200,
+        "spec016_installed_wheels": 7_200,
     }
     for check in fixture_plan(repository_root):
         repository = repository_root / check.repository

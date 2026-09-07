@@ -18,6 +18,67 @@ SPEC.loader.exec_module(verifier)
 
 
 class PublicSeamArchitectureTests(unittest.TestCase):
+    def test_spec016_guard_requires_apex_owner_and_reporting_read_model_seams(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "apex-research/src/apex_research").mkdir(parents=True)
+            (root / "strategy-reporting/src/strategy_reporting").mkdir(parents=True)
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "SPEC-016 owner seam is missing"
+            ):
+                verifier._scan_spec016_descriptor_seams(root, required=True)
+
+    def test_spec016_guard_rejects_descriptor_ownership_outside_apex(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "strategy-workspace/src/strategy_workspace/descriptor.py"
+            source.parent.mkdir(parents=True)
+            source.write_text("class BehaviorTaxonomy: pass\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "descriptor ownership"
+            ):
+                verifier.scan_sources(root)
+
+    def test_spec016_guard_rejects_reporting_descriptor_calculation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            apex = root / "apex-research/src/apex_research"
+            reporting = root / "strategy-reporting/src/strategy_reporting"
+            apex.mkdir(parents=True)
+            reporting.mkdir(parents=True)
+            (apex / "behavior_descriptors.py").write_text(
+                "class BehaviorTaxonomy: pass\n"
+                "class DiscoveryBehaviorDescriptor: pass\n"
+                "class FormalBehaviorDescriptor: pass\n"
+                "class BehaviorDescriptorService:\n"
+                "    def assign_discovery(self): pass\n"
+                "    def assign_formal(self): pass\n"
+                "    def read_discovery(self): pass\n"
+                "    def read_formal(self): pass\n",
+                encoding="utf-8",
+            )
+            contract = reporting / "contracts/behavior_descriptors.py"
+            contract.parent.mkdir()
+            contract.write_text(
+                "class BehaviorDescriptorReadModel: pass\n", encoding="utf-8"
+            )
+            adapter = reporting / "adapters/behavior_descriptors.py"
+            adapter.parent.mkdir()
+            adapter.write_text(
+                "class BehaviorDescriptorReadModelBuilder: pass\n"
+                "def _bin_contains(value): return value > 0\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "Reporting calculates descriptor"
+            ):
+                verifier._scan_spec016_descriptor_seams(root)
+
     def test_fixture_runner_preserves_qualification_execution_budgets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -31,6 +92,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 expected = {
                     "apex_research": 7_200,
                     "spec015_installed_wheels": 25_200,
+                    "spec016_installed_wheels": 7_200,
                 }.get(check.owner, 1_800)
                 self.assertEqual(call.kwargs["timeout_seconds"], expected, check.owner)
                 self.assertEqual(call.args[0], list(check.command))
@@ -187,6 +249,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "strategy_reporting",
                 "spec014_installed_wheels",
                 "spec015_installed_wheels",
+                "spec016_installed_wheels",
             ],
         )
         command_by_owner = {item.owner: item.command[:5] for item in plan}
@@ -252,6 +315,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertIn("tests/test_qualification_robustness.py", apex.command)
         self.assertIn("tests/test_qualification_history.py", apex.command)
         self.assertIn("tests/test_qualification_cli.py", apex.command)
+        self.assertIn("tests/test_behavior_descriptors.py", apex.command)
         reporting = next(item for item in plan if item.owner == "strategy_reporting")
         self.assertIn(
             "tests/test_research_reporting.py::test_validation_evidence_is_exactly_read_back_and_presented_without_recalculation",
@@ -262,6 +326,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             reporting.command,
         )
         self.assertIn("tests/test_evidence_v2_read_model.py", reporting.command)
+        self.assertIn("tests/test_behavior_descriptor_read_model.py", reporting.command)
         installed = next(
             item for item in plan if item.owner == "spec014_installed_wheels"
         )
@@ -274,6 +339,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         self.assertEqual(installed_015.repository, ".")
         self.assertIn("tools/spec015_installed_wheel_tracer.py", installed_015.command)
         self.assertTrue((ROOT / "tools/spec015_installed_wheel_tracer.py").is_file())
+        installed_016 = next(
+            item for item in plan if item.owner == "spec016_installed_wheels"
+        )
+        self.assertEqual(installed_016.repository, ".")
+        self.assertIn("tools/spec016_installed_wheel_tracer.py", installed_016.command)
+        self.assertTrue((ROOT / "tools/spec016_installed_wheel_tracer.py").is_file())
 
     def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(
         self,
@@ -354,6 +425,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "strategy_reporting",
                 "spec014_installed_wheels",
                 "spec015_installed_wheels",
+                "spec016_installed_wheels",
             },
         )
         commands = {token for item in plan for token in item.command}
@@ -389,7 +461,6 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 for owner in (
                     "strategy_workspace",
                     "quant_runtime",
-                    "strategy_reporting",
                 )
                 for category in (
                     "spec015-source-diff",
@@ -426,12 +497,18 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         qualification_wheels = next(
             item for item in plan if item.owner == "spec015_installed_wheels"
         )
+        descriptor_wheels = next(
+            item for item in plan if item.owner == "spec016_installed_wheels"
+        )
         self.assertEqual(qualification_wheels.timeout_seconds, 25_200)
+        self.assertEqual(descriptor_wheels.timeout_seconds, 7_200)
         self.assertTrue(
             all(
                 item.timeout_seconds == 1_800
                 for item in plan
-                if item is not apex_pytest and item is not qualification_wheels
+                if item is not apex_pytest
+                and item is not qualification_wheels
+                and item is not descriptor_wheels
             )
         )
         self.assertIn("not connected", " ".join(runtime_pytest.command))
@@ -444,6 +521,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         root_tokens = {token for item in root_checks for token in item.command}
         for changed in (
             "tools/spec014_installed_wheel_tracer.py",
+            "tools/spec016_installed_wheel_tracer.py",
             "tools/test_validate_architecture_constitution.py",
             "tools/validate_architecture_constitution.py",
         ):
@@ -465,6 +543,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "quant_research",
                 "spec014_installed_wheels",
                 "spec015_installed_wheels",
+                "spec016_installed_wheels",
             }
             and item.category in {"pytest", "installed-wheel-smoke"}
         ]
