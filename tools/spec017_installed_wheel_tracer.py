@@ -44,6 +44,8 @@ APEX_ARCHIVE_TESTS = (
     "test_public_exports_and_strict_archive_cli_cover_pure_evaluate_publish_and_replay",
     "test_lexicographic_policy_records_capacity_reject_tie_and_replacement",
     "test_pareto_policy_records_nondominance_unavailable_and_incomparable",
+    "test_evidence_equal_values_from_different_comparability_groups_are_incomparable",
+    "test_evidence_pareto_aligns_multiobjective_values_by_objective_id",
     "test_complete_generation_is_arrival_order_independent_and_strictly_replayable",
     "test_evidence_archive_publishes_only_historical_leader_and_blocks_current_view",
 )
