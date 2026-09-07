@@ -1065,6 +1065,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
         ).is_file(),
     )
+    _scan_spec024_strategy_benchmark_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-024.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -6364,6 +6370,103 @@ def _scan_apex_public_seam(
         raise ArchitectureViolation(
             f"apex-research: {policy.component} lacks public tracer boundaries {absent}: {path_label}"
         )
+
+
+def _scan_spec024_strategy_benchmark_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex = (
+        repository_root
+        / "apex-research"
+        / "src"
+        / "apex_research"
+        / "strategy_benchmark.py"
+    )
+    runtime = (
+        repository_root / "quant-runtime" / "src" / "quant_runtime" / "benchmark.py"
+    )
+    if not apex.is_file() or not runtime.is_file():
+        if required:
+            raise ArchitectureViolation("SPEC-024 owner or transport seam is missing")
+        return
+    _scan_apex_public_seam(
+        apex,
+        ApexSeamPolicy(
+            component="SPEC-024 strategy benchmark",
+            forbidden_imports=(
+                ("quant_runtime", "Runtime implementation"),
+                ("subprocess", "parallel process runner"),
+                ("sqlite3", "parallel ledger or registry"),
+                ("requests", "direct network client"),
+                ("httpx", "direct network client"),
+            ),
+            forbidden_calls=(
+                ("submit_run", "Workspace formal submission"),
+                ("execute_run", "parallel backtester"),
+            ),
+            forbidden_attributes=(
+                ("workspace.submit_run", "Workspace formal submission"),
+                ("workspace.list_records", "unbounded Workspace scan"),
+            ),
+            required_classes=(
+                "StrategyBenchmarkService",
+                "StrategyBenchmarkSuite",
+                "StrategyBenchmarkAggregate",
+            ),
+            required_names=(),
+            required_calls=("get_record", "publish_record", "verify_artifact"),
+        ),
+    )
+    runtime_tree = ast.parse(runtime.read_text(encoding="utf-8"), filename=str(runtime))
+    runtime_source = runtime.read_text(encoding="utf-8")
+    runtime_imports = {
+        node.module or ""
+        for node in ast.walk(runtime_tree)
+        if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(runtime_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    forbidden_runtime_imports = (
+        "strategy_workspace",
+        "apex_research",
+        "quant_runtime.adapters.data",
+        "quant_runtime.adapters.formal",
+    )
+    if any(
+        module == forbidden or module.startswith(f"{forbidden}.")
+        for module in runtime_imports
+        for forbidden in forbidden_runtime_imports
+    ):
+        raise ArchitectureViolation("quant-runtime: SPEC-024 transport crosses an owner boundary")
+    runtime_calls = {
+        node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+        for node in ast.walk(runtime_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+    }
+    if {"submit_run", "preflight", "score"} & runtime_calls:
+        raise ArchitectureViolation("quant-runtime: SPEC-024 transport owns forbidden semantics")
+    for marker in (
+        "class BenchmarkExecutionService",
+        '"strategy_event_trace"',
+        '"benchmark_strategy"',
+    ):
+        if marker not in runtime_source:
+            raise ArchitectureViolation(
+                f"quant-runtime: SPEC-024 transport lacks required boundary {marker}"
+            )
+    for repository in ("strategy-workspace", "strategy-reporting"):
+        source_root = repository_root / repository / "src"
+        if not source_root.is_dir():
+            continue
+        for path in _safe_python_sources(source_root):
+            source = path.read_text(encoding="utf-8")
+            if "apex-research.strategy-code-benchmark" in source:
+                raise ArchitectureViolation(
+                    f"{repository}: owns forbidden SPEC-024 benchmark truth: {path}"
+                )
 
 
 def _scan_rdagent_seams(repository: Path) -> None:
