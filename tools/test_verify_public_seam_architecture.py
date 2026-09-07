@@ -3277,6 +3277,111 @@ def use_lineage(workspace):
             )
         )
 
+    def test_acceptance_scope_removes_duplicate_heavy_tests_from_impacted_gates(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-017.acceptance-scope.v1.json"
+        )
+
+        plan = verifier.full_gate_plan(ROOT, acceptance_scope=scope)
+        owners = {item.owner for item in plan}
+        self.assertIn("spec017_installed_wheels", owners)
+        self.assertNotIn("spec014_installed_wheels", owners)
+        self.assertNotIn("spec015_installed_wheels", owners)
+        self.assertNotIn("spec016_installed_wheels", owners)
+        apex_pytest = next(
+            item
+            for item in plan
+            if item.owner == "apex_research" and item.category == "pytest"
+        )
+        expected_ignores = {
+            f"--ignore={path.removeprefix('apex-research/')}"
+            for path in (
+                scope.current_spec_heavy_test_exclusions
+                + scope.historical_heavy_test_exclusions
+            )
+        }
+        self.assertEqual(
+            {token for token in apex_pytest.command if token.startswith("--ignore=")},
+            expected_ignores,
+        )
+
+        fixture = verifier.fixture_plan(ROOT, acceptance_scope=scope)
+        apex_fixture = next(item for item in fixture if item.owner == "apex_research")
+        for excluded in expected_ignores:
+            test_path = excluded.removeprefix("--ignore=")
+            self.assertFalse(
+                any(
+                    token == test_path or token.startswith(f"{test_path}::")
+                    for token in apex_fixture.command
+                )
+            )
+
+    def test_release_scope_runs_each_heavy_suite_once_through_installed_tracers(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-017.acceptance-scope.v1.json"
+        )
+
+        plan = verifier.full_gate_plan(
+            ROOT, historical_mode="release", acceptance_scope=scope
+        )
+        tracer_owners = [
+            item.owner for item in plan if item.category == "installed-wheel-smoke"
+        ]
+        self.assertEqual(
+            tracer_owners,
+            [
+                "spec014_installed_wheels",
+                "spec015_installed_wheels",
+                "spec016_installed_wheels",
+                "spec017_installed_wheels",
+            ],
+        )
+        self.assertEqual(len(tracer_owners), len(set(tracer_owners)))
+        apex_pytest = next(
+            item
+            for item in plan
+            if item.owner == "apex_research" and item.category == "pytest"
+        )
+        self.assertEqual(
+            sum(token.startswith("--ignore=") for token in apex_pytest.command),
+            len(scope.current_spec_heavy_test_exclusions)
+            + len(scope.historical_heavy_test_exclusions),
+        )
+
+    def test_acceptance_scope_rejects_uncovered_or_non_apex_heavy_exclusions(
+        self,
+    ) -> None:
+        source = ROOT / "docs/architecture-admissions/spec-017.acceptance-scope.v1.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        invalid_payloads = []
+        outside_apex = dict(payload)
+        outside_apex["current_spec_heavy_test_exclusions"] = [
+            "strategy-reporting/tests/test_quality_diversity_archive_read_model.py"
+        ]
+        invalid_payloads.append((outside_apex, "must be Apex pytest files"))
+        overlapping_tracers = dict(payload)
+        overlapping_tracers["deferred_release_tracers"] = [
+            "SPEC-014",
+            "SPEC-015",
+            "SPEC-016",
+            "SPEC-017",
+        ]
+        invalid_payloads.append((overlapping_tracers, "tracer coverage is invalid"))
+
+        for invalid, message in invalid_payloads:
+            with (
+                self.subTest(message=message),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                manifest = Path(temporary) / "scope.json"
+                manifest.write_text(json.dumps(invalid), encoding="utf-8")
+                with self.assertRaisesRegex(verifier.ArchitectureViolation, message):
+                    verifier.load_acceptance_scope(manifest)
+
     def test_spec017_guard_requires_apex_owner_and_reporting_presentation(self) -> None:
         verifier._scan_spec017_archive_seams(ROOT, required=True)
         with tempfile.TemporaryDirectory() as temporary:

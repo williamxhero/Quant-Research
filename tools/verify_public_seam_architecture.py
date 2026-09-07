@@ -209,11 +209,85 @@ class ApexSeamPolicy(NamedTuple):
     required_calls: tuple[str, ...]
 
 
+_LEGACY_INSTALLED_TRACERS = ("SPEC-014", "SPEC-015", "SPEC-016", "SPEC-017")
+_INSTALLED_TRACER_TIMEOUTS = {"SPEC-014": 1_800, "SPEC-015": 25_200}
+
+
+def _installed_tracer_check(
+    repository_root: Path, spec: str, *, fixture: bool
+) -> FixtureCheck | GateCheck:
+    suffix = spec.removeprefix("SPEC-").lower()
+    owner = f"spec{suffix}_installed_wheels"
+    command = (
+        "uv",
+        "run",
+        "--python",
+        "3.12",
+        "python",
+        f"tools/spec{suffix}_installed_wheel_tracer.py",
+        "--repository-root",
+        str(repository_root),
+    )
+    if fixture:
+        return FixtureCheck(owner, ".", command)
+    return GateCheck(
+        owner,
+        ".",
+        "installed-wheel-smoke",
+        command,
+        timeout_seconds=_INSTALLED_TRACER_TIMEOUTS.get(spec, 7_200),
+    )
+
+
+def _selected_installed_tracers(
+    acceptance_scope: AcceptanceScope | None,
+    changed_paths: tuple[str, ...],
+    *,
+    historical_mode: str,
+) -> tuple[str, ...]:
+    if historical_mode not in {"impacted", "full", "release"}:
+        raise ArchitectureViolation(
+            f"unknown historical validation mode: {historical_mode}"
+        )
+    if acceptance_scope is not None:
+        selected = set(acceptance_scope.required_installed_tracers)
+        if historical_mode in {"full", "release"}:
+            selected.update(acceptance_scope.deferred_release_tracers)
+        return tuple(sorted(selected))
+    return tuple(
+        spec
+        for spec in _LEGACY_INSTALLED_TRACERS
+        if spec == "SPEC-017"
+        or historical_installed_wheels_required(
+            spec, changed_paths, historical_mode=historical_mode
+        )
+    )
+
+
+def _apex_heavy_test_exclusions(
+    acceptance_scope: AcceptanceScope | None,
+) -> tuple[str, ...]:
+    if acceptance_scope is None:
+        return ()
+    paths = (
+        acceptance_scope.current_spec_heavy_test_exclusions
+        + acceptance_scope.historical_heavy_test_exclusions
+    )
+    return tuple(path.removeprefix("apex-research/") for path in paths)
+
+
+def _fixture_token_is_excluded_apex_test(
+    token: str, exclusions: tuple[str, ...]
+) -> bool:
+    return any(token == path or token.startswith(f"{path}::") for path in exclusions)
+
+
 def fixture_plan(
     repository_root: Path,
     *,
     changed_paths: tuple[str, ...] = (),
     historical_mode: str = "impacted",
+    acceptance_scope: AcceptanceScope | None = None,
 ) -> tuple[FixtureCheck, ...]:
     """Return public-seam fixture tests without creating shared state or evidence."""
     repository_root = repository_root.resolve()
@@ -310,70 +384,30 @@ def fixture_plan(
                 "tests/test_quality_diversity_archive_read_model.py",
             ),
         ),
-        FixtureCheck(
-            "spec014_installed_wheels",
-            ".",
-            (
-                "uv",
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                "tools/spec014_installed_wheel_tracer.py",
-                "--repository-root",
-                str(repository_root),
-            ),
-        ),
-        FixtureCheck(
-            "spec015_installed_wheels",
-            ".",
-            (
-                "uv",
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                "tools/spec015_installed_wheel_tracer.py",
-                "--repository-root",
-                str(repository_root),
-            ),
-        ),
-        FixtureCheck(
-            "spec016_installed_wheels",
-            ".",
-            (
-                "uv",
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                "tools/spec016_installed_wheel_tracer.py",
-                "--repository-root",
-                str(repository_root),
-            ),
-        ),
-        FixtureCheck(
-            "spec017_installed_wheels",
-            ".",
-            (
-                "uv",
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                "tools/spec017_installed_wheel_tracer.py",
-                "--repository-root",
-                str(repository_root),
-            ),
-        ),
     )
-    for spec in ("SPEC-014", "SPEC-015", "SPEC-016"):
-        if not historical_installed_wheels_required(
-            spec, changed_paths, historical_mode=historical_mode
-        ):
-            owner = f"spec{spec[-3:]}_installed_wheels"
-            plan = tuple(item for item in plan if item.owner != owner)
-    return plan
+    exclusions = _apex_heavy_test_exclusions(acceptance_scope)
+    if exclusions:
+        plan = tuple(
+            item._replace(
+                command=tuple(
+                    token
+                    for token in item.command
+                    if not _fixture_token_is_excluded_apex_test(token, exclusions)
+                )
+            )
+            if item.owner == "apex_research"
+            else item
+            for item in plan
+        )
+    tracers = tuple(
+        _installed_tracer_check(repository_root, spec, fixture=True)
+        for spec in _selected_installed_tracers(
+            acceptance_scope,
+            changed_paths,
+            historical_mode=historical_mode,
+        )
+    )
+    return plan + tracers
 
 
 def full_gate_plan(
@@ -381,6 +415,7 @@ def full_gate_plan(
     *,
     changed_paths: tuple[str, ...] = (),
     historical_mode: str = "impacted",
+    acceptance_scope: AcceptanceScope | None = None,
 ) -> tuple[GateCheck, ...]:
     """Return the complete non-connected release gate plan for all five seams."""
     repository_root = repository_root.resolve()
@@ -488,12 +523,21 @@ def full_gate_plan(
             "strategy_reporting": "not connected",
         }.get(owner)
         pytest = ("uv", "run", *dev_switch, "pytest")
+        heavy_ignores = (
+            tuple(
+                f"--ignore={path}"
+                for path in _apex_heavy_test_exclusions(acceptance_scope)
+            )
+            if owner == "apex_research"
+            else ()
+        )
         add(
             owner,
             repository,
             "pytest",
             *pytest,
             *(("-m", marker) if marker else ()),
+            *heavy_ignores,
             timeout_seconds=7_200 if owner == "apex_research" else 1_800,
         )
         add(
@@ -533,40 +577,13 @@ def full_gate_plan(
                 "src",
                 baseline_only=True,
             )
-    historical_timeouts = {"SPEC-014": 1_800, "SPEC-015": 25_200, "SPEC-016": 7_200}
-    for spec in ("SPEC-014", "SPEC-015", "SPEC-016"):
-        if historical_installed_wheels_required(
-            spec, changed_paths, historical_mode=historical_mode
-        ):
-            owner = f"spec{spec[-3:]}_installed_wheels"
-            tracer = f"tools/spec{spec[-3:]}_installed_wheel_tracer.py"
-            add(
-                owner,
-                ".",
-                "installed-wheel-smoke",
-                "uv",
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                tracer,
-                "--repository-root",
-                str(repository_root),
-                timeout_seconds=historical_timeouts[spec],
-            )
-    add(
-        "spec017_installed_wheels",
-        ".",
-        "installed-wheel-smoke",
-        "uv",
-        "run",
-        "--python",
-        "3.12",
-        "python",
-        "tools/spec017_installed_wheel_tracer.py",
-        "--repository-root",
-        str(repository_root),
-        timeout_seconds=7_200,
+    commands.extend(
+        _installed_tracer_check(repository_root, spec, fixture=False)
+        for spec in _selected_installed_tracers(
+            acceptance_scope,
+            changed_paths,
+            historical_mode=historical_mode,
+        )
     )
     return tuple(commands)
 
@@ -741,6 +758,16 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     maintenance = canonical_strings("selection_maintenance_paths", paths=True)
     if set(product) & set(maintenance):
         raise ArchitectureViolation("acceptance scope path classes overlap")
+    required_tracers = canonical_strings("required_installed_tracers")
+    deferred_tracers = canonical_strings("deferred_release_tracers")
+    tracer_pattern = re.compile(r"SPEC-\d{3}[A-Z]?")
+    if (
+        any(tracer_pattern.fullmatch(spec) is None for spec in required_tracers)
+        or any(tracer_pattern.fullmatch(spec) is None for spec in deferred_tracers)
+        or set(required_tracers) & set(deferred_tracers)
+        or raw["spec"] not in required_tracers
+    ):
+        raise ArchitectureViolation("acceptance scope tracer coverage is invalid")
     current_exclusions: tuple[str, ...] = ()
     current_exclusion_reason = ""
     if current_fields <= set(raw):
@@ -769,13 +796,31 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
                 "acceptance scope historical-heavy exclusion reason is invalid"
             )
         exclusion_reason = exclusion_reason_value
+    all_exclusions = current_exclusions + exclusions
+    if any(
+        not path.startswith("apex-research/tests/") or not path.endswith(".py")
+        for path in all_exclusions
+    ):
+        raise ArchitectureViolation(
+            "acceptance scope heavy exclusions must be Apex pytest files"
+        )
+    if len(set(all_exclusions)) != len(all_exclusions):
+        raise ArchitectureViolation("acceptance scope heavy exclusions overlap")
+    if current_exclusions and raw["spec"] not in required_tracers:
+        raise ArchitectureViolation(
+            "current-spec heavy exclusions lack required tracer coverage"
+        )
+    if exclusions and not deferred_tracers:
+        raise ArchitectureViolation(
+            "historical heavy exclusions lack deferred release tracer coverage"
+        )
     return AcceptanceScope(
         spec=raw["spec"],
         baseline_heads=dict(sorted(baseline_heads.items())),
         product_changed_paths=product,
         selection_maintenance_paths=maintenance,
-        required_installed_tracers=canonical_strings("required_installed_tracers"),
-        deferred_release_tracers=canonical_strings("deferred_release_tracers"),
+        required_installed_tracers=required_tracers,
+        deferred_release_tracers=deferred_tracers,
         current_spec_heavy_test_exclusions=current_exclusions,
         current_spec_heavy_exclusion_reason=current_exclusion_reason,
         historical_heavy_test_exclusions=exclusions,
@@ -6203,6 +6248,7 @@ def run_fixture_checks(
     *,
     historical_mode: str = "impacted",
     changed_paths: tuple[str, ...] | None = None,
+    acceptance_scope: AcceptanceScope | None = None,
 ) -> None:
     environment = HARNESS.sanitized_environment()
     execution_budgets = {
@@ -6219,6 +6265,7 @@ def run_fixture_checks(
         repository_root,
         changed_paths=selected_paths,
         historical_mode=historical_mode,
+        acceptance_scope=acceptance_scope,
     ):
         repository = repository_root / check.repository
         if not repository.is_dir():
@@ -6318,6 +6365,7 @@ def run_full_gate_checks(
     *,
     historical_mode: str = "impacted",
     changed_paths: tuple[str, ...] | None = None,
+    acceptance_scope: AcceptanceScope | None = None,
 ) -> list[dict[str, str]]:
     """Execute every non-connected release gate without retaining build output."""
     baseline_formatter_drift: list[dict[str, str]] = []
@@ -6334,6 +6382,7 @@ def run_full_gate_checks(
             repository_root,
             changed_paths=selected_paths,
             historical_mode=historical_mode,
+            acceptance_scope=acceptance_scope,
         ):
             if check.connected:
                 raise ArchitectureViolation(
@@ -6499,12 +6548,14 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.repository_root,
                 historical_mode=arguments.historical_mode,
                 changed_paths=selected_paths,
+                acceptance_scope=acceptance_scope,
             )
         if arguments.run_full_gates:
             baseline_formatter_drift = run_full_gate_checks(
                 arguments.repository_root,
                 historical_mode=arguments.historical_mode,
                 changed_paths=selected_paths,
+                acceptance_scope=acceptance_scope,
             )
         if arguments.run_connected_status:
             connected_statuses = run_connected_status_checks(arguments.repository_root)
