@@ -163,6 +163,45 @@ class Spec021CompatibilityTests(unittest.TestCase):
         self.assertEqual(edge["classification"], "incompatible")
         self.assertEqual(edge["mock_or_fallback"], "none")
 
+    def test_artifact_metric_probe_replays_semantics_and_exposes_nondeterminism(
+        self,
+    ) -> None:
+        transcript = json.loads(
+            (ADMISSIONS / "spec-021.prototype-transcript.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        probe = transcript["artifact_metric_probe"]
+
+        self.assertEqual(probe["replays"], 2)
+        self.assertTrue(probe["pythonpath_cleared"])
+        self.assertTrue(probe["installed_wheel_only"])
+        self.assertEqual(probe["semantic_sha256"][0], probe["semantic_sha256"][1])
+        self.assertNotEqual(
+            probe["artifact_manifest_sha256"][0],
+            probe["artifact_manifest_sha256"][1],
+        )
+        self.assertEqual(probe["metric_units"]["total_return"], "fraction")
+        self.assertEqual(probe["metric_units"]["max_drawdown"], "percentage_points")
+        self.assertEqual(
+            probe["classifications"]["metric_bundle"]["classification"],
+            "auxiliary_only",
+        )
+        self.assertEqual(
+            probe["classifications"]["artifact_identity"]["classification"],
+            "incompatible",
+        )
+
+        source = (ROOT / "tools" / "spec021_finsaber_compatibility.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("SPEC021_PROGRESS", source)
+        self.assertIn("NODE_TIMEOUT_SECONDS", source)
+        self.assertIn("PYTHONPATH", source)
+        self.assertIn("replays", source)
+        self.assertIn("--upstream-python", source)
+        self.assertIn("--wheel", source)
+
 
 if __name__ == "__main__":
     unittest.main()

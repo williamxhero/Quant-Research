@@ -358,5 +358,84 @@
       "quant-runtime/src/quant_runtime/adapters/formal/nautilus/futures_config.py@c97428c51e8f7265b006872c15999800e5ae1fc9",
       "real installed-wheel execution probe 2026-09-08"
     ]
+  },
+  "artifact_metric_probe": {
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "replays": 2,
+    "pythonpath_cleared": true,
+    "installed_wheel_only": true,
+    "verified_installed_files": 72,
+    "node_timeout_seconds": 30,
+    "semantic_sha256": [
+      "8e6e0e63170b9cb0b5d8641661dfa8ef33413c8f4c2dda079c842eddde3341ae",
+      "8e6e0e63170b9cb0b5d8641661dfa8ef33413c8f4c2dda079c842eddde3341ae"
+    ],
+    "artifact_manifest_sha256": [
+      "31441cf83dc87143aada8a443a9d299b663ddcf474b45ea43ff0da5f6744e642",
+      "a3fac4e6ad7629d96d59a74ad9e58e417fff0190e18b22c27c6ce5677fbef318"
+    ],
+    "generated_at_utc": [
+      "2026-09-07T19:28:42Z",
+      "2026-09-07T19:28:46Z"
+    ],
+    "artifact_files": [
+      "2024-01-02_2024-01-31/AAPL.XNAS/equity_curve.csv",
+      "2024-01-02_2024-01-31/AAPL.XNAS/llm_costs.csv",
+      "2024-01-02_2024-01-31/AAPL.XNAS/metrics.json",
+      "2024-01-02_2024-01-31/AAPL.XNAS/rejected_orders.csv",
+      "2024-01-02_2024-01-31/AAPL.XNAS/trades.csv",
+      "run_config.json",
+      "run_manifest.json",
+      "run_summary.csv"
+    ],
+    "metric_units": {
+      "total_return": "fraction",
+      "annual_return": "fraction",
+      "annual_volatility": "fraction",
+      "max_drawdown": "percentage_points",
+      "costs": "input currency units"
+    },
+    "custom_log_base": {
+      "files_written_before_error": 9,
+      "error_type": "FileNotFoundError",
+      "reason": "Artifact writers honor log_base_dir, but aggregate_strategy_results reads the package-relative default output directory."
+    },
+    "uninstall_residuals": {
+      "classification": "exact",
+      "evidence": "A separate isolated environment removed finsaber==2.0.1 and both public import names, finsaber and backtest, became unavailable."
+    },
+    "classifications": {
+      "semantic_replay": {
+        "classification": "exact",
+        "evidence": "Two bounded installed-wheel runs produced the identical normalized semantic SHA-256 8e6e0e63170b9cb0b5d8641661dfa8ef33413c8f4c2dda079c842eddde3341ae."
+      },
+      "metric_bundle": {
+        "classification": "auxiliary_only",
+        "evidence": "The real wheel emits useful research metrics, but annualizes every row sequence at 252 and reports max drawdown in percentage points rather than a typed canonical metric contract."
+      },
+      "artifact_schema": {
+        "classification": "transformable",
+        "evidence": "The eight observed JSON/CSV artifact paths can be parsed into auxiliary evidence after explicit unit and identity normalization."
+      },
+      "artifact_identity": {
+        "classification": "incompatible",
+        "evidence": "Identical semantic runs produced different manifest SHA-256 values because run_manifest.json embeds generated_at_utc and no immutable Strategy Package, data snapshot, environment, or runner identity."
+      },
+      "configured_output_root": {
+        "classification": "incompatible",
+        "evidence": "A real custom log_base_dir run wrote nine files then failed because aggregation read the package-relative default output root."
+      },
+      "uninstall_cleanup": {
+        "classification": "exact",
+        "evidence": "The isolated uninstall observation found neither finsaber nor backtest importable afterward."
+      }
+    },
+    "source_evidence": [
+      "backtest/toolkit/evaluation.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/toolkit/logging.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "backtest/toolkit/backtest_framework_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+      "real installed-wheel bounded two-replay tracer 2026-09-08",
+      "isolated-install-import-uninstall transcript 2026-09-08"
+    ]
   }
 }
