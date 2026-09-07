@@ -351,6 +351,21 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_023_external_benchmark_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-023.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("FactorResearchBenchmarkService", candidate["public_seam"])
+        self.assertIn("benchmark-exec", candidate["public_seam"])
+        self.assertIn("not campaign execution", candidate["evidence_level"])
+        self.assertIn("all_declared_samples", candidate["fail_closed_behavior"])
+        self.assertFalse(candidate["upstream"]["runtime_dependency"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(
             validator.ConstitutionError, "missing required declarations"
