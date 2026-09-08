@@ -3673,6 +3673,81 @@ def use_lineage(workspace):
         self.assertIn("spec030_installed_wheels", owners)
         self.assertNotIn("spec015_installed_wheels", owners)
 
+    def test_spec031_acceptance_scope_selects_replication_and_freezes_unchanged_owners(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-031.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-031")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-031",))
+        self.assertEqual(
+            scope.baseline_heads["strategy-workspace"],
+            "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+        )
+        self.assertEqual(
+            scope.baseline_heads["quant-runtime"],
+            "62ae7b00f6b31515b81760fe1d34c7f13dc36857",
+        )
+        self.assertFalse(
+            any(
+                path.startswith(("strategy-workspace/", "quant-runtime/"))
+                for path in scope.product_changed_paths
+            )
+        )
+        owners = {item.owner for item in verifier.fixture_plan(ROOT, acceptance_scope=scope)}
+        self.assertIn("spec031_installed_wheels", owners)
+        self.assertNotIn("spec030_installed_wheels", owners)
+
+    def test_spec031_guard_requires_apex_and_reporting_public_seams(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            self.assertRaisesRegex(
+                verifier.ArchitectureViolation,
+                "SPEC-031 public replication seams are incomplete",
+            ),
+        ):
+            verifier._scan_spec031_replication_seams(Path(temporary), required=True)
+
+    def test_spec031_guard_rejects_replication_decision_ownership_outside_apex(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            leaked = root / "strategy-workspace/src/strategy_workspace/replication.py"
+            leaked.parent.mkdir(parents=True)
+            leaked.write_text("class ReplicationDecision: pass\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "SPEC-031 Apex owner leaked"
+            ):
+                verifier._scan_spec031_replication_seams(root)
+
+    def test_spec031_installed_tracer_is_bounded_replayed_and_wheel_only(self) -> None:
+        script = ROOT / "tools/spec031_installed_wheel_tracer.py"
+        spec = importlib.util.spec_from_file_location("spec031_tracer", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertEqual(module.TIMEOUT_SECONDS, 240)
+        self.assertEqual(
+            module.UNCHANGED_SOURCE_BASELINES,
+            {
+                "quant-runtime": "62ae7b00f6b31515b81760fe1d34c7f13dc36857",
+                "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+            },
+        )
+        self.assertGreaterEqual(len(module.NODES), 9)
+        source = script.read_text(encoding="utf-8")
+        self.assertIn("for replay in (1, 2)", source)
+        self.assertIn('"PYTHONPATH"', source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("not_reproducible", source)
+        self.assertIn("connected_status", source)
+        self.assertNotIn("git add .", source)
+
     def test_spec020_guard_rejects_direct_qrafti_runtime_import(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

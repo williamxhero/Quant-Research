@@ -1071,6 +1071,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-030.v1.json"
         ).is_file(),
     )
+    _scan_spec031_replication_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-031.v1.json"
+        ).is_file(),
+    )
     _scan_spec024_strategy_benchmark_seams(
         repository_root,
         required=(
@@ -1778,6 +1784,122 @@ def _scan_spec030_coevolution_seams(
                 raise ArchitectureViolation(
                     f"SPEC-030 Apex owner leaked into {repository}: {path}"
                 )
+
+
+def _scan_spec031_replication_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    owner_markers = (
+        "replicationcasepublisher",
+        "replicationcomparisonservice",
+        "replicationdecision",
+        "replicationreportsource",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if any(marker in compact for marker in owner_markers):
+                raise ArchitectureViolation(
+                    f"SPEC-031 Apex owner leaked into {repository}: {path}"
+                )
+
+    apex_modules = (
+        repository_root / "apex-research/src/apex_research/replication.py",
+        repository_root
+        / "apex-research/src/apex_research/replication_orchestration.py",
+        repository_root / "apex-research/src/apex_research/replication_comparison.py",
+    )
+    reporting_modules = (
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/contracts/replication.py",
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/adapters/replication.py",
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/renderers/replication.py",
+    )
+    if not all(path.is_file() for path in (*apex_modules, *reporting_modules)):
+        if required:
+            raise ArchitectureViolation(
+                "SPEC-031 public replication seams are incomplete"
+            )
+        return
+
+    for path in apex_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "quant_runtime": "private Runtime import",
+                "strategy_reporting": "Reporting ownership",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "sqlite3": "parallel replication persistence",
+                "subprocess": "direct external execution",
+                "requests": "direct network access",
+                "httpx": "direct network access",
+                "socket": "direct network access",
+            },
+        )
+    for path in reporting_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "apex_research": "Apex owner import",
+                "quant_runtime": "Runtime owner import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "sqlite3": "parallel report persistence",
+                "subprocess": "direct execution",
+                "requests": "direct network access",
+                "httpx": "direct network access",
+                "socket": "direct network access",
+            },
+        )
+
+    apex_classes = {
+        node.name
+        for path in apex_modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+    }
+    required_apex = {
+        "ReplicationApplication",
+        "ReplicationCase",
+        "ReplicationCasePublisher",
+        "ReplicationComparisonDecision",
+        "ReplicationComparisonService",
+        "ReplicationDataMapping",
+        "ReplicationDecision",
+        "ReplicationFormalExecution",
+        "ReplicationReportSource",
+        "ReplicationResearchDesign",
+    }
+    if not required_apex <= apex_classes:
+        raise ArchitectureViolation("SPEC-031 Apex replication contract is incomplete")
+
+    reporting_classes = {
+        node.name
+        for path in reporting_modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+    }
+    if not {
+        "ReplicationReadModel",
+        "ReplicationReadModelBuilder",
+        "ReplicationStudyRenderer",
+    } <= reporting_classes:
+        raise ArchitectureViolation(
+            "SPEC-031 Reporting replication contract is incomplete"
+        )
 
 
 def _scan_spec020_qrafti_seam(repository_root: Path, *, required: bool = False) -> None:
