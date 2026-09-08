@@ -2175,6 +2175,10 @@ def _scan_spec015_qualification_seam(
         (package / "benchmark.py", "FactorResearchBenchmarkService"),
         (package / "strategy_benchmark.py", "StrategyBenchmarkService"),
         (package / "regression_gate.py", "AIResearcherRegressionGateService"),
+        (
+            package / "factor_model_coevolution.py",
+            "FactorModelCoevolutionService",
+        ),
     }
 
     def bound_names(target: ast.AST) -> set[str]:
