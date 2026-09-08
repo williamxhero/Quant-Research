@@ -29,3 +29,4 @@ docs/architecture-admissions/*
 !docs/architecture-admissions/spec-021.upstream-manifest.v1.json
 !docs/architecture-admissions/spec-023.v1.json
 !docs/architecture-admissions/spec-023.acceptance.v1.json
+!docs/architecture-admissions/spec-031.v1.json
