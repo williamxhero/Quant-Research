@@ -1,0 +1,50 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-025",
+  "baseline_heads": {
+    "apex-research": "38b8bdeb51cfb3556ad4cb20adfa3b0522dc8bfe",
+    "quant-research": "36701b0fef3d5e3f5b748404551e4dd41d9d8241",
+    "quant-runtime": "5d79104a760642ea26a95f987c4084096c91ea72",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/pyproject.toml",
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/cli.py",
+    "apex-research/src/apex_research/regression_gate.py",
+    "apex-research/tests/test_regression_gate.py",
+    "docs/architecture-admissions/spec-025.v1.json"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-025.acceptance-scope.v1.json",
+    "tools/spec025_installed_wheel_tracer.py",
+    "tools/test_spec025_installed_wheel_tracer.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-025"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020",
+    "SPEC-023",
+    "SPEC-024"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_regression_gate.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "The SPEC-025 installed tracer runs the complete public regression-gate test node twice from built wheels with source paths removed.",
+  "historical_heavy_test_exclusions": [
+    "apex-research/tests/test_factor_research_benchmark.py",
+    "apex-research/tests/test_strategy_code_benchmark.py"
+  ],
+  "historical_heavy_exclusion_reason": "SPEC-025 reads canonical SPEC-023 and SPEC-024 owner publications and is forbidden from executing either benchmark; their execution-heavy suites remain deferred to the final overall release.",
+  "external_call_budget": 0
+}

@@ -1071,6 +1071,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-024.v1.json"
         ).is_file(),
     )
+    _scan_spec025_regression_gate_seam(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-025.v1.json"
+        ).is_file(),
+    )
     admission = (
         repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     )
@@ -1112,6 +1118,100 @@ def scan_sources(repository_root: Path) -> None:
         required=constitution.is_file() or admission.is_file(),
     )
     _scan_spec015_non_owner_repositories(repository_root)
+
+
+def _scan_spec025_regression_gate_seam(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    module = (
+        repository_root
+        / "apex-research"
+        / "src"
+        / "apex_research"
+        / "regression_gate.py"
+    )
+    cli = repository_root / "apex-research" / "src" / "apex_research" / "cli.py"
+    public_exports = (
+        repository_root / "apex-research" / "src" / "apex_research" / "__init__.py"
+    )
+    if not required and not module.is_file():
+        return
+    for path in (module, cli, public_exports):
+        if not path.is_file():
+            raise ArchitectureViolation(f"apex-research: SPEC-025 public seam is missing: {path}")
+    source = module.read_text(encoding="utf-8")
+    for marker in (
+        "class AIResearcherRegressionGateService",
+        "class RegressionGatePolicy",
+        "class RegressionComparisonSnapshot",
+        "class RegressionDecision",
+        "class RegressionWaiver",
+        "class AutomationDisposition",
+        "FactorResearchBenchmarkService",
+        "StrategyBenchmarkService",
+        "WorkspaceClientProtocol",
+    ):
+        if marker not in source:
+            raise ArchitectureViolation(
+                f"apex-research: SPEC-025 lacks canonical regression seam {marker}: {module}"
+            )
+    forbidden = {
+        "apex_research.adapters": "benchmark or Runtime execution adapter",
+        "quant_runtime": "Runtime implementation",
+        "strategy_workspace.storage": "private Workspace storage",
+        "sqlite3": "second benchmark store or ledger",
+        "subprocess": "runner or benchmark execution",
+        "socket": "direct network",
+        "requests": "direct network",
+        "httpx": "direct network",
+    }
+    tree = ast.parse(source, filename=str(module))
+    _reject_spec016_forbidden_imports(tree, path=module, forbidden=forbidden)
+    for marker, reason in {
+        ".execute_sample(": "benchmark execution",
+        ".execute_benchmark(": "benchmark execution",
+        ".submit_run(": "formal execution",
+        "class RegressionStore": "second benchmark store",
+        "class RegressionRunner": "second runner",
+        "class RegressionLedger": "second ledger",
+        "EvidenceV2": "Evidence v2 masquerade",
+        "Qualification": "qualification masquerade",
+        "production_approval": "production approval authority",
+        "deployment_authority": "deployment authority",
+    }.items():
+        if marker in source:
+            raise ArchitectureViolation(
+                f"apex-research: SPEC-025 owns forbidden {reason}: {module}"
+            )
+    cli_tree = ast.parse(cli.read_text(encoding="utf-8"), filename=str(cli))
+    command = next(
+        (
+            node
+            for node in cli_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "_regression_gate_command"
+        ),
+        None,
+    )
+    if command is None:
+        raise ArchitectureViolation("apex-research: SPEC-025 strict CLI seam is missing")
+    command_source = ast.unparse(command)
+    for marker in (
+        "QuantRuntimeAdapter",
+        "execute_sample",
+        "execute_benchmark",
+        "GovernanceCoordinator",
+        "ResearchApplication",
+    ):
+        if marker in command_source:
+            raise ArchitectureViolation(
+                f"apex-research: SPEC-025 CLI invokes forbidden operation {marker}: {cli}"
+            )
+    exports = public_exports.read_text(encoding="utf-8")
+    if exports.count('"AIResearcherRegressionGateService"') != 1:
+        raise ArchitectureViolation(
+            "apex-research: SPEC-025 must expose exactly one deep regression service"
+        )
 
 
 def _scan_spec016_descriptor_seams(
