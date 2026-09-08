@@ -3793,6 +3793,18 @@ def use_lineage(workspace):
         }
         self.assertIn("spec032_installed_wheels", owners)
 
+        gates = verifier.full_gate_plan(ROOT, acceptance_scope=scope)
+        frozen_source_checks = {
+            item.repository for item in gates if item.category == "spec015-source-diff"
+        }
+        self.assertEqual(frozen_source_checks, {"strategy-workspace"})
+        root_format = next(
+            item
+            for item in gates
+            if item.owner == "quant_research" and item.category == "format"
+        )
+        self.assertIn("tools/spec032_installed_wheel_tracer.py", root_format.command)
+
     def test_spec032_guard_requires_owner_and_reporting_public_seams(self) -> None:
         with (
             tempfile.TemporaryDirectory() as temporary,
@@ -3828,6 +3840,14 @@ def use_lineage(workspace):
             {"strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"},
         )
         self.assertGreaterEqual(len(module.NODES), 9)
+        nodes = {node for _, _, node in module.NODES}
+        self.assertTrue(
+            {
+                "test_real_governance_reserves_before_stage_and_denies_without_side_effect",
+                "test_factor_and_model_decay_preserve_threshold_and_unavailable_semantics",
+            }
+            <= nodes
+        )
         source = script.read_text(encoding="utf-8")
         self.assertIn("for replay in (1, 2)", source)
         self.assertIn('"PYTHONPATH"', source)

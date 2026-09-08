@@ -462,6 +462,7 @@ def full_gate_plan(
         "tools/spec018_installed_wheel_tracer.py",
         "tools/spec019_installed_wheel_tracer.py",
         "tools/spec020_installed_wheel_tracer.py",
+        "tools/spec032_installed_wheel_tracer.py",
         "tools/test_installed_wheel_harness.py",
         "tools/test_spec015_installed_wheel_tracer.py",
         "tools/test_validate_architecture_constitution.py",
@@ -585,7 +586,10 @@ def full_gate_plan(
             f"{{dist}}/{repository}",
         )
         add(owner, repository, "diff", "git", "diff", "--check")
-        if repository in UNCHANGED_REPOSITORY_BASELINES:
+        if repository in UNCHANGED_REPOSITORY_BASELINES and (
+            acceptance_scope is None
+            or not _repository_has_product_changes(acceptance_scope, repository)
+        ):
             add(
                 owner,
                 repository,

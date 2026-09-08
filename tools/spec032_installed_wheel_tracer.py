@@ -65,7 +65,17 @@ NODES = (
     (
         "apex-research",
         "tests/test_revalidation.py",
+        "test_real_governance_reserves_before_stage_and_denies_without_side_effect",
+    ),
+    (
+        "apex-research",
+        "tests/test_revalidation.py",
         "test_strategy_decay_uses_only_comparable_formal_owner_facts",
+    ),
+    (
+        "apex-research",
+        "tests/test_revalidation.py",
+        "test_factor_and_model_decay_preserve_threshold_and_unavailable_semantics",
     ),
     (
         "apex-research",
@@ -292,6 +302,7 @@ def smoke(_root: Path) -> dict[str, Any]:
         due_after_seconds=10,
         stale_after_seconds=20,
         new_sample_threshold=2,
+        allow_due_in_active_archive=True,
         required_triggers=(RevalidationTrigger.ELAPSED_TIME,),
     )
     policy_service = RevalidationPolicyService(workspace)
@@ -449,14 +460,14 @@ def smoke(_root: Path) -> dict[str, Any]:
                 evidence=current_evidence,
                 currency_source=currency.ref(),
                 currency=currency.currency,
-                policy_overdue=False,
+                active_eligibility="eligible",
                 reason="within stale threshold",
             ),
             EvidenceCurrencyBinding(
                 evidence=stale_evidence,
                 currency_source=currency.ref(),
                 currency=CurrencyStatus.STALE,
-                policy_overdue=True,
+                active_eligibility="excluded",
                 reason="overdue historical Evidence",
             ),
         ),
