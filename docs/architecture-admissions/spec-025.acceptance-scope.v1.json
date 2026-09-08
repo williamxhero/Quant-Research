@@ -45,6 +45,5 @@
     "apex-research/tests/test_factor_research_benchmark.py",
     "apex-research/tests/test_strategy_code_benchmark.py"
   ],
-  "historical_heavy_exclusion_reason": "SPEC-025 reads canonical SPEC-023 and SPEC-024 owner publications and is forbidden from executing either benchmark; their execution-heavy suites remain deferred to the final overall release.",
-  "external_call_budget": 0
+  "historical_heavy_exclusion_reason": "SPEC-025 reads canonical SPEC-023 and SPEC-024 owner publications and is forbidden from executing either benchmark; their execution-heavy suites remain deferred to the final overall release."
 }

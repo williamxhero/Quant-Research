@@ -163,12 +163,25 @@ def run(repositories: dict[str, Path]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repository-root", type=Path)
     for name in REPOSITORIES:
-        parser.add_argument(f"--{name}", type=Path, required=True)
+        parser.add_argument(f"--{name}", type=Path)
     arguments = parser.parse_args(argv)
-    repositories = {
-        name: getattr(arguments, name.replace("-", "_")).resolve() for name in REPOSITORIES
+    explicit = {
+        name: getattr(arguments, name.replace("-", "_")) for name in REPOSITORIES
     }
+    if arguments.repository_root is not None:
+        if any(path is not None for path in explicit.values()):
+            parser.error("--repository-root cannot be combined with per-repository paths")
+        repository_root = arguments.repository_root.resolve()
+        repositories = {name: repository_root / name for name in REPOSITORIES}
+    else:
+        missing = [name for name, path in explicit.items() if path is None]
+        if missing:
+            parser.error(
+                "either --repository-root or every per-repository path is required"
+            )
+        repositories = {name: path.resolve() for name, path in explicit.items() if path}
     try:
         result = run(repositories)
     except (OSError, TracerFailure, ValueError, subprocess.SubprocessError) as exc:

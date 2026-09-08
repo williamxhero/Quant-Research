@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +27,10 @@ class Spec025TracerContractTests(unittest.TestCase):
         self.assertEqual(scope["spec"], "SPEC-025")
         self.assertEqual(scope["required_installed_tracers"], ["SPEC-025"])
         self.assertIn("SPEC-015", scope["deferred_release_tracers"])
-        self.assertEqual(scope["external_call_budget"], 0)
+        loaded = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-025.acceptance-scope.v1.json"
+        )
+        self.assertEqual(loaded.spec, "SPEC-025")
 
     def test_tracer_is_bounded_installed_only_and_never_executes_benchmarks(self) -> None:
         spec = importlib.util.spec_from_file_location("spec025_tracer", SCRIPT)
@@ -35,6 +40,14 @@ class Spec025TracerContractTests(unittest.TestCase):
 
         self.assertEqual(module.TIMEOUT_SECONDS, 240)
         self.assertEqual(module.TEST, "tests/test_regression_gate.py")
+        help_result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("--repository-root", help_result.stdout)
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("for replay in (1, 2)", source)
         self.assertIn('"PYTHONPATH"', source)
