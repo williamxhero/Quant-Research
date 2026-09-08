@@ -6,5 +6,6 @@
 !AGENTS.md
 !docs/
 docs/*
+!docs/README.md
 !docs/agents/
 !docs/agents/*.md

@@ -11,6 +11,11 @@
 
 - 多 provider/本地缓存计算出来的，不应在 QuoteMux core 暗算；如果确实要保留，应建明确的 source package，例如 derived_core，并在 capability 上标明它是派生 provider。
 
+## 文档归档
+
+- 在 `docs/` 新建、生成或迁入文件前，先阅读并遵守 `docs/README.md` 的分类规则；`docs/` 根目录只放该索引。
+- 尚未立项、未承诺实施的个人设想统一放入 `docs/future-ideas/`，不得混入当前架构、设计或实施计划。
+
 ## Git 提交约束
 
 本目录下的 `MarketHub`、`QuoteMux`、`QuoteMux_Packages` 三个 Git 仓库都遵守以下规则：
