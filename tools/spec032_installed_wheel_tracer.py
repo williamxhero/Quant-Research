@@ -199,6 +199,7 @@ def smoke(_root: Path) -> dict[str, Any]:
     import strategy_workspace
     from apex_research import (
         CurrencyAwareEvidenceArchiveView,
+        CurrencyStatus,
         DecayCandidateKind,
         DecayEvaluator,
         DecayObservation,
@@ -454,7 +455,7 @@ def smoke(_root: Path) -> dict[str, Any]:
             EvidenceCurrencyBinding(
                 evidence=stale_evidence,
                 currency_source=currency.ref(),
-                currency="stale",
+                currency=CurrencyStatus.STALE,
                 policy_overdue=True,
                 reason="overdue historical Evidence",
             ),
