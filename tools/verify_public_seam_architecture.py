@@ -2080,6 +2080,11 @@ def _scan_spec015_qualification_seam(
         "QualificationService",
         "QualificationState",
     }
+    admitted_non_qualification_policy_owners = {
+        (package / "benchmark.py", "FactorResearchBenchmarkService"),
+        (package / "strategy_benchmark.py", "StrategyBenchmarkService"),
+        (package / "regression_gate.py", "AIResearcherRegressionGateService"),
+    }
 
     def bound_names(target: ast.AST) -> set[str]:
         if isinstance(target, ast.Name):
@@ -2173,6 +2178,7 @@ def _scan_spec015_qualification_seam(
                 )
                 alternative_owner = (
                     bool(methods & SPEC015_OWNER_METHODS)
+                    and (path, node.name) not in admitted_non_qualification_policy_owners
                     or inherited_owner
                     or (
                         "Qualification" in node.name
@@ -2251,7 +2257,11 @@ def _scan_spec015_qualification_seam(
                 id(item)
                 for candidate in tree.body
                 if isinstance(candidate, ast.ClassDef)
-                and candidate.name == "QualificationService"
+                and (
+                    candidate.name == "QualificationService"
+                    or (path, candidate.name)
+                    in admitted_non_qualification_policy_owners
+                )
                 for item in candidate.body
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
             }
