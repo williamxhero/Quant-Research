@@ -3804,6 +3804,7 @@ def use_lineage(workspace):
             if item.owner == "quant_research" and item.category == "format"
         )
         self.assertIn("tools/spec032_installed_wheel_tracer.py", root_format.command)
+        verifier._scan_spec015_qualification_seam(ROOT / "apex-research")
 
     def test_spec032_guard_requires_owner_and_reporting_public_seams(self) -> None:
         with (

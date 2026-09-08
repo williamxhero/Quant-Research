@@ -2444,6 +2444,7 @@ def _scan_spec015_qualification_seam(
             package / "factor_model_coevolution.py",
             "FactorModelCoevolutionService",
         ),
+        (package / "revalidation.py", "RevalidationPolicyService"),
     }
 
     def bound_names(target: ast.AST) -> set[str]:
