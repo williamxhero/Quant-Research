@@ -55,6 +55,11 @@ NODES = (
         "test_governed_discovery_publishes_request_before_runtime_and_reads_owner_result",
     ),
     (
+        "apex-research",
+        "tests/test_factor_model_discovery.py",
+        "test_verified_training_outcome_materializes_artifact_bearing_model_proposal",
+    ),
+    (
         "quant-runtime",
         "tests/test_candidate_discovery_cli.py",
         "test_candidate_discovery_cli_calculates_factor_from_frozen_bytes",
