@@ -134,6 +134,17 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("runner policy", candidate["identity_impact"])
         self.assertIn("zero launch", candidate["fail_closed_behavior"])
 
+    def test_spec_025_regression_gate_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-025.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("AIResearcherRegressionGateService", candidate["public_seam"])
+        self.assertIn("benchmark governance", candidate["evidence_level"])
+        self.assertIn("zero benchmark execution", candidate["fail_closed_behavior"])
+
     def test_spec_007_research_engine_port_admission_is_valid(self) -> None:
         candidate = validator.read_json(
             ROOT / "docs" / "architecture-admissions" / "spec-007.v1.json"
