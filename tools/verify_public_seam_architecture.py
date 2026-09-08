@@ -516,6 +516,16 @@ def full_gate_plan(
         ("apex_research", "apex-research", ("--group", "dev")),
         ("strategy_reporting", "strategy-reporting", ("--extra", "dev")),
     ):
+        impacted_python = (
+            tuple(
+                path.removeprefix(f"{repository}/")
+                for path in acceptance_scope.product_changed_paths
+                if path.startswith(f"{repository}/") and path.endswith(".py")
+            )
+            if acceptance_scope is not None and historical_mode == "impacted"
+            else ()
+        )
+        static_targets = impacted_python or (".",)
         add(
             owner,
             repository,
@@ -527,11 +537,21 @@ def full_gate_plan(
             "ruff",
             "format",
             "--check",
-            ".",
+            *static_targets,
             baseline_only=owner
             in {"strategy_workspace", "quant_runtime", "strategy_reporting"},
         )
-        add(owner, repository, "lint", "uv", "run", *dev_switch, "ruff", "check", ".")
+        add(
+            owner,
+            repository,
+            "lint",
+            "uv",
+            "run",
+            *dev_switch,
+            "ruff",
+            "check",
+            *static_targets,
+        )
         if owner in {"apex_research", "strategy_reporting"}:
             add(owner, repository, "typing", "uv", "run", *dev_switch, "mypy")
         use_public_compatibility_slice = (
