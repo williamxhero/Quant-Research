@@ -1,0 +1,44 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-026A",
+  "baseline_heads": {
+    "apex-research": "30d88ebbc4ff8fb2ebafea5aa343b1fb4d25419d",
+    "quant-research": "aa7a501db61ada154d1fda35a14f894ce5436662",
+    "quant-runtime": "72a1dfec6ebdbe132e7359afc61ed9ca07dd15e4",
+    "strategy-reporting": "087ae2be9a0e0b7c04eef5e4dee4c735e5a6a082",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/campaign_report_source.py",
+    "apex-research/tests/test_campaign_report_source.py",
+    "docs/architecture-admissions/spec-026a.v1.json"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-026a.acceptance-scope.v1.json",
+    "tools/spec026a_installed_wheel_tracer.py",
+    "tools/test_spec026a_acceptance.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-026A"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020",
+    "SPEC-023",
+    "SPEC-024",
+    "SPEC-025",
+    "SPEC-030",
+    "SPEC-031",
+    "SPEC-032"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_campaign_report_source.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-026A tracer runs the public campaign source contract, deterministic graph assembly, current Evidence and qualification selection, budget and archive interpretation, immutable publication and backfill twice from built non-editable wheels with source roots excluded."
+}
