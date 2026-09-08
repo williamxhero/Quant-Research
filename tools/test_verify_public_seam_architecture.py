@@ -3647,6 +3647,32 @@ def use_lineage(workspace):
         self.assertIsNone(manifest["oci"]["final_image_digest"])
         self.assertIs(manifest["connected_test"]["fixture_substitution"], False)
 
+    def test_spec030_acceptance_scope_selects_coevolution_and_defers_history(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-030.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-030")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-030",))
+        self.assertEqual(
+            scope.deferred_release_tracers,
+            (
+                "SPEC-014",
+                "SPEC-015",
+                "SPEC-016",
+                "SPEC-017",
+                "SPEC-018",
+                "SPEC-019",
+                "SPEC-020",
+            ),
+        )
+        plan = verifier.fixture_plan(ROOT, acceptance_scope=scope)
+        owners = {item.owner for item in plan}
+        self.assertIn("spec030_installed_wheels", owners)
+        self.assertNotIn("spec015_installed_wheels", owners)
+
     def test_spec020_guard_rejects_direct_qrafti_runtime_import(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

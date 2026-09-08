@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
+HARNESS_SPEC = importlib.util.spec_from_file_location(
+    "installed_wheel_harness", HARNESS_PATH
+)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -104,7 +106,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
+            HARNESS.snapshot_repository(
+                path, snapshot / name, topology[name]["source_files"]
+            )
         wheels = HARNESS.build_wheels(snapshot, REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -133,7 +137,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     str(python),
                     "-I",
                     "-B",
-                    str(snapshot / "quant-research/tools/spec030_installed_wheel_tracer.py"),
+                    str(
+                        snapshot
+                        / "quant-research/tools/spec030_installed_wheel_tracer.py"
+                    ),
                     "--repository-root",
                     str(snapshot),
                     "--smoke-root",
@@ -145,7 +152,9 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             )
             smoke_results.append(json.loads(output))
         if smoke_results[0] != smoke_results[1]:
-            raise TracerFailure("SPEC-030 installed identity transcript drifted on replay")
+            raise TracerFailure(
+                "SPEC-030 installed identity transcript drifted on replay"
+            )
         return {
             **smoke_results[0],
             "nodes": len(NODES),
