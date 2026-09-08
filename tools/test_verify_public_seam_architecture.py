@@ -3696,7 +3696,9 @@ def use_lineage(workspace):
                 for path in scope.product_changed_paths
             )
         )
-        owners = {item.owner for item in verifier.fixture_plan(ROOT, acceptance_scope=scope)}
+        owners = {
+            item.owner for item in verifier.fixture_plan(ROOT, acceptance_scope=scope)
+        }
         self.assertIn("spec031_installed_wheels", owners)
         self.assertNotIn("spec030_installed_wheels", owners)
 
@@ -3759,6 +3761,79 @@ def use_lineage(workspace):
         self.assertIn("run_installed_pytest", source)
         self.assertIn("not_reproducible", source)
         self.assertIn("connected_status", source)
+        self.assertNotIn("git add .", source)
+
+    def test_spec032_acceptance_scope_selects_revalidation_and_freezes_owner_bounds(
+        self,
+    ) -> None:
+        scope = verifier.load_acceptance_scope(
+            ROOT / "docs/architecture-admissions/spec-032.acceptance-scope.v1.json"
+        )
+
+        self.assertEqual(scope.spec, "SPEC-032")
+        self.assertEqual(scope.required_installed_tracers, ("SPEC-032",))
+        self.assertEqual(
+            scope.baseline_heads,
+            {
+                "apex-research": "c6c036e1e88a9076d0fc6e5a14e0e72bf4337a06",
+                "quant-research": "23217b4df202fbeac2d9670238ec6705fc4e1332",
+                "quant-runtime": "62ae7b00f6b31515b81760fe1d34c7f13dc36857",
+                "strategy-reporting": "689417371d4128066d0c46586125df09f59516b5",
+                "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+            },
+        )
+        self.assertFalse(
+            any(
+                path.startswith("strategy-workspace/")
+                for path in scope.product_changed_paths
+            )
+        )
+        owners = {
+            item.owner for item in verifier.fixture_plan(ROOT, acceptance_scope=scope)
+        }
+        self.assertIn("spec032_installed_wheels", owners)
+
+    def test_spec032_guard_requires_owner_and_reporting_public_seams(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            self.assertRaisesRegex(
+                verifier.ArchitectureViolation,
+                "SPEC-032 public revalidation seams are incomplete",
+            ),
+        ):
+            verifier._scan_spec032_revalidation_seams(Path(temporary), required=True)
+
+    def test_spec032_guard_rejects_currency_ownership_outside_apex(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            leaked = root / "strategy-workspace/src/strategy_workspace/revalidation.py"
+            leaked.parent.mkdir(parents=True)
+            leaked.write_text("class CurrencyEvaluation: pass\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "SPEC-032 Apex owner leaked"
+            ):
+                verifier._scan_spec032_revalidation_seams(root)
+
+    def test_spec032_installed_tracer_is_bounded_replayed_and_wheel_only(self) -> None:
+        script = ROOT / "tools/spec032_installed_wheel_tracer.py"
+        spec = importlib.util.spec_from_file_location("spec032_tracer", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertEqual(module.TIMEOUT_SECONDS, 240)
+        self.assertEqual(
+            module.UNCHANGED_SOURCE_BASELINES,
+            {"strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"},
+        )
+        self.assertGreaterEqual(len(module.NODES), 9)
+        source = script.read_text(encoding="utf-8")
+        self.assertIn("for replay in (1, 2)", source)
+        self.assertIn('"PYTHONPATH"', source)
+        self.assertIn("run_installed_pytest", source)
+        self.assertIn("connected_status", source)
+        self.assertIn("active_entries", source)
         self.assertNotIn("git add .", source)
 
     def test_spec020_guard_rejects_direct_qrafti_runtime_import(self) -> None:

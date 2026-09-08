@@ -405,6 +405,25 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_032_revalidation_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-032.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("RevalidationPolicyService", candidate["public_seam"])
+        self.assertIn(
+            "Strategy Reporting strict revalidation", candidate["public_seam"]
+        )
+        self.assertIn("maturity remains a separate", candidate["evidence_level"])
+        self.assertIn("durably reserve budget", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(
+            candidate["lifecycle_states"],
+            ["current", "revalidation_due", "stale", "superseded", "invalidated"],
+        )
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(
             validator.ConstitutionError, "missing required declarations"

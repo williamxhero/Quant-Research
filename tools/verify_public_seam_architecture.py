@@ -1077,6 +1077,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-031.v1.json"
         ).is_file(),
     )
+    _scan_spec032_revalidation_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-032.v1.json"
+        ).is_file(),
+    )
     _scan_spec024_strategy_benchmark_seams(
         repository_root,
         required=(
@@ -1150,7 +1156,9 @@ def _scan_spec025_regression_gate_seam(
         return
     for path in (module, cli, public_exports):
         if not path.is_file():
-            raise ArchitectureViolation(f"apex-research: SPEC-025 public seam is missing: {path}")
+            raise ArchitectureViolation(
+                f"apex-research: SPEC-025 public seam is missing: {path}"
+            )
     source = module.read_text(encoding="utf-8")
     for marker in (
         "class AIResearcherRegressionGateService",
@@ -1206,7 +1214,9 @@ def _scan_spec025_regression_gate_seam(
         None,
     )
     if command is None:
-        raise ArchitectureViolation("apex-research: SPEC-025 strict CLI seam is missing")
+        raise ArchitectureViolation(
+            "apex-research: SPEC-025 strict CLI seam is missing"
+        )
     command_source = ast.unparse(command)
     for marker in (
         "QuantRuntimeAdapter",
@@ -1711,7 +1721,9 @@ def _scan_spec030_coevolution_seams(
     runtime = repository_root / "quant-runtime/src/quant_runtime/candidate_discovery.py"
     if not all(path.is_file() for path in (*apex_modules, runtime)):
         if required:
-            raise ArchitectureViolation("SPEC-030 public co-evolution seams are incomplete")
+            raise ArchitectureViolation(
+                "SPEC-030 public co-evolution seams are incomplete"
+            )
         return
     for path in apex_modules:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -1893,14 +1905,140 @@ def _scan_spec031_replication_seams(
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.ClassDef)
     }
-    if not {
-        "ReplicationReadModel",
-        "ReplicationReadModelBuilder",
-        "ReplicationStudyRenderer",
-    } <= reporting_classes:
+    if (
+        not {
+            "ReplicationReadModel",
+            "ReplicationReadModelBuilder",
+            "ReplicationStudyRenderer",
+        }
+        <= reporting_classes
+    ):
         raise ArchitectureViolation(
             "SPEC-031 Reporting replication contract is incomplete"
         )
+
+
+def _scan_spec032_revalidation_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    owner_markers = (
+        "currencyevaluation",
+        "decayevaluator",
+        "revalidationclosure",
+        "revalidationpolicyservice",
+    )
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("quant-runtime", "quant_runtime"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if any(marker in compact for marker in owner_markers):
+                raise ArchitectureViolation(
+                    f"SPEC-032 Apex owner leaked into {repository}: {path}"
+                )
+
+    apex_modules = (
+        repository_root / "apex-research/src/apex_research/revalidation.py",
+        repository_root / "apex-research/src/apex_research/qualification.py",
+        repository_root
+        / "apex-research/src/apex_research/quality_diversity_archives.py",
+    )
+    runtime_module = repository_root / "quant-runtime/src/quant_runtime/preflight.py"
+    reporting_modules = (
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/contracts/revalidation.py",
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/adapters/revalidation.py",
+        repository_root
+        / "strategy-reporting/src/strategy_reporting/renderers/revalidation.py",
+    )
+    required_modules = (*apex_modules, runtime_module, *reporting_modules)
+    if not all(path.is_file() for path in required_modules):
+        if required:
+            raise ArchitectureViolation(
+                "SPEC-032 public revalidation seams are incomplete"
+            )
+        return
+
+    for path in apex_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "quant_runtime": "private Runtime import",
+                "strategy_reporting": "Reporting ownership",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "sqlite3": "parallel revalidation persistence",
+                "subprocess": "direct side effect",
+                "requests": "direct network access",
+                "httpx": "direct network access",
+                "socket": "direct network access",
+            },
+        )
+    for path in reporting_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "apex_research": "Apex owner import",
+                "quant_runtime": "Runtime owner import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "sqlite3": "parallel report persistence",
+                "subprocess": "direct execution",
+                "requests": "direct network access",
+                "httpx": "direct network access",
+                "socket": "direct network access",
+            },
+        )
+
+    apex_classes = {
+        node.name
+        for path in apex_modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+    }
+    if (
+        not {
+            "CurrencyAwareEvidenceArchiveView",
+            "CurrencyEvaluation",
+            "DecayEvaluator",
+            "RevalidationClosure",
+            "RevalidationEvidencePublisher",
+            "RevalidationPlan",
+            "RevalidationPolicyService",
+            "RevalidationService",
+        }
+        <= apex_classes
+    ):
+        raise ArchitectureViolation("SPEC-032 Apex revalidation contract is incomplete")
+    runtime_source = runtime_module.read_text(encoding="utf-8")
+    if "quant-runtime.data-change-observation.v1" not in runtime_source:
+        raise ArchitectureViolation(
+            "SPEC-032 Runtime observation contract is incomplete"
+        )
+    reporting_classes = {
+        node.name
+        for path in reporting_modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+    }
+    if (
+        not {
+            "RevalidationReadModel",
+            "RevalidationReadModelBuilder",
+            "RevalidationRenderer",
+        }
+        <= reporting_classes
+    ):
+        raise ArchitectureViolation("SPEC-032 Reporting contract is incomplete")
 
 
 def _scan_spec020_qrafti_seam(repository_root: Path, *, required: bool = False) -> None:
@@ -2396,7 +2534,8 @@ def _scan_spec015_qualification_seam(
                 )
                 alternative_owner = (
                     bool(methods & SPEC015_OWNER_METHODS)
-                    and (path, node.name) not in admitted_non_qualification_policy_owners
+                    and (path, node.name)
+                    not in admitted_non_qualification_policy_owners
                     or inherited_owner
                     or (
                         "Qualification" in node.name
@@ -6768,14 +6907,19 @@ def _scan_spec024_strategy_benchmark_seams(
         for module in runtime_imports
         for forbidden in forbidden_runtime_imports
     ):
-        raise ArchitectureViolation("quant-runtime: SPEC-024 transport crosses an owner boundary")
+        raise ArchitectureViolation(
+            "quant-runtime: SPEC-024 transport crosses an owner boundary"
+        )
     runtime_calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
         for node in ast.walk(runtime_tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Attribute, ast.Name))
     }
     if {"submit_run", "preflight", "score"} & runtime_calls:
-        raise ArchitectureViolation("quant-runtime: SPEC-024 transport owns forbidden semantics")
+        raise ArchitectureViolation(
+            "quant-runtime: SPEC-024 transport owns forbidden semantics"
+        )
     for marker in (
         "class BenchmarkExecutionService",
         '"strategy_event_trace"',
