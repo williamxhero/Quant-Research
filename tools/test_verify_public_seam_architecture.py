@@ -3740,6 +3740,19 @@ def use_lineage(workspace):
             },
         )
         self.assertGreaterEqual(len(module.NODES), 9)
+        nodes = {node for _, _, node in module.NODES}
+        self.assertTrue(
+            {
+                "test_replication_identity_mutates_each_meaning_bearing_dimension",
+                "test_prerequisite_ledger_preserves_every_decisive_gap",
+                "test_candidate_lane_rejection_publishes_exact_observation_and_stops",
+                "test_formal_execution_rejects_incompatible_owner_facts",
+                "test_runtime_composer_binds_exact_lineage_data_costs_metrics_and_artifacts",
+                "test_comparison_dimensions_are_the_closed_specification_set",
+                "test_render_study_cli_dispatches_each_closed_replication_outcome",
+            }
+            <= nodes
+        )
         source = script.read_text(encoding="utf-8")
         self.assertIn("for replay in (1, 2)", source)
         self.assertIn('"PYTHONPATH"', source)

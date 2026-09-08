@@ -1875,6 +1875,7 @@ def _scan_spec031_replication_seams(
         "ReplicationApplication",
         "ReplicationCase",
         "ReplicationCasePublisher",
+        "ReplicationCandidateLaneObservation",
         "ReplicationComparisonDecision",
         "ReplicationComparisonService",
         "ReplicationDataMapping",

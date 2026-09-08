@@ -57,17 +57,17 @@
     "SPEC-030"
   ],
   "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_evidence_v2.py",
     "apex-research/tests/test_replication_candidate_lane.py",
     "apex-research/tests/test_replication_comparison.py",
     "apex-research/tests/test_replication_fail_closed.py",
     "apex-research/tests/test_replication_formal_execution.py",
     "apex-research/tests/test_replication_policy.py"
   ],
-  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-031 tracer runs the canonical case, closed ambiguity classes, original-versus-available data mapping, typed Candidate admission, zero-side-effect not_reproducible decision, formal attachment, closed comparison outcomes and strict Reporting nodes twice from built wheels with bounded per-node timeouts.",
+  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-031 tracer runs the canonical case, closed ambiguity classes, original-versus-available data mapping, typed Candidate admission, zero-side-effect not_reproducible decision, exact Evidence v2 Runtime lineage/data/cost/artifact composition, formal attachment, closed comparison outcomes and strict Reporting nodes twice from built wheels with bounded per-node timeouts.",
   "historical_heavy_test_exclusions": [
     "apex-research/tests/test_behavior_descriptors.py",
     "apex-research/tests/test_empirical_research.py",
-    "apex-research/tests/test_evidence_v2.py",
     "apex-research/tests/test_evolution_research.py",
     "apex-research/tests/test_factor_model_coevolution.py",
     "apex-research/tests/test_factor_model_descendants.py",

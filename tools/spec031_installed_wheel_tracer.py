@@ -60,8 +60,18 @@ NODES = (
     ),
     (
         "apex-research",
+        "tests/test_replication_policy.py",
+        "test_replication_identity_mutates_each_meaning_bearing_dimension",
+    ),
+    (
+        "apex-research",
         "tests/test_replication_fail_closed.py",
         "test_non_executable_replication_finishes_with_design_and_zero_formal_side_effects",
+    ),
+    (
+        "apex-research",
+        "tests/test_replication_fail_closed.py",
+        "test_prerequisite_ledger_preserves_every_decisive_gap",
     ),
     (
         "apex-research",
@@ -70,8 +80,23 @@ NODES = (
     ),
     (
         "apex-research",
+        "tests/test_replication_candidate_lane.py",
+        "test_candidate_lane_rejection_publishes_exact_observation_and_stops",
+    ),
+    (
+        "apex-research",
         "tests/test_replication_formal_execution.py",
         "test_formal_execution_attaches_identity_equivalent_completion_on_replay",
+    ),
+    (
+        "apex-research",
+        "tests/test_replication_formal_execution.py",
+        "test_formal_execution_rejects_incompatible_owner_facts",
+    ),
+    (
+        "apex-research",
+        "tests/test_evidence_v2.py",
+        "test_runtime_composer_binds_exact_lineage_data_costs_metrics_and_artifacts",
     ),
     (
         "apex-research",
@@ -82,6 +107,11 @@ NODES = (
         "apex-research",
         "tests/test_replication_comparison.py",
         "test_comparison_publishes_apex_decision_and_report_source_without_empirical_call",
+    ),
+    (
+        "apex-research",
+        "tests/test_replication_comparison.py",
+        "test_comparison_dimensions_are_the_closed_specification_set",
     ),
     (
         "strategy-reporting",
@@ -97,6 +127,11 @@ NODES = (
         "strategy-reporting",
         "tests/test_replication_reporting.py",
         "test_render_study_cli_adds_replication_subject_without_changing_legacy_flag",
+    ),
+    (
+        "strategy-reporting",
+        "tests/test_replication_reporting.py",
+        "test_render_study_cli_dispatches_each_closed_replication_outcome",
     ),
 )
 
