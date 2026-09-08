@@ -35,11 +35,16 @@ NODES = (
     "test_service_selects_current_owner_facts_and_keeps_archives_distinct",
     "test_service_places_coevolution_in_iterations",
     "test_service_ignores_stale_and_superseded_currency_and_selects_revalidated",
+    "test_service_does_not_present_revalidation_due_as_current",
     "test_service_rejects_missing_current_owner_reference",
+    "test_service_rejects_unknown_descendant_schema",
     "test_service_rejects_identity_mismatch_and_cycles",
+    "test_service_rejects_pagination_drift_reuse_and_overflow",
     "test_service_rejects_conflicting_current_currency_owner_facts",
     "test_service_publishes_reads_and_backfills_one_immutable_source",
     "test_service_marks_incomplete_terminal_campaigns_honestly",
+    "test_branch_failure_does_not_make_unrelated_sections_unavailable",
+    "test_service_rejects_duplicate_budget_reservation_owner_facts",
 )
 
 
