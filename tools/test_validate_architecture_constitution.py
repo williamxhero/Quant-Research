@@ -377,6 +377,20 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
+    def test_spec_030_factor_model_coevolution_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-030.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "apex_research")
+        self.assertIn("FactorModelCoevolutionService", candidate["public_seam"])
+        self.assertIn("candidate-discovery CLI", candidate["public_seam"])
+        self.assertIn("discovery remains non-formal", candidate["evidence_level"])
+        self.assertIn("arbitrary Python", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
         with self.assertRaisesRegex(
             validator.ConstitutionError, "missing required declarations"

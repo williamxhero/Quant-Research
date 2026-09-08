@@ -1065,6 +1065,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
         ).is_file(),
     )
+    _scan_spec030_coevolution_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-030.v1.json"
+        ).is_file(),
+    )
     _scan_spec024_strategy_benchmark_seams(
         repository_root,
         required=(
@@ -1686,6 +1692,91 @@ def _scan_spec019_empirical_seams(
             if any(marker in compact for marker in markers):
                 raise ArchitectureViolation(
                     f"SPEC-019 empirical owner leaked into {repository}: {path}"
+                )
+
+
+def _scan_spec030_coevolution_seams(
+    repository_root: Path, *, required: bool = False
+) -> None:
+    apex_modules = (
+        repository_root / "apex-research/src/apex_research/factor_model_coevolution.py",
+        repository_root / "apex-research/src/apex_research/factor_model_discovery.py",
+    )
+    runtime = repository_root / "quant-runtime/src/quant_runtime/candidate_discovery.py"
+    if not all(path.is_file() for path in (*apex_modules, runtime)):
+        if required:
+            raise ArchitectureViolation("SPEC-030 public co-evolution seams are incomplete")
+        return
+    for path in apex_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        _reject_spec016_forbidden_imports(
+            tree,
+            path=path,
+            forbidden={
+                "quant_runtime": "private Runtime import",
+                "strategy_workspace.storage": "private Workspace storage",
+                "strategy_workspace.core": "private Workspace storage",
+                "sqlite3": "parallel co-evolution persistence",
+                "subprocess": "direct external execution",
+                "requests": "direct network access",
+                "httpx": "direct network access",
+                "socket": "direct network access",
+            },
+        )
+    runtime_tree = ast.parse(runtime.read_text(encoding="utf-8"), filename=str(runtime))
+    _reject_spec016_forbidden_imports(
+        runtime_tree,
+        path=runtime,
+        forbidden={
+            "apex_research": "Apex Candidate schema import",
+            "sqlite3": "parallel discovery persistence",
+            "subprocess": "arbitrary executable discovery",
+            "requests": "alternate data access",
+            "httpx": "alternate data access",
+            "socket": "alternate data access",
+        },
+    )
+    apex_classes = {
+        node.name
+        for path in apex_modules
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+    }
+    required_apex = {
+        "FactorModelCoevolutionService",
+        "FactorModelDiscoveryPort",
+        "FactorModelDiscoveryService",
+        "CoevolutionPolicy",
+        "CoevolutionGenerationPlan",
+        "CoevolutionFrontier",
+        "CoevolutionRecoveryState",
+    }
+    if not required_apex <= apex_classes:
+        raise ArchitectureViolation("SPEC-030 Apex co-evolution contract is incomplete")
+    runtime_classes = {
+        node.name for node in ast.walk(runtime_tree) if isinstance(node, ast.ClassDef)
+    }
+    if "CandidateDiscoveryService" not in runtime_classes:
+        raise ArchitectureViolation("SPEC-030 Runtime discovery contract is incomplete")
+    runtime_source = runtime.read_text(encoding="utf-8")
+    for forbidden in ("entrypoint", "module_path", "exec(", "eval("):
+        if forbidden in runtime_source:
+            raise ArchitectureViolation(
+                f"SPEC-030 Runtime discovery exposes executable input: {forbidden}"
+            )
+    markers = ("factormodelcoevolutionservice", "factormodeldiscoveryservice")
+    for repository, package in (
+        ("strategy-workspace", "strategy_workspace"),
+        ("strategy-reporting", "strategy_reporting"),
+    ):
+        source_root = repository_root / repository / "src" / package
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if any(marker in compact for marker in markers):
+                raise ArchitectureViolation(
+                    f"SPEC-030 Apex owner leaked into {repository}: {path}"
                 )
 
 
