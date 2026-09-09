@@ -18,6 +18,26 @@ SPEC.loader.exec_module(verifier)
 
 
 class PublicSeamArchitectureTests(unittest.TestCase):
+    def test_reporting_self_cli_installed_test_is_not_an_upstream_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = (
+                root
+                / "strategy-reporting/src/strategy_reporting/_campaign_installed_test.py"
+            )
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "import subprocess\nsubprocess.run(['strategy-reporting'])\n",
+                encoding="utf-8",
+            )
+            verifier.scan_sources(root)
+
+            source.rename(source.with_name("production.py"))
+            with self.assertRaisesRegex(
+                verifier.ArchitectureViolation, "must not invoke upstream tools"
+            ):
+                verifier.scan_sources(root)
+
     def test_spec016_guard_requires_apex_owner_and_reporting_read_model_seams(
         self,
     ) -> None:

@@ -1164,6 +1164,12 @@ def scan_sources(repository_root: Path) -> None:
                     and path.as_posix().endswith("external_runner/recovery.py")
                 ):
                     continue
+                if (
+                    repository == "strategy-reporting"
+                    and forbidden == "subprocess"
+                    and path.name == "_campaign_installed_test.py"
+                ):
+                    continue
                 if _ast_rule_present(tree, forbidden):
                     raise ArchitectureViolation(f"{repository}: {reason}: {path}")
     _scan_apex_governance_seams(
