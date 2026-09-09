@@ -99,6 +99,16 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                 timeout_seconds=1,
             )
 
+    def test_run_command_decodes_all_tool_output_as_utf8(self) -> None:
+        output = harness.run_command(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write('验收'.encode())"],
+            cwd=Path.cwd(),
+            environment=dict(os.environ),
+            timeout_seconds=10,
+        )
+
+        self.assertEqual(output, "验收")
+
     def test_source_visibility_detects_paths_below_or_above_source_root(self) -> None:
         source = Path("C:/workspace/package/src").resolve()
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.metadata
 import inspect
@@ -14,11 +15,10 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
-
-import tomllib
 
 _COMMAND_LOCK = threading.Lock()
 
@@ -81,7 +81,8 @@ def _run_command(
             cwd=cwd,
             env=environment,
             text=True,
-            encoding="utf-8" if Path(command[0]).stem.lower() == "git" else None,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=creationflags,
@@ -294,10 +295,8 @@ def _terminate_process_tree(
         process_start_time is not None
         and _posix_process_map().get(process.pid, (None, None))[1] == process_start_time
     ):
-        try:
+        with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
     for pid, start_time in (descendant_pids or {}).items():
         _kill_posix_identity(pid, start_time)
     _kill_owned_subreaper_children(descendant_pids or {}, subreaper_baseline or {})
@@ -343,10 +342,8 @@ def _kill_posix_identity(pid: int, start_time: int) -> None:
         return
     if _posix_process_map().get(pid, (None, None))[1] != start_time:
         return
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 def _kill_owned_subreaper_children(
@@ -378,10 +375,8 @@ def _kill_owned_subreaper_children(
         for pid, start_time in children.items():
             _kill_posix_identity(pid, start_time)
         for pid in children:
-            try:
+            with contextlib.suppress(ChildProcessError):
                 os.waitpid(pid, os.WNOHANG)
-            except ChildProcessError:
-                pass
         time.sleep(0.01)
     process_map = _posix_process_map()
     survivors = {
@@ -555,11 +550,15 @@ def assert_no_source_visibility():
         if any(path_exposes_source(source, resolved) for source in source_roots):
             raise RuntimeError(f"source root is import-visible: {{resolved}}")
 assert_no_source_visibility()
-exit_code = pytest.main(["-q", "-p", "no:cacheprovider", *payload["pytest_args"], *payload["targets"]])
+exit_code = pytest.main(
+    ["-q", "-p", "no:cacheprovider", *payload["pytest_args"], *payload["targets"]]
+)
 assert_no_source_visibility()
 loaded = {{}}
 for name, module in sorted(sys.modules.items()):
-    if not any(name == package or name.startswith(package + ".") for package in payload["packages"]):
+    if not any(
+        name == package or name.startswith(package + ".") for package in payload["packages"]
+    ):
         continue
     location = getattr(module, "__file__", None)
     if location is None:

@@ -93,11 +93,17 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     snapshot
                     / "apex-research"
                     / "tests"
-                    / "test_behavior_descriptors.py::test_public_exports_and_strict_cli_cover_taxonomy_and_both_descriptor_tiers",
+                    / (
+                        "test_behavior_descriptors.py::"
+                        "test_public_exports_and_strict_cli_cover_taxonomy_and_both_descriptor_tiers"
+                    ),
                     snapshot
                     / "apex-research"
                     / "tests"
-                    / "test_behavior_descriptors.py::test_formal_assignment_rejects_unit_mismatch_and_non_pit_regime",
+                    / (
+                        "test_behavior_descriptors.py::"
+                        "test_formal_assignment_rejects_unit_mismatch_and_non_pit_regime"
+                    ),
                 ),
                 PACKAGE_REPOSITORIES,
                 tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES),
@@ -112,7 +118,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     snapshot
                     / "strategy-reporting"
                     / "tests"
-                    / "test_behavior_descriptor_read_model.py::test_behavior_cli_emits_one_distinct_json_read_model",
+                    / (
+                        "test_behavior_descriptor_read_model.py::"
+                        "test_behavior_cli_emits_one_distinct_json_read_model"
+                    ),
                 ),
                 PACKAGE_REPOSITORIES,
                 tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES),

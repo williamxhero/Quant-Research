@@ -1,3 +1,7 @@
+# The architecture fixtures below intentionally embed exact, adversarial source lines.
+# Splitting those literals would change the programs being verified.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import importlib.util

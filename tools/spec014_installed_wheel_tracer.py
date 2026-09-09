@@ -505,7 +505,7 @@ def main(argv: list[str] | None = None) -> int:
             if arguments.smoke_root is not None
             else build_and_run(arguments.repository_root)
         )
-    except Exception as exc:  # noqa: BLE001 - fail closed at the tracer CLI boundary
+    except Exception as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))

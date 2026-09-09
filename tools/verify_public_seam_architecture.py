@@ -15,7 +15,7 @@ from typing import NamedTuple
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from quantresearch_acceptance import validate_test001_admission
+from quantresearch_acceptance import validate_test001_admission  # noqa: E402
 
 HARNESS_PATH = ROOT / "tools" / "installed_wheel_harness.py"
 HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
@@ -149,7 +149,8 @@ SPEC017_ADMISSION_CONTRACT = {
     "fail_closed_behavior": (
         "Keep Exploration and Evidence policies, identities, labels, events, snapshots, and "
         "presentation distinct; require strict canonical public owner readback and deterministic "
-        "arrival-order-independent replay; reject mixed-tier cells, discovery-to-formal relabeling, "
+        "arrival-order-independent replay; reject mixed-tier cells, discovery-to-formal "
+        "relabeling, "
         "missing or incomparable formal facts, metric or qualification reconstruction, destructive "
         "history, and cross-family lineage substitution. Until SPEC-032 supplies an exact currency "
         "owner fact, any currency-required Evidence eligibility is not_evaluated or blocked and "
@@ -2570,15 +2571,15 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                     if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
                 }
                 inherited_owner = any(
-                    isinstance(base, ast.Name)
-                    and base.id in owner_aliases
-                    or isinstance(base, ast.Attribute)
-                    and base.attr in owner_aliases
+                    (isinstance(base, ast.Name) and base.id in owner_aliases)
+                    or (isinstance(base, ast.Attribute) and base.attr in owner_aliases)
                     for base in node.bases
                 )
                 alternative_owner = (
-                    bool(methods & SPEC015_OWNER_METHODS)
-                    and (path, node.name) not in admitted_non_qualification_policy_owners
+                    (
+                        bool(methods & SPEC015_OWNER_METHODS)
+                        and (path, node.name) not in admitted_non_qualification_policy_owners
+                    )
                     or inherited_owner
                     or (
                         "Qualification" in node.name
@@ -2610,8 +2611,7 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                         "MaturityService",
                         "MaturityState",
                     }
-                    or node.name in canonical_class_names
-                    and not canonical_owner
+                    or (node.name in canonical_class_names and not canonical_owner)
                     or node.name
                     in {
                         "MaturityService",
@@ -2619,8 +2619,7 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                         "QualificationStateStore",
                         "ResearchQualificationPublisher",
                     }
-                    or alternative_owner
-                    and not canonical_owner
+                    or (alternative_owner and not canonical_owner)
                     or (
                         node.name not in classes
                         and "Qualification" in node.name
@@ -2814,13 +2813,17 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             for node in source_tree.body
         )
         frozen_model_rebound = any(
-            isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == "FrozenModel"
-            or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
-            and any(
-                "FrozenModel" in bound_names(target)
-                for target in (
-                    tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+            (
+                isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "FrozenModel"
+            )
+            or (
+                isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+                and any(
+                    "FrozenModel" in bound_names(target)
+                    for target in (
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                    )
                 )
             )
             for node in source_tree.body
@@ -2916,17 +2919,21 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             returns = [node for node in ast.walk(method) if isinstance(node, ast.Return)]
             returned = returns[0].value if len(returns) == 1 else None
             supplies_identity = isinstance(returned, ast.Call) and any(
-                isinstance(node, ast.Dict)
-                and any(
-                    isinstance(key, ast.Constant)
-                    and key.value == identity_field
-                    and canonical_value(value)
-                    for key, value in zip(node.keys, node.values, strict=True)
-                    if key is not None
+                (
+                    isinstance(node, ast.Dict)
+                    and any(
+                        isinstance(key, ast.Constant)
+                        and key.value == identity_field
+                        and canonical_value(value)
+                        for key, value in zip(node.keys, node.values, strict=True)
+                        if key is not None
+                    )
                 )
-                or isinstance(node, ast.keyword)
-                and node.arg == identity_field
-                and canonical_value(node.value)
+                or (
+                    isinstance(node, ast.keyword)
+                    and node.arg == identity_field
+                    and canonical_value(node.value)
+                )
                 for node in ast.walk(returned)
             )
             if not supplies_identity or any(
@@ -3012,35 +3019,43 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                     for node in ast.walk(method)
                     if getattr(node, "lineno", -1) > identity_assignments[0].lineno
                     and (
-                        isinstance(
-                            node,
-                            (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr),
-                        )
-                        and any(
-                            identity_target(target)
-                            for target in (
-                                tuple(node.targets)
-                                if isinstance(node, ast.Assign)
-                                else (node.target,)
+                        (
+                            isinstance(
+                                node,
+                                (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr),
                             )
-                        )
-                        or isinstance(node, ast.Call)
-                        and (
-                            isinstance(node.func, ast.Attribute)
-                            and identity_target(node.func.value)
-                            or (
-                                node.func.id
-                                if isinstance(node.func, ast.Name)
-                                else node.func.attr
-                                if isinstance(node.func, ast.Attribute)
-                                else ""
-                            )
-                            != "canonical_sha256"
                             and any(
-                                isinstance(argument, ast.Name) and argument.id == "identity"
-                                for argument in (
-                                    *node.args,
-                                    *(item.value for item in node.keywords),
+                                identity_target(target)
+                                for target in (
+                                    tuple(node.targets)
+                                    if isinstance(node, ast.Assign)
+                                    else (node.target,)
+                                )
+                            )
+                        )
+                        or (
+                            isinstance(node, ast.Call)
+                            and (
+                                (
+                                    isinstance(node.func, ast.Attribute)
+                                    and identity_target(node.func.value)
+                                )
+                                or (
+                                    (
+                                        node.func.id
+                                        if isinstance(node.func, ast.Name)
+                                        else node.func.attr
+                                        if isinstance(node.func, ast.Attribute)
+                                        else ""
+                                    )
+                                    != "canonical_sha256"
+                                    and any(
+                                        isinstance(argument, ast.Name) and argument.id == "identity"
+                                        for argument in (
+                                            *node.args,
+                                            *(item.value for item in node.keywords),
+                                        )
+                                    )
                                 )
                             )
                         )
@@ -3136,17 +3151,20 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                 for node in subsystem_tree.body
             )
             rebound = any(
-                isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == helper_name
-                or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
-                and any(
-                    helper_name in bound_names(target)
-                    for target in (
-                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                (
+                    isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name == helper_name
+                )
+                or (
+                    isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+                    and any(
+                        helper_name in bound_names(target)
+                        for target in (
+                            tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                        )
                     )
                 )
-                or isinstance(node, ast.arg)
-                and node.arg == helper_name
+                or (isinstance(node, ast.arg) and node.arg == helper_name)
                 for node in ast.walk(subsystem_tree)
             )
             if not imported_directly or rebound:
@@ -3364,14 +3382,18 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                     else ""
                 )
                 if called == "publish_record" and (
-                    isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Name)
-                    and call.func.value.id in {argument.arg for argument in function.args.args}
-                    or isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Attribute)
-                    and isinstance(call.func.value.value, ast.Name)
-                    and call.func.value.value.id == "self"
-                    and call.func.value.attr == "_workspace"
+                    (
+                        isinstance(call.func, ast.Attribute)
+                        and isinstance(call.func.value, ast.Name)
+                        and call.func.value.id in {argument.arg for argument in function.args.args}
+                    )
+                    or (
+                        isinstance(call.func, ast.Attribute)
+                        and isinstance(call.func.value, ast.Attribute)
+                        and isinstance(call.func.value.value, ast.Name)
+                        and call.func.value.value.id == "self"
+                        and call.func.value.attr == "_workspace"
+                    )
                 ):
                     return True
                 if reaches_workspace_publication(called, seen):
@@ -3743,10 +3765,14 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             and isinstance(value.ops[0], ast.NotEq)
             and len(value.comparators) == 1
             and (
-                isinstance(value.comparators[0], ast.Constant)
-                and value.comparators[0].value == expected
-                or expected == "success"
-                and ast.unparse(value.comparators[0]) == "TerminalReason.SUCCESS.value"
+                (
+                    isinstance(value.comparators[0], ast.Constant)
+                    and value.comparators[0].value == expected
+                )
+                or (
+                    expected == "success"
+                    and ast.unparse(value.comparators[0]) == "TerminalReason.SUCCESS.value"
+                )
             )
         )
 
@@ -3858,8 +3884,7 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         or len(all_completion_calls) != 1
         or indirect_precommit_publication
         or direct_workspace_publications
-        or result_rebindings
-        and not allowed_recovery_rebind
+        or (result_rebindings and not allowed_recovery_rebind)
     ):
         raise ArchitectureViolation(
             "apex-research: qualification publication ordering is not governed and committed-first"
@@ -3908,12 +3933,13 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                 and isinstance(value.func, ast.Attribute)
                 and value.func.attr == "get_record"
                 and (
-                    isinstance(value.func.value, ast.Name)
-                    and value.func.value.id == "workspace"
-                    or isinstance(value.func.value, ast.Attribute)
-                    and isinstance(value.func.value.value, ast.Name)
-                    and value.func.value.value.id == "self"
-                    and value.func.value.attr == "_workspace"
+                    (isinstance(value.func.value, ast.Name) and value.func.value.id == "workspace")
+                    or (
+                        isinstance(value.func.value, ast.Attribute)
+                        and isinstance(value.func.value.value, ast.Name)
+                        and value.func.value.value.id == "self"
+                        and value.func.value.attr == "_workspace"
+                    )
                 )
             )
 
@@ -4044,34 +4070,45 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         post_verify_mutation = bool(verify_statements) and any(
             getattr(node, "lineno", -1) > verify_statements[0].lineno
             and (
-                isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
-                and any(
-                    isinstance(target, (ast.Attribute, ast.Subscript)) and protected_root(target)
-                    for target in (
-                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                (
+                    isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+                    and any(
+                        isinstance(target, (ast.Attribute, ast.Subscript))
+                        and protected_root(target)
+                        for target in (
+                            tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                        )
                     )
                 )
-                or isinstance(node, ast.Delete)
-                and any(protected_root(target) for target in node.targets)
-                or isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and (
-                    protected_root(node.func.value)
-                    and node.func.attr
-                    in {
-                        "clear",
-                        "pop",
-                        "remove",
-                        "update",
-                        "append",
-                        "extend",
-                        "__setitem__",
-                    }
-                    or isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "object"
-                    and node.func.attr == "__setattr__"
-                    and bool(node.args)
-                    and protected_root(node.args[0])
+                or (
+                    isinstance(node, ast.Delete)
+                    and any(protected_root(target) for target in node.targets)
+                )
+                or (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and (
+                        (
+                            protected_root(node.func.value)
+                            and node.func.attr
+                            in {
+                                "clear",
+                                "pop",
+                                "remove",
+                                "update",
+                                "append",
+                                "extend",
+                                "__setitem__",
+                            }
+                        )
+                        or (
+                            isinstance(node.func.value, ast.Name)
+                            and node.func.value.id == "object"
+                            and node.func.attr == "__setattr__"
+                            and bool(node.args)
+                            and protected_root(node.args[0])
+                        )
+                    )
                 )
             )
             for node in ast.walk(reader)
@@ -4118,7 +4155,8 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                         "extend",
                         "__setitem__",
                     }
-                    or isinstance(node.func, ast.Attribute)
+                ) or (
+                    isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and node.func.value.id == "object"
                     and node.func.attr == "__setattr__"
@@ -4890,16 +4928,17 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             isinstance(value, ast.UnaryOp)
             and isinstance(value.op, ast.Not)
             and (
-                isinstance(value.operand, ast.Name)
-                and value.operand.id == "next_cursor"
-                or isinstance(value.operand, ast.Call)
-                and isinstance(value.operand.func, ast.Name)
-                and value.operand.func.id == "isinstance"
-                and len(value.operand.args) == 2
-                and isinstance(value.operand.args[0], ast.Name)
-                and value.operand.args[0].id == "next_cursor"
-                and isinstance(value.operand.args[1], ast.Name)
-                and value.operand.args[1].id == "str"
+                (isinstance(value.operand, ast.Name) and value.operand.id == "next_cursor")
+                or (
+                    isinstance(value.operand, ast.Call)
+                    and isinstance(value.operand.func, ast.Name)
+                    and value.operand.func.id == "isinstance"
+                    and len(value.operand.args) == 2
+                    and isinstance(value.operand.args[0], ast.Name)
+                    and value.operand.args[0].id == "next_cursor"
+                    and isinstance(value.operand.args[1], ast.Name)
+                    and value.operand.args[1].id == "str"
+                )
             )
         )
 
@@ -5048,7 +5087,8 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
                 "__delitem__",
                 "__setitem__",
             }
-            or isinstance(node, ast.Delete)
+        ) or (
+            isinstance(node, ast.Delete)
             and any(mutation_targets_name(node, alias) for alias in record_aliases)
         ):
             records_destructively_mutated = True
@@ -5167,10 +5207,11 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == call_name
             and (
-                isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "workspace"
-                or isinstance(node.func.value, ast.Attribute)
-                and node.func.value.attr == "_workspace"
+                (isinstance(node.func.value, ast.Name) and node.func.value.id == "workspace")
+                or (
+                    isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == "_workspace"
+                )
             )
             for node in subsystem_nodes
         )
@@ -5223,10 +5264,8 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         "RETIRED": "retired",
     }
     str_enum_base = any(
-        isinstance(base, ast.Name)
-        and base.id == "StrEnum"
-        or isinstance(base, ast.Attribute)
-        and base.attr == "StrEnum"
+        (isinstance(base, ast.Name) and base.id == "StrEnum")
+        or (isinstance(base, ast.Attribute) and base.attr == "StrEnum")
         for base in state_class.bases
     )
     state_tree = next(tree for _, tree in subsystem_trees if state_class in tree.body)
@@ -5239,12 +5278,18 @@ def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False
         for node in state_tree.body
     )
     str_enum_rebound = any(
-        isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "StrEnum"
-        or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
-        and any(
-            isinstance(target, ast.Name) and target.id == "StrEnum"
-            for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
+        (
+            isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "StrEnum"
+        )
+        or (
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+            and any(
+                isinstance(target, ast.Name) and target.id == "StrEnum"
+                for target in (
+                    tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                )
+            )
         )
         for node in state_tree.body
     )
@@ -5562,12 +5607,13 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 and (
                     node.name in SPEC015_PARALLEL_OWNER_CLASSES
                     or any(
-                        isinstance(base, ast.Name)
-                        and base.id in qualification_symbols
-                        or isinstance(base, ast.Attribute)
-                        and base.attr in SPEC015_PARALLEL_OWNER_CLASSES
-                        and isinstance(base.value, ast.Name)
-                        and base.value.id in qualification_modules
+                        (isinstance(base, ast.Name) and base.id in qualification_symbols)
+                        or (
+                            isinstance(base, ast.Attribute)
+                            and base.attr in SPEC015_PARALLEL_OWNER_CLASSES
+                            and isinstance(base.value, ast.Name)
+                            and base.value.id in qualification_modules
+                        )
                         for base in node.bases
                     )
                     or any(
@@ -5760,33 +5806,41 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                     for alias in aliases:
                                         dependencies[alias] = set(value_dependencies)
                                 if value is not None and (
-                                    isinstance(value, ast.Attribute)
-                                    and value.attr == "publish_record"
-                                    or isinstance(value, ast.Name)
-                                    and value.id in publication_aliases
+                                    (
+                                        isinstance(value, ast.Attribute)
+                                        and value.attr == "publish_record"
+                                    )
+                                    or (
+                                        isinstance(value, ast.Name)
+                                        and value.id in publication_aliases
+                                    )
                                 ):
                                     publication_aliases.update(aliases)
                                 if value is not None and (
-                                    isinstance(value, ast.Lambda)
-                                    and any(
-                                        isinstance(call, ast.Call)
-                                        and isinstance(call.func, ast.Attribute)
-                                        and call.func.attr == "publish_record"
-                                        for call in ast.walk(value)
+                                    (
+                                        isinstance(value, ast.Lambda)
+                                        and any(
+                                            isinstance(call, ast.Call)
+                                            and isinstance(call.func, ast.Attribute)
+                                            and call.func.attr == "publish_record"
+                                            for call in ast.walk(value)
+                                        )
                                     )
-                                    or isinstance(value, ast.Call)
-                                    and (
-                                        value.func.id
-                                        if isinstance(value.func, ast.Name)
-                                        else value.func.attr
-                                        if isinstance(value.func, ast.Attribute)
-                                        else ""
-                                    )
-                                    == "partial"
-                                    and any(
-                                        isinstance(argument, ast.Attribute)
-                                        and argument.attr == "publish_record"
-                                        for argument in value.args
+                                    or (
+                                        isinstance(value, ast.Call)
+                                        and (
+                                            value.func.id
+                                            if isinstance(value.func, ast.Name)
+                                            else value.func.attr
+                                            if isinstance(value.func, ast.Attribute)
+                                            else ""
+                                        )
+                                        == "partial"
+                                        and any(
+                                            isinstance(argument, ast.Attribute)
+                                            and argument.attr == "publish_record"
+                                            for argument in value.args
+                                        )
                                     )
                                 ):
                                     publication_aliases.update(aliases)
@@ -5804,7 +5858,8 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             direct_publish = (
                                 isinstance(node.func, ast.Attribute)
                                 and node.func.attr == "publish_record"
-                                or isinstance(node.func, ast.Name)
+                            ) or (
+                                isinstance(node.func, ast.Name)
                                 and node.func.id in publication_aliases
                             )
                             if direct_publish:
@@ -5965,12 +6020,15 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             ):
                                 return True
                     return any(
-                        isinstance(candidate, ast.Name)
-                        and candidate.id in qualification_values
-                        or isinstance(candidate, ast.Attribute)
-                        and ast.unparse(candidate) in qualification_values
-                        or isinstance(candidate, ast.Subscript)
-                        and ast.unparse(candidate) in qualification_values
+                        (isinstance(candidate, ast.Name) and candidate.id in qualification_values)
+                        or (
+                            isinstance(candidate, ast.Attribute)
+                            and ast.unparse(candidate) in qualification_values
+                        )
+                        or (
+                            isinstance(candidate, ast.Subscript)
+                            and ast.unparse(candidate) in qualification_values
+                        )
                         for candidate in ast.walk(value)
                     )
 
@@ -6000,33 +6058,35 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     if value is not None and explicitly_non_owner_record(value):
                         safe_publication_values.update(aliases)
                     if value is not None and (
-                        isinstance(value, ast.Attribute)
-                        and value.attr == "publish_record"
-                        or isinstance(value, ast.Name)
-                        and value.id in publication_aliases
+                        (isinstance(value, ast.Attribute) and value.attr == "publish_record")
+                        or (isinstance(value, ast.Name) and value.id in publication_aliases)
                     ):
                         publication_aliases.update(aliases)
                     if value is not None and (
-                        isinstance(value, ast.Lambda)
-                        and any(
-                            isinstance(call, ast.Call)
-                            and isinstance(call.func, ast.Attribute)
-                            and call.func.attr == "publish_record"
-                            for call in ast.walk(value)
+                        (
+                            isinstance(value, ast.Lambda)
+                            and any(
+                                isinstance(call, ast.Call)
+                                and isinstance(call.func, ast.Attribute)
+                                and call.func.attr == "publish_record"
+                                for call in ast.walk(value)
+                            )
                         )
-                        or isinstance(value, ast.Call)
-                        and (
-                            value.func.id
-                            if isinstance(value.func, ast.Name)
-                            else value.func.attr
-                            if isinstance(value.func, ast.Attribute)
-                            else ""
-                        )
-                        == "partial"
-                        and any(
-                            isinstance(argument, ast.Attribute)
-                            and argument.attr == "publish_record"
-                            for argument in value.args
+                        or (
+                            isinstance(value, ast.Call)
+                            and (
+                                value.func.id
+                                if isinstance(value.func, ast.Name)
+                                else value.func.attr
+                                if isinstance(value.func, ast.Attribute)
+                                else ""
+                            )
+                            == "partial"
+                            and any(
+                                isinstance(argument, ast.Attribute)
+                                and argument.attr == "publish_record"
+                                for argument in value.args
+                            )
                         )
                     ):
                         publication_aliases.update(aliases)
@@ -6065,8 +6125,8 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         direct_publish = (
                             isinstance(call.func, ast.Attribute)
                             and call.func.attr == "publish_record"
-                            or isinstance(call.func, ast.Name)
-                            and call.func.id in publication_aliases
+                        ) or (
+                            isinstance(call.func, ast.Name) and call.func.id in publication_aliases
                         )
                         if direct_publish and any(
                             contains_qualification(argument)
@@ -6600,7 +6660,8 @@ def _scan_apex_public_seam(
             for owner in ("Ledger", "Registry", "Runner", "Backtester", "EvidenceTruth")
         ):
             raise ArchitectureViolation(
-                f"apex-research: {policy.component} defines forbidden parallel owner {node.name}: {path_label}"
+                f"apex-research: {policy.component} defines forbidden parallel owner "
+                f"{node.name}: {path_label}"
             )
     for module, reason in policy.forbidden_imports:
         if any(item == module or item.startswith(f"{module}.") for item in imports):
@@ -6625,7 +6686,8 @@ def _scan_apex_public_seam(
     if any(missing):
         absent = sorted(set().union(*missing))
         raise ArchitectureViolation(
-            f"apex-research: {policy.component} lacks public tracer boundaries {absent}: {path_label}"
+            f"apex-research: {policy.component} lacks public tracer boundaries "
+            f"{absent}: {path_label}"
         )
 
 
@@ -6786,7 +6848,8 @@ def _scan_rdagent_seams(repository: Path) -> None:
         ):
             if marker not in chain_source:
                 raise ArchitectureViolation(
-                    f"apex-research: RD-Agent Strategy chain lacks canonical stage {marker}: {chain}"
+                    f"apex-research: RD-Agent Strategy chain lacks canonical stage "
+                    f"{marker}: {chain}"
                 )
         for marker, reason in (
             ("submit_run(", "formal submission bypass"),
