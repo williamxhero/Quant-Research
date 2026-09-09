@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 
 import apex_research
@@ -49,6 +50,36 @@ def test_five_wheels_are_imported_without_source_precedence() -> None:
     for module in (apex_research, quant_runtime, strategy_reporting, strategy_workspace):
         assert "site-packages" in Path(module.__file__).as_posix()
     assert "site-packages" in Path(__file__).as_posix()
+
+
+def test_owner_public_interfaces_are_present_in_the_installed_wheels() -> None:
+    for name in (
+        "BehavioralGate",
+        "CampaignReportSourceService",
+        "CandidateGate",
+        "ResearchEnginePort",
+        "ResearchOrchestrator",
+        "StrategyPackageIntakeService",
+    ):
+        assert getattr(apex_research, name)
+    assert strategy_workspace.WorkspaceClient
+    for name in (
+        "CampaignReport",
+        "CampaignReportSource",
+        "RevalidationRenderer",
+        "ReplicationReadModelBuilder",
+        "render_report",
+    ):
+        assert getattr(strategy_reporting, name)
+    for module_name in (
+        "quant_runtime.entrypoint",
+        "quant_runtime.preflight",
+        "quant_runtime.adapters.formal.nautilus.runner",
+        "strategy_reporting.cli",
+        "strategy_reporting.portal.index",
+    ):
+        module = importlib.import_module(module_name)
+        assert "site-packages" in Path(module.__file__).as_posix()
 
 
 def test_every_executable_profile_has_an_independent_deterministic_identity() -> None:
