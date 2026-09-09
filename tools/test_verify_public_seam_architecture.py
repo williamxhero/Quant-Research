@@ -535,6 +535,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 for owner in (
                     "strategy_workspace",
                     "quant_runtime",
+                    "strategy_reporting",
                 )
                 for category in (
                     "spec015-source-diff",

@@ -24,8 +24,9 @@ HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
 
 UNCHANGED_REPOSITORY_BASELINES = {
-    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
-    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-workspace": "f5e186dc4a88a86e8df39d86daaba2844d08c44b",
+    "quant-runtime": "9f513c02ce2e1180a2b8fe5c1ea96ff4592b4860",
+    "strategy-reporting": "d4fc2add08f5341ba4413232bf4813f5786e2100",
 }
 SPEC015_ADMISSION_CONTRACT = {
     "schema": "quant-research.future-spec-admission.v1",
