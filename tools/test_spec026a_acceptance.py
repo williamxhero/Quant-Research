@@ -51,6 +51,15 @@ class Spec026AAcceptanceTests(unittest.TestCase):
                 for path in scope.product_changed_paths
             )
         )
+        self.assertEqual(set(scope.test_protocol["levels"]), {"L0", "L1", "L2", "L3"})
+        self.assertEqual(
+            scope.test_protocol["performance_observability"]["deferred_requirement"],
+            "TEST-001",
+        )
+        self.assertIn(
+            "apex-research/src/apex_research/campaign_report_source.py",
+            scope.test_protocol["source_to_direct_tests"],
+        )
 
     def test_installed_tracer_is_bounded_replayed_and_wheel_only(self) -> None:
         script = ROOT / "tools/spec026a_installed_wheel_tracer.py"
@@ -63,8 +72,11 @@ class Spec026AAcceptanceTests(unittest.TestCase):
         self.assertEqual(module.TIMEOUT_SECONDS, 240)
         self.assertGreaterEqual(len(module.NODES), 8)
         self.assertEqual(module.REPLAYS, 2)
+        self.assertEqual(module.PYTEST_PROCESSES, 2)
         source = script.read_text(encoding="utf-8")
-        self.assertIn("run_installed_pytest", source)
+        self.assertEqual(source.count("HARNESS.run_installed_pytest("), 1)
+        self.assertIn("--junitxml=", source)
+        self.assertIn("selected = tuple", source)
         self.assertIn("source_roots", source)
         self.assertIn("sanitized_environment", source)
         self.assertNotIn("PYTHONPATH =", source)

@@ -27,6 +27,7 @@ UNCHANGED_SOURCE_BASELINES = {
 }
 TIMEOUT_SECONDS = 240
 REPLAYS = 2
+PYTEST_PROCESSES = REPLAYS
 NODES = (
     "test_campaign_source_contract_has_canonical_identity_and_closed_availability",
     "test_unavailable_campaign_sections_require_a_reason",
@@ -85,22 +86,27 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         )
         source_roots = tuple(snapshot / name / "src" for name in REPOSITORIES)
         test_file = snapshot / "apex-research/tests/test_campaign_report_source.py"
+        selected = tuple(Path(f"{test_file}::{node}") for node in NODES)
         for replay in range(1, REPLAYS + 1):
-            for node in NODES:
-                started = time.monotonic()
-                _progress(f"replay={replay} node={node} start")
-                HARNESS.run_installed_pytest(
-                    python,
-                    (Path(f"{test_file}::{node}"),),
-                    REPOSITORIES,
-                    source_roots,
-                    cwd=isolated,
-                    environment=environment,
-                    timeout_seconds=TIMEOUT_SECONDS,
-                )
-                _progress(
-                    f"replay={replay} node={node} passed_seconds={time.monotonic() - started:.1f}"
-                )
+            started = time.monotonic()
+            _progress(f"replay={replay} nodes={len(selected)} start")
+            HARNESS.run_installed_pytest(
+                python,
+                selected,
+                REPOSITORIES,
+                source_roots,
+                cwd=isolated,
+                environment=environment,
+                timeout_seconds=TIMEOUT_SECONDS,
+                pytest_args=(
+                    "--durations=0",
+                    f"--junitxml={isolated / f'l3-replay-{replay}.xml'}",
+                ),
+            )
+            _progress(
+                f"replay={replay} nodes={len(selected)} "
+                f"passed_seconds={time.monotonic() - started:.1f}"
+            )
         smoke_results = []
         for replay in range(1, REPLAYS + 1):
             output = HARNESS.run_command(
@@ -127,6 +133,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             **smoke_results[0],
             "nodes": len(NODES),
             "replays": REPLAYS,
+            "pytest_processes": PYTEST_PROCESSES,
             "node_timeout_seconds": TIMEOUT_SECONDS,
             "unchanged_sources": unchanged,
             "source_topology": topology,

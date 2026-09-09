@@ -197,6 +197,7 @@ class AcceptanceScope(NamedTuple):
     current_spec_heavy_exclusion_reason: str
     historical_heavy_test_exclusions: tuple[str, ...]
     historical_heavy_exclusion_reason: str
+    test_protocol: dict[str, object]
 
 
 class ApexSeamPolicy(NamedTuple):
@@ -757,7 +758,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         "current_spec_heavy_test_exclusions",
         "current_spec_heavy_exclusion_reason",
     }
-    optional = historical_fields | current_fields
+    optional = historical_fields | current_fields | {"test_protocol"}
     keys = set(raw) if isinstance(raw, dict) else set()
     partial_optional_group = any(
         bool(keys & group) and not group <= keys
@@ -872,6 +873,119 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         raise ArchitectureViolation(
             "historical heavy exclusions lack deferred release tracer coverage"
         )
+    test_protocol: dict[str, object] = {}
+    if "test_protocol" in raw:
+        protocol = raw["test_protocol"]
+        if not isinstance(protocol, dict) or set(protocol) != {
+            "levels",
+            "performance_observability",
+            "source_to_direct_tests",
+        }:
+            raise ArchitectureViolation("acceptance scope test protocol is invalid")
+        levels = protocol["levels"]
+        if not isinstance(levels, dict) or set(levels) != {"L0", "L1", "L2", "L3"}:
+            raise ArchitectureViolation("acceptance scope test levels are invalid")
+        level_fields = {
+            "budget_seconds",
+            "commands",
+            "direct_tests",
+            "marker",
+            "purpose",
+            "sources",
+        }
+        maximum_budgets = {"L0": 60, "L1": 180, "L2": 600}
+        for name, level in levels.items():
+            if not isinstance(level, dict) or set(level) != level_fields:
+                raise ArchitectureViolation(
+                    f"acceptance scope {name} fields are invalid"
+                )
+            if (
+                not isinstance(level["budget_seconds"], int)
+                or level["budget_seconds"] <= 0
+                or (
+                    name in maximum_budgets
+                    and level["budget_seconds"] > maximum_budgets[name]
+                )
+                or not isinstance(level["marker"], str)
+                or not level["marker"]
+                or not isinstance(level["purpose"], str)
+                or not level["purpose"]
+            ):
+                raise ArchitectureViolation(
+                    f"acceptance scope {name} metadata is invalid"
+                )
+            commands = level["commands"]
+            if (
+                not isinstance(commands, list)
+                or not commands
+                or any(
+                    not isinstance(command, dict)
+                    or set(command) != {"argv", "repository"}
+                    or command["repository"] not in baseline_heads
+                    or not isinstance(command["argv"], list)
+                    or not command["argv"]
+                    or not all(
+                        isinstance(argument, str) and argument
+                        for argument in command["argv"]
+                    )
+                    for command in commands
+                )
+            ):
+                raise ArchitectureViolation(
+                    f"acceptance scope {name} commands are invalid"
+                )
+            for field in ("direct_tests", "sources"):
+                values = level[field]
+                if (
+                    not isinstance(values, list)
+                    or not values
+                    or not all(isinstance(value, str) and value for value in values)
+                ):
+                    raise ArchitectureViolation(
+                        f"acceptance scope {name} {field} is invalid"
+                    )
+        mapping = protocol["source_to_direct_tests"]
+        if (
+            not isinstance(mapping, dict)
+            or not mapping
+            or list(mapping) != sorted(mapping)
+            or any(
+                not isinstance(source, str)
+                or _normalized_changed_path(source) != source
+                or not isinstance(tests, list)
+                or not tests
+                or tests != sorted(set(tests))
+                or any(
+                    not isinstance(test, str) or _normalized_changed_path(test) != test
+                    for test in tests
+                )
+                for source, tests in mapping.items()
+            )
+        ):
+            raise ArchitectureViolation(
+                "acceptance scope source-to-direct-tests mapping is invalid"
+            )
+        observability = protocol["performance_observability"]
+        if (
+            not isinstance(observability, dict)
+            or set(observability)
+            != {
+                "deferred_requirement",
+                "junit",
+                "live_current_test",
+                "slow_file_threshold_seconds",
+                "slow_test_threshold_seconds",
+            }
+            or observability["slow_test_threshold_seconds"] != 2
+            or observability["slow_file_threshold_seconds"] != 60
+            or observability["junit"] != "enabled"
+            or observability["live_current_test"] != "deferred"
+            or observability["deferred_requirement"] != "TEST-001"
+        ):
+            raise ArchitectureViolation(
+                "acceptance scope performance observability is invalid"
+            )
+        test_protocol = protocol
     return AcceptanceScope(
         spec=raw["spec"],
         baseline_heads=dict(sorted(baseline_heads.items())),
@@ -883,6 +997,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         current_spec_heavy_exclusion_reason=current_exclusion_reason,
         historical_heavy_test_exclusions=exclusions,
         historical_heavy_exclusion_reason=exclusion_reason,
+        test_protocol=test_protocol,
     )
 
 
@@ -7555,6 +7670,7 @@ def main(argv: list[str] | None = None) -> int:
                         "historical_heavy_exclusion_reason": (
                             acceptance_scope.historical_heavy_exclusion_reason
                         ),
+                        "test_protocol": acceptance_scope.test_protocol,
                     }
                 ),
                 "baseline_formatter_drift": baseline_formatter_drift,
