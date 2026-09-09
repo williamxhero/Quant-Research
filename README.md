@@ -20,7 +20,9 @@ duplicate JSON keys, path traversal, shell strings, ambiguous ownership, unmappe
 meaning-bearing paths, and base/fingerprint drift fail closed.
 
 ```console
+quantresearch-acceptance diff --scope scope.json --repository-root . --owner-root apex-research=../ApexResearch --output fixed-diff.json
 quantresearch-acceptance select --scope scope.json --diff fixed-diff.json --phase spec
+quantresearch-acceptance execute --scope scope.json --diff fixed-diff.json --phase spec --repository-root . --owner-root apex-research=../ApexResearch
 quantresearch-acceptance audit --history durations.json
 quantresearch-acceptance migrate --scope docs/architecture-admissions/spec-026a.acceptance-scope.v1.json
 ```

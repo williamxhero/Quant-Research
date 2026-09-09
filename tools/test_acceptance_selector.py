@@ -155,7 +155,7 @@ class AcceptanceSelectorContractTests(unittest.TestCase):
         self.assertTrue(all(isinstance(step.argv, tuple) for step in plan.steps))
         self.assertEqual(
             plan.identity,
-            "f06e333f567666f29d86fee5fb888aa86c1973388473169be90375beb22fc18f",
+            "4819b4a7f7c1783220a72373d492c6021a5f19ca1193c08c0d3174383619beb7",
         )
         self.assertIn(plan.identity, plan.artifact_root)
         with self.assertRaises((AttributeError, TypeError)):
@@ -176,6 +176,41 @@ class AcceptanceSelectorContractTests(unittest.TestCase):
         second = AcceptanceSelector().select(scope_literal(), changed, phase="spec")
 
         self.assertNotEqual(first.identity, second.identity)
+        changed_scope = scope_literal()
+        changed_scope["owners"]["quant-research"]["build_argv"] = [
+            "uv",
+            "build",
+            "--no-build-logs",
+        ]
+        self.assertNotEqual(
+            first.identity,
+            AcceptanceSelector().select(changed_scope, diff_literal(), phase="spec").identity,
+        )
+
+    def test_release_plan_adds_owner_full_and_independent_environment_gates(self) -> None:
+        scope = scope_literal()
+        command = {
+            "owner": "quant-research",
+            "argv": ["python", "-c", "pass"],
+            "markers": ["release"],
+            "history_samples_seconds": [10, 12, 14],
+        }
+        scope["levels"]["L4"] = {"budget_seconds": 3600, "commands": [command]}
+        scope["levels"]["L5"] = {
+            "budget_seconds": 1800,
+            "commands": [
+                {
+                    **command,
+                    "owner": "quant-runtime",
+                    "markers": ["connected", "release"],
+                }
+            ],
+        }
+
+        plan = AcceptanceSelector().select(scope, diff_literal(), phase="release")
+
+        self.assertEqual(plan.levels, ("L0", "L1", "L2", "L3", "L4", "L5"))
+        self.assertIn("quant-runtime", {step.owner for step in plan.steps})
 
     def test_unknown_ambiguous_unmapped_and_drifted_inputs_fail_closed(self) -> None:
         cases: list[tuple[dict[str, object], dict[str, object]]] = []

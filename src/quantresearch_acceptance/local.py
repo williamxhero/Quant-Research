@@ -229,7 +229,8 @@ class FixedBaseProver:
             created = set(build_root.glob("*.whl")) - before
             if len(created) != 1:
                 raise AcceptanceFailure(f"fixed owner did not build one wheel: {proof.owner}")
-            cached = self._cache.store(key, next(iter(created)).read_bytes())
+            built = next(iter(created))
+            cached = self._cache.store(key, built.read_bytes(), filename=built.name)
         python = self._proof_python()
         _run(
             ["uv", "pip", "install", "--python", str(python), str(cached)],

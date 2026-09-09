@@ -112,6 +112,11 @@ class AcceptanceCliContractTests(unittest.TestCase):
             tuple(legacy["required_installed_tracers"]),
         )
         self.assertEqual(len(migration.source_digest), 64)
+        self.assertEqual(migration.source_document, legacy)
+        self.assertEqual(
+            migration.deferred_release_tracers,
+            tuple(legacy["deferred_release_tracers"]),
+        )
 
     def test_review_fix_selection_uses_only_the_new_impact_set(self) -> None:
         scope = scope_literal()

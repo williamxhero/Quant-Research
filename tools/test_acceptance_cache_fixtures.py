@@ -70,12 +70,29 @@ class AcceptanceCacheFixtureContractTests(unittest.TestCase):
                 build_argv=("uv", "build"),
             )
             self.assertEqual(len(key), 64)
-            stored = cache.store(key, b"wheel-v1")
+            stored = cache.store(
+                key, b"wheel-v1", filename="quantresearch_acceptance-1-py3-none-any.whl"
+            )
             self.assertEqual(cache.lookup(key), stored)
+            self.assertEqual(stored.name, "quantresearch_acceptance-1-py3-none-any.whl")
+            self.assertEqual(stored.parent.name, key)
             self.assertEqual(stored.read_bytes(), b"wheel-v1")
-            self.assertEqual(cache.store(key, b"wheel-v1"), stored)
+            self.assertEqual(
+                cache.store(
+                    key,
+                    b"wheel-v1",
+                    filename="quantresearch_acceptance-1-py3-none-any.whl",
+                ),
+                stored,
+            )
             with self.assertRaises(AcceptanceFailure):
-                cache.store(key, b"wheel-v2")
+                cache.store(
+                    key,
+                    b"wheel-v2",
+                    filename="quantresearch_acceptance-1-py3-none-any.whl",
+                )
+            with self.assertRaises(AcceptanceFailure):
+                cache.store(key, b"wheel-v1", filename="renamed-1-py3-none-any.whl")
             self.assertIsNone(
                 cache.lookup(
                     cache.key(

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -51,6 +52,12 @@ class BuilderSpy:
     def build(self, plan_identity: str, owners: tuple[str, ...]) -> tuple[Path, ...]:
         self.calls.append((plan_identity, owners))
         return (Path("wheelhouse/quantresearch_acceptance-1-py3-none-any.whl"),)
+
+
+class SlowBuilderSpy(BuilderSpy):
+    def build(self, plan_identity: str, owners: tuple[str, ...]) -> tuple[Path, ...]:
+        time.sleep(1.05)
+        return super().build(plan_identity, owners)
 
 
 class InstallerSpy:
@@ -113,6 +120,18 @@ class PlanRunnerContractTests(unittest.TestCase):
                 unchanged_prover=UnchangedProofSpy(),
             ).run(dataclasses.replace(plan, identity="0" * 64))
 
+        tampered_steps = (
+            dataclasses.replace(plan.steps[0], argv=("python", "-c", "pass")),
+            *plan.steps[1:],
+        )
+        with self.assertRaises(AcceptanceFailure):
+            PlanRunner(
+                ProcessSpy(),
+                BuilderSpy(),
+                InstallerSpy(),
+                unchanged_prover=UnchangedProofSpy(),
+            ).run(dataclasses.replace(plan, steps=tampered_steps))
+
         slow_process = ProcessSpy(duration_seconds=301)
         with self.assertRaises(AcceptanceFailure):
             PlanRunner(
@@ -121,6 +140,19 @@ class PlanRunnerContractTests(unittest.TestCase):
                 InstallerSpy(),
                 unchanged_prover=UnchangedProofSpy(),
             ).run(plan)
+
+        tiny_scope = scope_literal()
+        tiny_scope["levels"]["L3"]["budget_seconds"] = 1
+        tiny_l3 = AcceptanceSelector().select(tiny_scope, diff_literal(), phase="spec")
+        with self.assertRaises(AcceptanceFailure):
+            setup_process = ProcessSpy()
+            PlanRunner(
+                setup_process,
+                SlowBuilderSpy(),
+                InstallerSpy(),
+                unchanged_prover=UnchangedProofSpy(),
+            ).run(tiny_l3)
+        self.assertEqual(len(setup_process.calls), 0)
 
 
 if __name__ == "__main__":

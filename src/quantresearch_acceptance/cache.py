@@ -41,11 +41,23 @@ class ArtifactCache:
         return hashlib.sha256(material).hexdigest()
 
     def lookup(self, key: str) -> Path | None:
-        path = self._path(key)
-        return path if path.is_file() else None
+        directory = self._directory(key)
+        matches = tuple(directory.glob("*.whl")) if directory.is_dir() else ()
+        if len(matches) > 1:
+            raise AcceptanceFailure(f"artifact cache entry is ambiguous: {key}")
+        return matches[0] if matches else None
 
-    def store(self, key: str, content: bytes) -> Path:
-        path = self._path(key)
+    def store(self, key: str, content: bytes, *, filename: str = "artifact.whl") -> Path:
+        if Path(filename).name != filename or not filename.endswith(".whl"):
+            raise AcceptanceFailure("artifact cache filename is invalid")
+        directory = self._directory(key)
+        directory.mkdir(parents=True, exist_ok=True)
+        existing = self.lookup(key)
+        if existing is not None:
+            if existing.name == filename and existing.read_bytes() == content:
+                return existing
+            raise AcceptanceFailure(f"immutable artifact cache conflict: {key}")
+        path = directory / filename
         try:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
         except FileExistsError as exc:
@@ -62,7 +74,7 @@ class ArtifactCache:
             raise
         return path
 
-    def _path(self, key: str) -> Path:
+    def _directory(self, key: str) -> Path:
         if _KEY.fullmatch(key) is None:
             raise AcceptanceFailure("artifact cache key is invalid")
-        return self.root / f"{key}.whl"
+        return self.root / key

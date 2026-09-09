@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 import queue
 import re
+import signal
 import subprocess
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -113,13 +115,36 @@ class PlanRunner:
             for step in installed_steps
             for replay in range(1, step.replay_count + 1)
         )
-        if installed_steps:
+        installed_complete = bool(installed_steps) and all(
+            (step.step_id, replay) in self._completed_runs
+            for step in installed_steps
+            for replay in range(1, step.replay_count + 1)
+        )
+        if installed_steps and not installed_complete:
+            setup_started = time.monotonic()
+            self._on_event(
+                {
+                    "event": "installed_setup_started",
+                    "plan_identity": plan.identity,
+                }
+            )
             wheel_owners = tuple(sorted({step.owner for step in installed_steps}))
             wheels = self._wheel_builder.build(plan.identity, wheel_owners)
             if not wheels:
                 raise AcceptanceFailure("public-contract plan produced no wheels")
             installed = self._wheel_installer.install(plan.identity, wheels)
             _validate_no_source_environment(installed)
+            setup_duration = time.monotonic() - setup_started
+            level_durations["L3"] = setup_duration
+            self._on_event(
+                {
+                    "event": "installed_setup_finished",
+                    "plan_identity": plan.identity,
+                    "duration_seconds": setup_duration,
+                }
+            )
+            if setup_duration > min(step.budget_seconds for step in installed_steps):
+                raise AcceptanceFailure("installed build/install exceeded L3 budget")
 
         for step in plan.steps:
             repetitions = step.replay_count
@@ -189,7 +214,7 @@ class PlanRunner:
 
     @staticmethod
     def _validate_plan(plan: AcceptancePlan) -> None:
-        if len(plan.identity) != 64 or plan.artifact_root.find(plan.identity) < 0:
+        if len(plan.identity) != 64 or plan.recomputed_identity() != plan.identity:
             raise AcceptanceFailure("acceptance plan identity drifted")
         if any(step.level not in {"L0", "L1", "L2", "L3"} for step in plan.steps):
             raise AcceptanceFailure("public runner only executes L0-L3")
@@ -251,6 +276,8 @@ class SubprocessProcess:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=1,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+                start_new_session=os.name != "nt",
             )
         except OSError as exc:
             raise AcceptanceFailure(f"acceptance process could not start: {exc}") from exc
@@ -271,7 +298,7 @@ class SubprocessProcess:
         deadline = started + timeout_seconds
         while not (stream_done and process.poll() is not None):
             if time.monotonic() >= deadline:
-                process.kill()
+                _terminate_process_tree(process)
                 process.wait(timeout=5)
                 raise AcceptanceFailure(f"acceptance process timed out after {timeout_seconds}s")
             try:
@@ -322,6 +349,19 @@ def _sample_process(pid: int) -> dict[str, float]:
         }
     except (OSError, ValueError, IndexError):
         return {"cpu_seconds": 0.0, "read_bytes": 0.0, "write_bytes": 0.0}
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        return
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
 
 
 def _sample_windows_process(pid: int) -> dict[str, float]:

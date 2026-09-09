@@ -6,6 +6,7 @@ from .core import (
     AcceptanceFailure,
     AcceptancePlan,
     AcceptanceSelector,
+    OwnerContract,
     PlanStep,
     historical_timeout,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "LegacyScopeMigration",
     "LocalWheelBuilder",
     "LocalWheelInstaller",
+    "OwnerContract",
     "PlanRunner",
     "PlanStep",
     "ProcessResult",

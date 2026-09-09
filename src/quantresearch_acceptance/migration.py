@@ -17,6 +17,8 @@ class LegacyScopeMigration:
     source_digest: str
     spec: str
     required_installed_tracers: tuple[str, ...]
+    deferred_release_tracers: tuple[str, ...]
+    source_document: dict[str, object]
     migrated_scope: dict[str, object]
 
     def as_dict(self) -> dict[str, object]:
@@ -26,6 +28,8 @@ class LegacyScopeMigration:
             "source_digest": self.source_digest,
             "spec": self.spec,
             "required_installed_tracers": list(self.required_installed_tracers),
+            "deferred_release_tracers": list(self.deferred_release_tracers),
+            "source_document": self.source_document,
             "migrated_scope": self.migrated_scope,
         }
 
@@ -134,11 +138,14 @@ def migrate_legacy_scope(value: Mapping[str, object]) -> LegacyScopeMigration:
         },
     }
     required_tracers = tuple(value["required_installed_tracers"])  # type: ignore[arg-type]
+    deferred_tracers = tuple(value["deferred_release_tracers"])  # type: ignore[arg-type]
     return LegacyScopeMigration(
         schema="quant-research.acceptance-scope-migration.v1",
         source_schema="quant-research.acceptance-scope.v1",
         source_digest=digest,
         spec=str(value["spec"]),
         required_installed_tracers=required_tracers,
+        deferred_release_tracers=deferred_tracers,
+        source_document=dict(value),
         migrated_scope=migrated_scope,
     )

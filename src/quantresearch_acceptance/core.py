@@ -43,6 +43,18 @@ class OwnerProof:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnerContract:
+    owner: str
+    repository: str
+    fixed_base: str
+    diff_prefixes: tuple[str, ...]
+    source_patterns: tuple[str, ...]
+    import_names: tuple[str, ...]
+    build_argv: tuple[str, ...]
+    source_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
 class PlanStep:
     step_id: str
     owner: str
@@ -69,10 +81,12 @@ class AcceptancePlan:
     levels: tuple[str, ...]
     fingerprints: tuple[SourceFingerprint, ...]
     source_fingerprints: tuple[tuple[str, str], ...]
+    owner_contracts: tuple[OwnerContract, ...]
     owner_proofs: tuple[OwnerProof, ...]
     steps: tuple[PlanStep, ...]
     marker_policy: tuple[str, ...]
     ordinary_exclusion: str
+    evidence: tuple[tuple[str, str], ...]
     artifact_root: str
     event_log: str
     plan_destination: str
@@ -90,6 +104,7 @@ class AcceptancePlan:
                 {"path": item.path, "fingerprint": item.fingerprint} for item in self.fingerprints
             ],
             "source_fingerprints": dict(self.source_fingerprints),
+            "owner_contracts": [_owner_contract_dict(item) for item in self.owner_contracts],
             "owner_proofs": [
                 {
                     "owner": item.owner,
@@ -120,10 +135,32 @@ class AcceptancePlan:
             ],
             "marker_policy": list(self.marker_policy),
             "ordinary_exclusion": self.ordinary_exclusion,
+            "evidence": dict(self.evidence),
             "artifact_root": self.artifact_root,
             "event_log": self.event_log,
             "plan_destination": self.plan_destination,
         }
+
+    def recomputed_identity(self) -> str:
+        evidence = dict(self.evidence)
+        expected_root = evidence["artifact_root"].replace("{plan_id}", self.identity)
+        if (
+            self.artifact_root != expected_root
+            or self.event_log != f"{expected_root}/{evidence['event_log']}"
+            or self.plan_destination != f"{expected_root}/{evidence['plan']}"
+        ):
+            raise AcceptanceFailure("acceptance evidence destinations drifted")
+        prefix = f"{expected_root}/"
+        unresolved_steps: list[PlanStep] = []
+        for step in self.steps:
+            if not step.junit.startswith(prefix):
+                raise AcceptanceFailure("acceptance JUnit destination drifted")
+            unresolved_steps.append(replace(step, junit=step.junit.removeprefix(prefix)))
+        material = self.as_dict()
+        for field in ("identity", "artifact_root", "event_log", "plan_destination"):
+            material.pop(field)
+        material["steps"] = [_plan_step_dict(step) for step in unresolved_steps]
+        return hashlib.sha256(_canonical_json(material)).hexdigest()
 
 
 class AcceptanceSelector:
@@ -149,7 +186,6 @@ class AcceptanceSelector:
             raise AcceptanceFailure("source fingerprint drifted from acceptance scope")
 
         owner_by_source: dict[str, str] = {}
-        direct_tests: set[str] = set()
         tests_by_owner: dict[str, set[str]] = {}
         public_contract_change = False
         for source in parsed_diff.changed_sources:
@@ -164,7 +200,6 @@ class AcceptanceSelector:
             if source.path not in parsed_scope.source_to_direct_tests:
                 raise AcceptanceFailure(f"unmapped changed source: {source.path}")
             owner_by_source[source.path] = owners[0]
-            direct_tests.update(parsed_scope.source_to_direct_tests[source.path])
             tests_by_owner.setdefault(owners[0], set()).update(
                 parsed_scope.source_to_direct_tests[source.path]
             )
@@ -183,7 +218,10 @@ class AcceptanceSelector:
             if level is None:
                 raise AcceptanceFailure(f"selected level is not configured: {level_name}")
             selected_commands = [
-                command for command in level.commands if command.owner in impacted_owners
+                command
+                for command in level.commands
+                if (phase == "release" and level_name in {"L4", "L5"})
+                or command.owner in impacted_owners
             ]
             if not selected_commands:
                 raise AcceptanceFailure(f"selected level has no impacted command: {level_name}")
@@ -226,18 +264,33 @@ class AcceptanceSelector:
             for owner in parsed_scope.owners
             if owner.name not in impacted_owners
         )
+        owner_contracts = tuple(
+            OwnerContract(
+                owner=owner.name,
+                repository=owner.repository,
+                fixed_base=owner.fixed_base,
+                diff_prefixes=owner.diff_prefixes,
+                source_patterns=owner.source_patterns,
+                import_names=owner.import_names,
+                build_argv=owner.build_argv,
+                source_fingerprint=owner.source_fingerprint,
+            )
+            for owner in parsed_scope.owners
+        )
+        plan_owners = tuple(sorted({step.owner for step in steps} | set(impacted_owners)))
         material = {
             "schema": "quant-research.acceptance-plan.v1",
             "spec": parsed_scope.spec,
             "phase": phase,
             "fixed_bases": dict(parsed_scope.fixed_bases),
-            "owners": list(impacted_owners),
+            "owners": list(plan_owners),
             "levels": selected_levels,
             "fingerprints": [
                 {"path": item.path, "fingerprint": item.fingerprint}
                 for item in parsed_diff.changed_sources
             ],
             "source_fingerprints": dict(sorted(parsed_diff.source_fingerprints.items())),
+            "owner_contracts": [_owner_contract_dict(item) for item in owner_contracts],
             "owner_proofs": [
                 {
                     "owner": item.owner,
@@ -249,23 +302,7 @@ class AcceptanceSelector:
                 }
                 for item in owner_proofs
             ],
-            "steps": [
-                {
-                    "step_id": item.step_id,
-                    "owner": item.owner,
-                    "level": item.level,
-                    "argv": list(item.argv),
-                    "budget_seconds": item.budget_seconds,
-                    "timeout_seconds": item.timeout_seconds,
-                    "markers": list(item.markers),
-                    "sources": list(item.sources),
-                    "direct_tests": list(item.direct_tests),
-                    "junit": item.junit,
-                    "replay_count": item.replay_count,
-                    "environment": item.environment,
-                }
-                for item in steps
-            ],
+            "steps": [_plan_step_dict(item) for item in steps],
             "marker_policy": list(parsed_scope.allowed_markers),
             "ordinary_exclusion": parsed_scope.ordinary_exclusion,
             "evidence": parsed_scope.evidence,
@@ -281,14 +318,16 @@ class AcceptanceSelector:
             spec=parsed_scope.spec,
             phase=phase,
             fixed_bases=parsed_scope.fixed_bases,
-            owners=impacted_owners,
+            owners=plan_owners,
             levels=tuple(selected_levels),
             fingerprints=parsed_diff.changed_sources,
             source_fingerprints=tuple(sorted(parsed_diff.source_fingerprints.items())),
+            owner_contracts=owner_contracts,
             owner_proofs=owner_proofs,
             steps=resolved_steps,
             marker_policy=parsed_scope.allowed_markers,
             ordinary_exclusion=parsed_scope.ordinary_exclusion,
+            evidence=tuple(sorted(parsed_scope.evidence.items())),
             artifact_root=artifact_root,
             event_log=f"{artifact_root}/{parsed_scope.evidence['event_log']}",
             plan_destination=f"{artifact_root}/{parsed_scope.evidence['plan']}",
@@ -557,6 +596,36 @@ def _canonical_json(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"
     )
+
+
+def _owner_contract_dict(item: OwnerContract) -> dict[str, object]:
+    return {
+        "owner": item.owner,
+        "repository": item.repository,
+        "fixed_base": item.fixed_base,
+        "diff_prefixes": list(item.diff_prefixes),
+        "source_patterns": list(item.source_patterns),
+        "import_names": list(item.import_names),
+        "build_argv": list(item.build_argv),
+        "source_fingerprint": item.source_fingerprint,
+    }
+
+
+def _plan_step_dict(item: PlanStep) -> dict[str, object]:
+    return {
+        "step_id": item.step_id,
+        "owner": item.owner,
+        "level": item.level,
+        "argv": list(item.argv),
+        "budget_seconds": item.budget_seconds,
+        "timeout_seconds": item.timeout_seconds,
+        "markers": list(item.markers),
+        "sources": list(item.sources),
+        "direct_tests": list(item.direct_tests),
+        "junit": item.junit,
+        "replay_count": item.replay_count,
+        "environment": item.environment,
+    }
 
 
 def historical_timeout(
