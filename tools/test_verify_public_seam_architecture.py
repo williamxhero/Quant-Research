@@ -454,6 +454,7 @@ class PublicSeamArchitectureTests(unittest.TestCase):
                 "strategy-workspace": "f5e186dc4a88a86e8df39d86daaba2844d08c44b",
             },
         )
+        self.assertEqual(module.APEX_NODE_TIMEOUT_SECONDS, 900)
 
     def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(
         self,

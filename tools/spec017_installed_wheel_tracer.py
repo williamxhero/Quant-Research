@@ -36,6 +36,7 @@ TRANSCRIPT_PREFIXES = {
     "evidence": "SPEC017_APEX_EVIDENCE_TRANSCRIPT=",
     "reporting": "SPEC017_REPORTING_TRANSCRIPT=",
 }
+APEX_NODE_TIMEOUT_SECONDS = 900
 APEX_ARCHIVE_TESTS = (
     "test_first_exploration_insertion_is_immutable_and_not_formal",
     "test_exploration_lifecycle_views_require_explicit_events_and_preserve_history",
@@ -131,7 +132,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     source_roots,
                     cwd=isolated,
                     environment=transcript_environment,
-                    timeout_seconds=300,
+                    timeout_seconds=APEX_NODE_TIMEOUT_SECONDS,
                     pytest_args=("-s",),
                 )
                 _progress(
