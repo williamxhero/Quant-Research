@@ -1218,6 +1218,12 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-031.v1.json"
         ).is_file(),
     )
+    _scan_spec026_campaign_reporting_seams(
+        repository_root,
+        required=(
+            repository_root / "docs" / "architecture-admissions" / "spec-026.v1.json"
+        ).is_file(),
+    )
     _scan_spec032_revalidation_seams(
         repository_root,
         required=(
@@ -2057,6 +2063,90 @@ def _scan_spec031_replication_seams(
         raise ArchitectureViolation(
             "SPEC-031 Reporting replication contract is incomplete"
         )
+
+
+def _scan_spec026_campaign_reporting_seams(
+    repository_root: Path,
+    *,
+    required: bool = False,
+    owner_roots: dict[str, Path] | None = None,
+) -> None:
+    roots = owner_roots or {
+        name: repository_root / name
+        for name in (
+            "apex-research",
+            "quant-runtime",
+            "strategy-reporting",
+            "strategy-workspace",
+        )
+    }
+    reporting_root = roots.get("strategy-reporting", repository_root / "strategy-reporting")
+    reporting_modules = (
+        reporting_root / "src/strategy_reporting/contracts/campaign_report.py",
+        reporting_root / "src/strategy_reporting/adapters/campaign_source.py",
+        reporting_root / "src/strategy_reporting/renderers/campaign.py",
+        reporting_root / "src/strategy_reporting/publishing/workspace.py",
+        reporting_root / "src/strategy_reporting/portal/index.py",
+        reporting_root / "src/strategy_reporting/cli.py",
+    )
+    if not all(path.is_file() for path in reporting_modules):
+        if required:
+            raise ArchitectureViolation(
+                "SPEC-026 public campaign reporting seams are incomplete"
+            )
+        return
+
+    forbidden = {
+        "apex_research": "private Apex owner import",
+        "quant_runtime": "Runtime owner import",
+        "strategy_workspace.storage": "private Workspace storage",
+        "strategy_workspace.core": "private Workspace core",
+        "sqlite3": "Workspace SQLite access",
+        "requests": "external network access",
+        "httpx": "external network access",
+        "socket": "external network access",
+    }
+    trees = []
+    for path in reporting_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        trees.append(tree)
+        _reject_spec016_forbidden_imports(tree, path=path, forbidden=forbidden)
+
+    classes = {
+        node.name
+        for tree in trees
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+    }
+    if not {
+        "CampaignReport",
+        "CampaignReportSourceAdapter",
+        "CampaignReadModelBuilder",
+        "CampaignRenderer",
+    } <= classes:
+        raise ArchitectureViolation(
+            "SPEC-026 public campaign reporting seams are incomplete"
+        )
+    adapter_source = reporting_modules[1].read_text(encoding="utf-8")
+    if "query_lineage" in adapter_source or not all(
+        token in adapter_source for token in ("list_records", "get_record", "get_run")
+    ):
+        raise ArchitectureViolation(
+            "SPEC-026 Reporting Adapter bypasses the bounded public source contract"
+        )
+    if "render-campaign" not in reporting_modules[-1].read_text(encoding="utf-8"):
+        raise ArchitectureViolation("SPEC-026 Reporting CLI seam is incomplete")
+
+    for owner in ("quant-runtime", "strategy-workspace"):
+        source_root = roots.get(owner, repository_root / owner) / "src"
+        if not source_root.is_dir():
+            continue
+        for path in source_root.rglob("*.py"):
+            compact = path.read_text(encoding="utf-8").replace("_", "").lower()
+            if "campaignreadmodelbuilder" in compact or "campaignrenderer" in compact:
+                raise ArchitectureViolation(
+                    f"SPEC-026 Reporting presentation ownership leaked into {owner}: {path}"
+                )
 
 
 def _scan_spec032_revalidation_seams(

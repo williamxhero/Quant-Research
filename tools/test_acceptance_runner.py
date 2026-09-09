@@ -81,8 +81,35 @@ class UnchangedProofSpy:
     def prove(self, proof: object) -> None:
         self.calls.append(proof)
 
+    def finalize(self) -> tuple[Path, ...]:
+        return ()
+
+
+class DependencyProofSpy(UnchangedProofSpy):
+    def finalize(self) -> tuple[Path, ...]:
+        return (Path("wheelhouse/strategy_workspace-0.1-py3-none-any.whl"),)
+
 
 class PlanRunnerContractTests(unittest.TestCase):
+    def test_installed_environment_receives_fixed_dependency_wheels(self) -> None:
+        plan = AcceptanceSelector().select(scope_literal(), diff_literal(), phase="spec")
+        installer = InstallerSpy()
+
+        PlanRunner(
+            ProcessSpy(),
+            BuilderSpy(),
+            installer,
+            unchanged_prover=DependencyProofSpy(),
+        ).run(plan)
+
+        self.assertEqual(
+            installer.calls[0][1],
+            (
+                Path("wheelhouse/quantresearch_acceptance-1-py3-none-any.whl"),
+                Path("wheelhouse/strategy_workspace-0.1-py3-none-any.whl"),
+            ),
+        )
+
     def test_public_runner_builds_installs_once_and_uses_exactly_two_replays(self) -> None:
         plan = AcceptanceSelector().select(scope_literal(), diff_literal(), phase="spec")
         process = ProcessSpy()

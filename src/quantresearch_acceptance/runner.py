@@ -67,6 +67,7 @@ class WheelInstallerPort(Protocol):
 
 class UnchangedProverPort(Protocol):
     def prove(self, proof: OwnerProof) -> None: ...
+    def finalize(self) -> tuple[Path, ...]: ...
 
 
 class PlanRunner:
@@ -97,6 +98,7 @@ class PlanRunner:
         self._validate_plan(plan)
         for proof in plan.owner_proofs:
             self._unchanged_prover.prove(proof)
+        fixed_wheels = self._unchanged_prover.finalize()
         source_environment = _sanitized_environment()
         process_count = 0
         replay_count = 0
@@ -129,9 +131,10 @@ class PlanRunner:
                 }
             )
             wheel_owners = tuple(sorted({step.owner for step in installed_steps}))
-            wheels = self._wheel_builder.build(plan.identity, wheel_owners)
-            if not wheels:
+            selected_wheels = self._wheel_builder.build(plan.identity, wheel_owners)
+            if not selected_wheels:
                 raise AcceptanceFailure("public-contract plan produced no wheels")
+            wheels = tuple(sorted((*selected_wheels, *fixed_wheels), key=str))
             installed = self._wheel_installer.install(plan.identity, wheels)
             _validate_no_source_environment(installed)
             setup_duration = time.monotonic() - setup_started

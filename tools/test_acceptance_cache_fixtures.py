@@ -38,6 +38,9 @@ class ProofSpy:
             )
         )
 
+    def finalize(self) -> tuple[Path, ...]:
+        return ()
+
 
 class AcceptanceCacheFixtureContractTests(unittest.TestCase):
     def test_unchanged_owners_receive_only_fixed_sha_fingerprint_and_import_smoke(self) -> None:

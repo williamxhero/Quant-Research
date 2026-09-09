@@ -145,6 +145,19 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("benchmark governance", candidate["evidence_level"])
         self.assertIn("zero benchmark execution", candidate["fail_closed_behavior"])
 
+    def test_spec_026_campaign_reporting_admission_is_valid(self) -> None:
+        candidate = validator.read_json(
+            ROOT / "docs" / "architecture-admissions" / "spec-026.v1.json"
+        )
+
+        validator.validate_candidate(candidate, self.policy)
+        self.assertEqual(candidate["canonical_owner"], "strategy_reporting")
+        self.assertIn("CampaignReportSourceAdapter", candidate["public_seam"])
+        self.assertIn("presentation", candidate["evidence_level"])
+        self.assertIn("campaign graph", candidate["fail_closed_behavior"])
+        self.assertEqual(candidate["claims"], [])
+        self.assertEqual(candidate["lifecycle_states"], [])
+
     def test_spec_007_research_engine_port_admission_is_valid(self) -> None:
         candidate = validator.read_json(
             ROOT / "docs" / "architecture-admissions" / "spec-007.v1.json"

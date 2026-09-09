@@ -25,6 +25,7 @@ tools/*
 !tools/spec023_installed_wheel_tracer.py
 !tools/test_spec023_installed_wheel_tracer.py
 !tools/spec031_installed_wheel_tracer.py
+!tools/spec026_installed_wheel_tracer.py
 !docs/
 docs/*
 !docs/agents/
@@ -38,6 +39,8 @@ docs/architecture-admissions/*
 !docs/architecture-admissions/spec-021.upstream-manifest.v1.json
 !docs/architecture-admissions/spec-023.v1.json
 !docs/architecture-admissions/spec-023.acceptance.v1.json
+!docs/architecture-admissions/spec-026.v1.json
+!docs/architecture-admissions/spec-026.acceptance-scope.v2.json
 !docs/architecture-admissions/spec-031.v1.json
 !docs/architecture-admissions/spec-031.acceptance-scope.v1.json
 !docs/architecture-admissions/test-001*.json

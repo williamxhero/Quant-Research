@@ -201,6 +201,8 @@ class FixedBaseProver:
         self._cache = cache
         self._work_root = work_root
         self._venv_python: Path | None = None
+        self._prepared: list[tuple[OwnerProof, Path]] = []
+        self._finalized = False
 
     def prove(self, proof: OwnerProof) -> None:
         repository = self._repositories.get(proof.owner)
@@ -238,19 +240,33 @@ class FixedBaseProver:
                 raise AcceptanceFailure(f"fixed owner did not build one wheel: {proof.owner}")
             built = next(iter(created))
             cached = self._cache.store(key, built.read_bytes(), filename=built.name)
+        self._prepared.append((proof, cached))
+
+    def finalize(self) -> tuple[Path, ...]:
+        if self._finalized:
+            raise AcceptanceFailure("fixed owner proof phase was finalized more than once")
+        self._finalized = True
+        wheels = tuple(sorted((path for _proof, path in self._prepared), key=str))
+        if not wheels:
+            return ()
         python = self._proof_python()
         _run(
-            ["uv", "pip", "install", "--python", str(python), str(cached)],
+            ["uv", "pip", "install", "--python", str(python), *(str(path) for path in wheels)],
             cwd=self._work_root,
             timeout_seconds=300,
         )
-        imports = ";".join(f"importlib.import_module({name!r})" for name in proof.import_names)
+        imports = ";".join(
+            f"importlib.import_module({name!r})"
+            for proof, _path in self._prepared
+            for name in proof.import_names
+        )
         _run(
             [str(python), "-I", "-c", f"import importlib;{imports}"],
             cwd=self._work_root,
             timeout_seconds=60,
             environment=_clean_environment(),
         )
+        return wheels
 
     def _proof_python(self) -> Path:
         if self._venv_python is None:
@@ -290,7 +306,8 @@ def _run(
         cwd=cwd,
         env=environment,
         text=True,
-        encoding="utf-8" if argv[0] == "git" else None,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         timeout=timeout_seconds,
         check=False,
