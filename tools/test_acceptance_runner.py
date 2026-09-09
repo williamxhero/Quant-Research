@@ -68,6 +68,14 @@ class InstallerSpy:
         )
 
 
+class UnchangedProofSpy:
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def prove(self, proof: object) -> None:
+        self.calls.append(proof)
+
+
 class PlanRunnerContractTests(unittest.TestCase):
     def test_public_runner_builds_installs_once_and_uses_exactly_two_replays(self) -> None:
         plan = AcceptanceSelector().select(scope_literal(), diff_literal(), phase="spec")
@@ -75,10 +83,14 @@ class PlanRunnerContractTests(unittest.TestCase):
         builder = BuilderSpy()
         installer = InstallerSpy()
 
-        receipt = PlanRunner(process, builder, installer).run(plan)
+        proofs = UnchangedProofSpy()
+        receipt = PlanRunner(
+            process, builder, installer, unchanged_prover=proofs
+        ).run(plan)
 
         self.assertEqual(builder.calls, [(plan.identity, ("quant-research",))])
         self.assertEqual(len(installer.calls), 1)
+        self.assertEqual(len(proofs.calls), 4)
         self.assertEqual(len(process.calls), 5)
         replay_calls = process.calls[-2:]
         self.assertEqual(
@@ -105,13 +117,23 @@ class PlanRunnerContractTests(unittest.TestCase):
     def test_runner_enforces_each_step_budget_and_rejects_identity_drift(self) -> None:
         plan = AcceptanceSelector().select(scope_literal(), diff_literal(), phase="spec")
         with self.assertRaises(AcceptanceFailure):
-            PlanRunner(ProcessSpy(), BuilderSpy(), InstallerSpy()).run(
+            PlanRunner(
+                ProcessSpy(),
+                BuilderSpy(),
+                InstallerSpy(),
+                unchanged_prover=UnchangedProofSpy(),
+            ).run(
                 dataclasses.replace(plan, identity="0" * 64)
             )
 
         slow_process = ProcessSpy(duration_seconds=301)
         with self.assertRaises(AcceptanceFailure):
-            PlanRunner(slow_process, BuilderSpy(), InstallerSpy()).run(plan)
+            PlanRunner(
+                slow_process,
+                BuilderSpy(),
+                InstallerSpy(),
+                unchanged_prover=UnchangedProofSpy(),
+            ).run(plan)
 
 
 if __name__ == "__main__":

@@ -37,6 +37,7 @@ def scope_literal() -> dict[str, object]:
                     ["quantresearch_acceptance"] if name == "quant-research" else [name.replace("-", "_")]
                 ),
                 "build_argv": ["uv", "build", "--wheel", "--out-dir", "{wheel_dir}"],
+                "source_fingerprint": "sha256:" + ("1" if name == "quant-research" else "2") * 64,
             }
             for name, sha in BASES.items()
         },
@@ -121,6 +122,10 @@ def diff_literal() -> dict[str, object]:
     return {
         "schema": "quant-research.fixed-base-diff.v1",
         "fixed_bases": dict(BASES),
+        "source_fingerprints": {
+            name: "sha256:" + ("1" if name == "quant-research" else "2") * 64
+            for name in BASES
+        },
         "changed_sources": [
             {
                 "path": "src/quantresearch_acceptance/core.py",
@@ -142,7 +147,7 @@ class AcceptanceSelectorContractTests(unittest.TestCase):
         self.assertTrue(all(isinstance(step.argv, tuple) for step in plan.steps))
         self.assertEqual(
             plan.identity,
-            "6731480f2ab0e8d190536258161b5881f84b57af564c7326e335cbef3f6e9e2b",
+            "f06e333f567666f29d86fee5fb888aa86c1973388473169be90375beb22fc18f",
         )
         self.assertIn(plan.identity, plan.artifact_root)
         with self.assertRaises((AttributeError, TypeError)):

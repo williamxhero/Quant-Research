@@ -8,6 +8,8 @@ from .core import (
     historical_timeout,
 )
 from .observability import audit_performance
+from .cache import ArtifactCache
+from .fixtures import AcceptanceSession, SQLiteSession
 from .runner import (
     InstalledEnvironment,
     PlanRunner,
@@ -28,4 +30,7 @@ __all__ = [
     "SubprocessProcess",
     "audit_performance",
     "historical_timeout",
+    "AcceptanceSession",
+    "ArtifactCache",
+    "SQLiteSession",
 ]

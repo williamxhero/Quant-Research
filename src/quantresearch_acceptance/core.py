@@ -67,6 +67,7 @@ class AcceptancePlan:
     owners: tuple[str, ...]
     levels: tuple[str, ...]
     fingerprints: tuple[SourceFingerprint, ...]
+    source_fingerprints: tuple[tuple[str, str], ...]
     owner_proofs: tuple[OwnerProof, ...]
     steps: tuple[PlanStep, ...]
     marker_policy: tuple[str, ...]
@@ -88,6 +89,7 @@ class AcceptancePlan:
                 {"path": item.path, "fingerprint": item.fingerprint}
                 for item in self.fingerprints
             ],
+            "source_fingerprints": dict(self.source_fingerprints),
             "owner_proofs": [
                 {
                     "owner": item.owner,
@@ -140,6 +142,11 @@ class AcceptanceSelector:
         parsed_diff = _Diff.parse(fixed_base_diff)
         if parsed_scope.fixed_bases != parsed_diff.fixed_bases:
             raise AcceptanceFailure("fixed-base diff drifted from acceptance scope")
+        if any(
+            owner.source_fingerprint != parsed_diff.source_fingerprints[owner.name]
+            for owner in parsed_scope.owners
+        ):
+            raise AcceptanceFailure("source fingerprint drifted from acceptance scope")
 
         owner_by_source: dict[str, str] = {}
         direct_tests: set[str] = set()
@@ -210,7 +217,7 @@ class AcceptanceSelector:
                 owner=owner.name,
                 repository=owner.repository,
                 fixed_sha=owner.fixed_base,
-                source_fingerprint=_owner_fingerprint(owner.name, owner.fixed_base),
+                source_fingerprint=parsed_diff.source_fingerprints[owner.name],
                 import_names=owner.import_names,
                 build_argv=owner.build_argv,
             )
@@ -228,6 +235,7 @@ class AcceptanceSelector:
                 {"path": item.path, "fingerprint": item.fingerprint}
                 for item in parsed_diff.changed_sources
             ],
+            "source_fingerprints": dict(sorted(parsed_diff.source_fingerprints.items())),
             "owner_proofs": [
                 {
                     "owner": item.owner,
@@ -276,6 +284,7 @@ class AcceptanceSelector:
             owners=impacted_owners,
             levels=tuple(selected_levels),
             fingerprints=parsed_diff.changed_sources,
+            source_fingerprints=tuple(sorted(parsed_diff.source_fingerprints.items())),
             owner_proofs=owner_proofs,
             steps=resolved_steps,
             marker_policy=parsed_scope.allowed_markers,
@@ -294,6 +303,7 @@ class _Owner:
     source_prefixes: tuple[str, ...]
     import_names: tuple[str, ...]
     build_argv: tuple[str, ...]
+    source_fingerprint: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,6 +366,7 @@ class _Scope:
                     "source_prefixes",
                     "import_names",
                     "build_argv",
+                    "source_fingerprint",
                 },
                 f"owner {name}",
             )
@@ -382,6 +393,9 @@ class _Scope:
                         raw_owner["import_names"], f"owner {name} import names"
                     ),
                     build_argv=_argv(raw_owner["build_argv"]),
+                    source_fingerprint=_fingerprint(
+                        raw_owner["source_fingerprint"], f"owner {name} source fingerprint"
+                    ),
                 )
             )
         for index, (prefix, owner) in enumerate(prefixes):
@@ -480,11 +494,16 @@ class _Scope:
 @dataclass(frozen=True, slots=True)
 class _Diff:
     fixed_bases: tuple[tuple[str, str], ...]
+    source_fingerprints: dict[str, str]
     changed_sources: tuple[SourceFingerprint, ...]
 
     @classmethod
     def parse(cls, value: Mapping[str, object]) -> _Diff:
-        _exact_fields(value, {"schema", "fixed_bases", "changed_sources"}, "fixed-base diff")
+        _exact_fields(
+            value,
+            {"schema", "fixed_bases", "source_fingerprints", "changed_sources"},
+            "fixed-base diff",
+        )
         if value["schema"] != "quant-research.fixed-base-diff.v1":
             raise AcceptanceFailure("fixed-base diff schema is invalid")
         bases = _mapping(value["fixed_bases"], "diff fixed bases")
@@ -494,6 +513,13 @@ class _Diff:
             if _SHA.fullmatch(sha) is None:
                 raise AcceptanceFailure(f"diff fixed base is invalid: {owner}")
             fixed_bases.append((owner, sha))
+        raw_fingerprints = _mapping(value["source_fingerprints"], "source fingerprints")
+        if set(raw_fingerprints) != set(bases):
+            raise AcceptanceFailure("owner source fingerprints are incomplete")
+        source_fingerprints = {
+            owner: _fingerprint(raw, f"owner source fingerprint {owner}")
+            for owner, raw in sorted(raw_fingerprints.items())
+        }
         changed: list[SourceFingerprint] = []
         previous = ""
         for raw in _list(value["changed_sources"], "changed sources"):
@@ -509,7 +535,7 @@ class _Diff:
             changed.append(SourceFingerprint(path, fingerprint))
         if not changed:
             raise AcceptanceFailure("fixed-base diff has no changed sources")
-        return cls(tuple(fixed_bases), tuple(changed))
+        return cls(tuple(fixed_bases), source_fingerprints, tuple(changed))
 
 
 def _expand_argv(argv: tuple[str, ...], *, direct_tests: tuple[str, ...]) -> tuple[str, ...]:
@@ -552,10 +578,6 @@ def historical_timeout(
     return min(budget_seconds, max(1, math.ceil(p95 + margin)))
 
 
-def _owner_fingerprint(owner: str, fixed_base: str) -> str:
-    return "sha256:" + hashlib.sha256(f"{owner}\0{fixed_base}".encode()).hexdigest()
-
-
 def _exact_fields(value: Mapping[str, object], expected: set[str], label: str) -> None:
     if not isinstance(value, Mapping) or set(value) != expected:
         raise AcceptanceFailure(f"{label} fields are invalid")
@@ -577,6 +599,13 @@ def _string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise AcceptanceFailure(f"{label} is invalid")
     return value
+
+
+def _fingerprint(value: object, label: str) -> str:
+    fingerprint = _string(value, label)
+    if _FINGERPRINT.fullmatch(fingerprint) is None:
+        raise AcceptanceFailure(f"{label} is invalid")
+    return fingerprint
 
 
 def _canonical_strings(

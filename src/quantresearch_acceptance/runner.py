@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .core import AcceptanceFailure, AcceptancePlan, PlanStep
+from .core import AcceptanceFailure, AcceptancePlan, OwnerProof, PlanStep
 
 EventSink = Callable[[dict[str, object]], None]
 
@@ -64,6 +64,10 @@ class WheelInstallerPort(Protocol):
     ) -> InstalledEnvironment: ...
 
 
+class UnchangedProverPort(Protocol):
+    def prove(self, proof: OwnerProof) -> None: ...
+
+
 class PlanRunner:
     """Run L0-L3 while keeping process, build, and install adapters replaceable."""
 
@@ -73,15 +77,19 @@ class PlanRunner:
         wheel_builder: WheelBuilderPort,
         wheel_installer: WheelInstallerPort,
         *,
+        unchanged_prover: UnchangedProverPort,
         on_event: EventSink | None = None,
     ) -> None:
         self._process = process
         self._wheel_builder = wheel_builder
         self._wheel_installer = wheel_installer
+        self._unchanged_prover = unchanged_prover
         self._on_event = on_event or (lambda _event: None)
 
     def run(self, plan: AcceptancePlan) -> RunReceipt:
         self._validate_plan(plan)
+        for proof in plan.owner_proofs:
+            self._unchanged_prover.prove(proof)
         source_environment = _sanitized_environment()
         process_count = 0
         replay_count = 0
