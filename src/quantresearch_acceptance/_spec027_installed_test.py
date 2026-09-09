@@ -103,12 +103,12 @@ def test_every_executable_profile_has_an_independent_deterministic_identity() ->
         ),
     }
     identities = {
-        evaluator.evaluate(campaign, profile=name, receipts=_receipts(nodes)).manifest_id
+        evaluator.assess_profile(campaign, profile=name, receipts=_receipts(nodes)).manifest_id
         for name, nodes in profiles.items()
     }
     assert len(identities) == len(profiles)
     assert all(
-        evaluator.evaluate(campaign, profile=name, receipts=_receipts(nodes)).status
+        evaluator.assess_profile(campaign, profile=name, receipts=_receipts(nodes)).status
         is ProfileStatus.PASSED
         for name, nodes in profiles.items()
     )
