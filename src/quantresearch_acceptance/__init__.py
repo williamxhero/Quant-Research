@@ -17,6 +17,7 @@ from .runner import (
     RunReceipt,
     SubprocessProcess,
 )
+from .train import EnvironmentOutcome, GateRequest, ReleaseTrain
 
 __all__ = [
     "AcceptanceFailure",
@@ -33,4 +34,7 @@ __all__ = [
     "AcceptanceSession",
     "ArtifactCache",
     "SQLiteSession",
+    "EnvironmentOutcome",
+    "GateRequest",
+    "ReleaseTrain",
 ]
