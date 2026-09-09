@@ -130,7 +130,9 @@ class PlanRunner:
                     "plan_identity": plan.identity,
                 }
             )
-            wheel_owners = tuple(sorted({step.owner for step in installed_steps}))
+            # A cross-owner public tracer executes one installed step but requires every
+            # impacted owner's wheel. Unchanged owners arrive from FixedBaseProver below.
+            wheel_owners = plan.owners
             selected_wheels = self._wheel_builder.build(plan.identity, wheel_owners)
             if not selected_wheels:
                 raise AcceptanceFailure("public-contract plan produced no wheels")
