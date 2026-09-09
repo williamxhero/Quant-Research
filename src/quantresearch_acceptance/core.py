@@ -186,7 +186,10 @@ class AcceptanceSelector:
                         level=level_name,
                         argv=argv,
                         budget_seconds=level.budget_seconds,
-                        timeout_seconds=level.budget_seconds,
+                        timeout_seconds=historical_timeout(
+                            command.history_samples_seconds,
+                            budget_seconds=level.budget_seconds,
+                        ),
                         markers=command.markers,
                         sources=tuple(
                             source.path
@@ -298,6 +301,7 @@ class _Command:
     owner: str
     argv: tuple[str, ...]
     markers: tuple[str, ...]
+    history_samples_seconds: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,6 +438,7 @@ class _Scope:
                         owner=owner,
                         argv=_argv(command["argv"]),
                         markers=_canonical_strings(command["markers"], "markers", empty=True),
+                        history_samples_seconds=tuple(float(item) for item in history),
                     )
                 )
             if not commands:
@@ -444,6 +449,13 @@ class _Scope:
         allowed = _canonical_strings(marker_policy["allowed"], "allowed markers")
         if allowed != ("connected", "oci", "release", "slow"):
             raise AcceptanceFailure("marker policy is not canonical")
+        if any(
+            marker not in allowed
+            for level in levels.values()
+            for command in level.commands
+            for marker in command.markers
+        ):
+            raise AcceptanceFailure("command uses an unknown marker")
         exclusion = _string(marker_policy["ordinary_exclusion"], "ordinary exclusion")
         if exclusion != "not slow and not oci and not connected and not release":
             raise AcceptanceFailure("ordinary marker exclusion is invalid")
@@ -514,6 +526,30 @@ def _canonical_json(value: object) -> bytes:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
+
+
+def historical_timeout(
+    samples_seconds: list[float] | tuple[float, ...], *, budget_seconds: int
+) -> int:
+    """Return nearest-rank p95 plus a bounded 25% margin, clamped to budget."""
+    if (
+        not samples_seconds
+        or not isinstance(budget_seconds, int)
+        or isinstance(budget_seconds, bool)
+        or budget_seconds <= 0
+        or any(
+            not isinstance(item, (int, float))
+            or isinstance(item, bool)
+            or not math.isfinite(item)
+            or item <= 0
+            for item in samples_seconds
+        )
+    ):
+        raise AcceptanceFailure("historical timeout evidence is invalid")
+    ordered = sorted(float(item) for item in samples_seconds)
+    p95 = ordered[math.ceil(0.95 * len(ordered)) - 1]
+    margin = min(60.0, max(5.0, p95 * 0.25))
+    return min(budget_seconds, max(1, math.ceil(p95 + margin)))
 
 
 def _owner_fingerprint(owner: str, fixed_base: str) -> str:

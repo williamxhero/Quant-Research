@@ -142,7 +142,7 @@ class AcceptanceSelectorContractTests(unittest.TestCase):
         self.assertTrue(all(isinstance(step.argv, tuple) for step in plan.steps))
         self.assertEqual(
             plan.identity,
-            "a6729bc67ad14d0f3b100b8469fa756b046b83db1076e73ed21e5e24f86eff0c",
+            "6731480f2ab0e8d190536258161b5881f84b57af564c7326e335cbef3f6e9e2b",
         )
         self.assertIn(plan.identity, plan.artifact_root)
         with self.assertRaises((AttributeError, TypeError)):

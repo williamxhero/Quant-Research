@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import os
+import queue
+import re
+import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
@@ -183,3 +188,155 @@ def _validate_no_source_environment(environment: InstalledEnvironment) -> None:
             raise AcceptanceFailure("installed replay cwd is inside a source root")
     if "PYTHONPATH" in environment.environment:
         raise AcceptanceFailure("installed replay environment contains PYTHONPATH")
+
+
+class SubprocessProcess:
+    """Stream process progress and take a bounded number of CPU/I/O samples."""
+
+    def __init__(
+        self, *, sample_interval_seconds: float = 0.25, max_samples: int = 120
+    ) -> None:
+        if sample_interval_seconds <= 0 or not 1 <= max_samples <= 1000:
+            raise AcceptanceFailure("resource sampling bounds are invalid")
+        self._interval = sample_interval_seconds
+        self._max_samples = max_samples
+
+    def run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        environment: dict[str, str],
+        timeout_seconds: int,
+        on_event: EventSink,
+    ) -> ProcessResult:
+        started = time.monotonic()
+        try:
+            process = subprocess.Popen(
+                argv,
+                cwd=cwd,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+            )
+        except OSError as exc:
+            raise AcceptanceFailure(f"acceptance process could not start: {exc}") from exc
+        lines: queue.Queue[str | None] = queue.Queue()
+
+        def read_output() -> None:
+            assert process.stdout is not None
+            for line in process.stdout:
+                lines.put(line)
+            lines.put(None)
+
+        reader = threading.Thread(target=read_output, daemon=True)
+        reader.start()
+        output: list[str] = []
+        current_tests: list[str] = []
+        samples: list[dict[str, float]] = []
+        stream_done = False
+        deadline = started + timeout_seconds
+        while not (stream_done and process.poll() is not None):
+            if time.monotonic() >= deadline:
+                process.kill()
+                process.wait(timeout=5)
+                raise AcceptanceFailure(
+                    f"acceptance process timed out after {timeout_seconds}s"
+                )
+            try:
+                line = lines.get(timeout=self._interval)
+            except queue.Empty:
+                line = ""
+            if line is None:
+                stream_done = True
+            elif line:
+                output.append(line)
+                match = re.search(r"([^\s]+\.py::[^\s]+)", line)
+                if match:
+                    nodeid = match.group(1)
+                    current_tests.append(nodeid)
+                    on_event({"event": "current_test", "nodeid": nodeid})
+            if len(samples) < self._max_samples and process.poll() is None:
+                sample = _sample_process(process.pid)
+                samples.append(sample)
+                on_event({"event": "resource_sample", **sample})
+        reader.join(timeout=1)
+        if process.stdout is not None:
+            process.stdout.close()
+        return ProcessResult(
+            process.returncode or 0,
+            time.monotonic() - started,
+            "".join(output),
+            tuple(current_tests),
+            tuple(samples),
+        )
+
+
+def _sample_process(pid: int) -> dict[str, float]:
+    if os.name == "nt":
+        return _sample_windows_process(pid)
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+        ticks = float(os.sysconf("SC_CLK_TCK"))
+        counters = {
+            key: float(value)
+            for key, value in (
+                line.split(":", 1)
+                for line in Path(f"/proc/{pid}/io").read_text().splitlines()
+            )
+        }
+        return {
+            "cpu_seconds": (float(fields[13]) + float(fields[14])) / ticks,
+            "read_bytes": counters.get("read_bytes", 0.0),
+            "write_bytes": counters.get("write_bytes", 0.0),
+        }
+    except (OSError, ValueError, IndexError):
+        return {"cpu_seconds": 0.0, "read_bytes": 0.0, "write_bytes": 0.0}
+
+
+def _sample_windows_process(pid: int) -> dict[str, float]:
+    import ctypes
+    from ctypes import wintypes
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [
+            ("read_operations", ctypes.c_ulonglong),
+            ("write_operations", ctypes.c_ulonglong),
+            ("other_operations", ctypes.c_ulonglong),
+            ("read_bytes", ctypes.c_ulonglong),
+            ("write_bytes", ctypes.c_ulonglong),
+            ("other_bytes", ctypes.c_ulonglong),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return {"cpu_seconds": 0.0, "read_bytes": 0.0, "write_bytes": 0.0}
+    try:
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
+        counters = IoCounters()
+        times_ok = kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        )
+        io_ok = kernel32.GetProcessIoCounters(handle, ctypes.byref(counters))
+        cpu = 0.0
+        if times_ok:
+            kernel_ticks = (kernel.dwHighDateTime << 32) | kernel.dwLowDateTime
+            user_ticks = (user.dwHighDateTime << 32) | user.dwLowDateTime
+            cpu = (kernel_ticks + user_ticks) / 10_000_000
+        return {
+            "cpu_seconds": cpu,
+            "read_bytes": float(counters.read_bytes if io_ok else 0),
+            "write_bytes": float(counters.write_bytes if io_ok else 0),
+        }
+    finally:
+        kernel32.CloseHandle(handle)
