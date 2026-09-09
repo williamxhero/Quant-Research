@@ -8,9 +8,10 @@ import re
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
 from .core import AcceptanceFailure, AcceptancePlan, OwnerProof, PlanStep
 
@@ -59,9 +60,7 @@ class WheelBuilderPort(Protocol):
 
 
 class WheelInstallerPort(Protocol):
-    def install(
-        self, plan_identity: str, wheels: tuple[Path, ...]
-    ) -> InstalledEnvironment: ...
+    def install(self, plan_identity: str, wheels: tuple[Path, ...]) -> InstalledEnvironment: ...
 
 
 class UnchangedProverPort(Protocol):
@@ -78,12 +77,18 @@ class PlanRunner:
         wheel_installer: WheelInstallerPort,
         *,
         unchanged_prover: UnchangedProverPort,
+        repository_paths: dict[str, Path] | None = None,
+        evidence_base: Path | None = None,
+        completed_runs: frozenset[tuple[str, int]] = frozenset(),
         on_event: EventSink | None = None,
     ) -> None:
         self._process = process
         self._wheel_builder = wheel_builder
         self._wheel_installer = wheel_installer
         self._unchanged_prover = unchanged_prover
+        self._repository_paths = repository_paths or {}
+        self._evidence_base = (evidence_base or Path(".")).resolve()
+        self._completed_runs = completed_runs
         self._on_event = on_event or (lambda _event: None)
 
     def run(self, plan: AcceptancePlan) -> RunReceipt:
@@ -95,11 +100,22 @@ class PlanRunner:
         replay_count = 0
         completed: list[str] = []
         installed: InstalledEnvironment | None = None
+        level_durations: dict[str, float] = {}
         installed_steps = tuple(
             step for step in plan.steps if step.environment == "installed-no-source"
         )
+        partial_installed = any(
+            (step.step_id, replay) in self._completed_runs
+            for step in installed_steps
+            for replay in range(1, step.replay_count + 1)
+        ) and not all(
+            (step.step_id, replay) in self._completed_runs
+            for step in installed_steps
+            for replay in range(1, step.replay_count + 1)
+        )
         if installed_steps:
-            wheels = self._wheel_builder.build(plan.identity, plan.owners)
+            wheel_owners = tuple(sorted({step.owner for step in installed_steps}))
+            wheels = self._wheel_builder.build(plan.identity, wheel_owners)
             if not wheels:
                 raise AcceptanceFailure("public-contract plan produced no wheels")
             installed = self._wheel_installer.install(plan.identity, wheels)
@@ -108,8 +124,12 @@ class PlanRunner:
         for step in plan.steps:
             repetitions = step.replay_count
             for replay in range(1, repetitions + 1):
+                if (step.step_id, replay) in self._completed_runs and not (
+                    step.environment == "installed-no-source" and partial_installed
+                ):
+                    continue
                 environment = source_environment
-                cwd = Path(".")
+                cwd = self._repository_paths.get(step.owner, Path("."))
                 python = "python"
                 if step.environment == "installed-no-source":
                     if installed is None:
@@ -118,6 +138,8 @@ class PlanRunner:
                     cwd = installed.cwd
                     python = str(installed.python).replace("\\", "/")
                 junit = _replay_junit(step, replay)
+                junit = str((self._evidence_base / junit).resolve()).replace("\\", "/")
+                Path(junit).parent.mkdir(parents=True, exist_ok=True)
                 argv = tuple(
                     token.replace("{python}", python).replace("{junit}", junit)
                     for token in step.argv
@@ -146,9 +168,12 @@ class PlanRunner:
                         f"acceptance step failed ({result.returncode}): {step.step_id}"
                     )
                 if result.duration_seconds > step.timeout_seconds:
-                    raise AcceptanceFailure(
-                        f"acceptance step exceeded timeout: {step.step_id}"
-                    )
+                    raise AcceptanceFailure(f"acceptance step exceeded timeout: {step.step_id}")
+                level_durations[step.level] = (
+                    level_durations.get(step.level, 0.0) + result.duration_seconds
+                )
+                if level_durations[step.level] > step.budget_seconds:
+                    raise AcceptanceFailure(f"acceptance level exceeded budget: {step.level}")
                 self._on_event(
                     {
                         "event": "step_finished",
@@ -201,9 +226,7 @@ def _validate_no_source_environment(environment: InstalledEnvironment) -> None:
 class SubprocessProcess:
     """Stream process progress and take a bounded number of CPU/I/O samples."""
 
-    def __init__(
-        self, *, sample_interval_seconds: float = 0.25, max_samples: int = 120
-    ) -> None:
+    def __init__(self, *, sample_interval_seconds: float = 0.25, max_samples: int = 120) -> None:
         if sample_interval_seconds <= 0 or not 1 <= max_samples <= 1000:
             raise AcceptanceFailure("resource sampling bounds are invalid")
         self._interval = sample_interval_seconds
@@ -250,9 +273,7 @@ class SubprocessProcess:
             if time.monotonic() >= deadline:
                 process.kill()
                 process.wait(timeout=5)
-                raise AcceptanceFailure(
-                    f"acceptance process timed out after {timeout_seconds}s"
-                )
+                raise AcceptanceFailure(f"acceptance process timed out after {timeout_seconds}s")
             try:
                 line = lines.get(timeout=self._interval)
             except queue.Empty:
@@ -291,8 +312,7 @@ def _sample_process(pid: int) -> dict[str, float]:
         counters = {
             key: float(value)
             for key, value in (
-                line.split(":", 1)
-                for line in Path(f"/proc/{pid}/io").read_text().splitlines()
+                line.split(":", 1) for line in Path(f"/proc/{pid}/io").read_text().splitlines()
             )
         }
         return {

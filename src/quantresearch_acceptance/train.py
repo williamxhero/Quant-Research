@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from .core import AcceptanceFailure
 
@@ -67,9 +67,7 @@ class ReleaseTrain:
             raise AcceptanceFailure("release train batch size must be between 5 and 8")
         impacts = dict(connected_impacts or {})
         if any(
-            spec not in specs
-            or not owners
-            or owners != tuple(sorted(set(owners)))
+            spec not in specs or not owners or owners != tuple(sorted(set(owners)))
             for spec, owners in impacts.items()
         ):
             raise AcceptanceFailure("connected impact map is invalid")
@@ -158,9 +156,7 @@ class ReleaseTrain:
         self._gates[spec] = result
         return result
 
-    def record_environment(
-        self, gate_identity: str, *, status: str, evidence_ref: str
-    ) -> None:
+    def record_environment(self, gate_identity: str, *, status: str, evidence_ref: str) -> None:
         _evidence_ref(evidence_ref)
         gate = next(
             (
@@ -213,7 +209,10 @@ class ReleaseTrain:
             "evidence",
             "environment_outcomes",
         }
-        if set(snapshot) != expected or snapshot.get("schema") != "quant-research.release-train-ledger.v1":
+        if (
+            set(snapshot) != expected
+            or snapshot.get("schema") != "quant-research.release-train-ledger.v1"
+        ):
             raise AcceptanceFailure("release train snapshot is invalid")
         try:
             specs = tuple(snapshot["specs"])  # type: ignore[arg-type]

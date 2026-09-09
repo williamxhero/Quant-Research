@@ -47,7 +47,5 @@ def audit_performance(records: Sequence[Mapping[str, object]]) -> tuple[()]:
         if (duration > 2 or file_duration > 60) and (
             "slow" not in markers or not explanation.strip()
         ):
-            raise AcceptanceFailure(
-                f"slow test/file requires marker and explanation: {nodeid}"
-            )
+            raise AcceptanceFailure(f"slow test/file requires marker and explanation: {nodeid}")
     return ()

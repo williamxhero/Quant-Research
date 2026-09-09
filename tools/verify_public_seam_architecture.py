@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from quantresearch_acceptance import validate_test001_admission
 HARNESS_PATH = ROOT / "tools" / "installed_wheel_harness.py"
 HARNESS_SPEC = importlib.util.spec_from_file_location(
     "installed_wheel_harness", HARNESS_PATH
@@ -7285,6 +7287,14 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
 
 
 def validate_constitution() -> None:
+    try:
+        validate_test001_admission(
+            ROOT / "docs" / "architecture-admissions" / "test-001.v1.json"
+        )
+    except Exception as exc:
+        raise ArchitectureViolation(
+            f"quant-research: TEST-001 architecture admission is invalid: {exc}"
+        ) from exc
     module_path = ROOT / "tools" / "validate_architecture_constitution.py"
     specification = importlib.util.spec_from_file_location(
         "constitution_validator", module_path

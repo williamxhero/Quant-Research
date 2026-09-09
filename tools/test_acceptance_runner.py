@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from __future__ import annotations
 
 import dataclasses
@@ -56,9 +57,7 @@ class InstallerSpy:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[Path, ...]]] = []
 
-    def install(
-        self, plan_identity: str, wheels: tuple[Path, ...]
-    ) -> InstalledEnvironment:
+    def install(self, plan_identity: str, wheels: tuple[Path, ...]) -> InstalledEnvironment:
         self.calls.append((plan_identity, wheels))
         return InstalledEnvironment(
             python=Path("C:/isolated/venv/Scripts/python.exe"),
@@ -84,9 +83,7 @@ class PlanRunnerContractTests(unittest.TestCase):
         installer = InstallerSpy()
 
         proofs = UnchangedProofSpy()
-        receipt = PlanRunner(
-            process, builder, installer, unchanged_prover=proofs
-        ).run(plan)
+        receipt = PlanRunner(process, builder, installer, unchanged_prover=proofs).run(plan)
 
         self.assertEqual(builder.calls, [(plan.identity, ("quant-research",))])
         self.assertEqual(len(installer.calls), 1)
@@ -97,19 +94,11 @@ class PlanRunnerContractTests(unittest.TestCase):
             [call["argv"][0] for call in replay_calls],  # type: ignore[index]
             ["C:/isolated/venv/Scripts/python.exe"] * 2,
         )
-        self.assertTrue(
-            all("PYTHONPATH" not in call["environment"] for call in replay_calls)
-        )
-        self.assertEqual(
-            [call["cwd"] for call in replay_calls], [Path("C:/isolated/run")] * 2
-        )
+        self.assertTrue(all("PYTHONPATH" not in call["environment"] for call in replay_calls))
+        self.assertEqual([call["cwd"] for call in replay_calls], [Path("C:/isolated/run")] * 2)
         self.assertNotEqual(replay_calls[0]["argv"], replay_calls[1]["argv"])
-        self.assertTrue(
-            any(token.endswith("replay-1.xml") for token in replay_calls[0]["argv"])
-        )
-        self.assertTrue(
-            any(token.endswith("replay-2.xml") for token in replay_calls[1]["argv"])
-        )
+        self.assertTrue(any(token.endswith("replay-1.xml") for token in replay_calls[0]["argv"]))
+        self.assertTrue(any(token.endswith("replay-2.xml") for token in replay_calls[1]["argv"]))
         self.assertEqual(receipt.plan_identity, plan.identity)
         self.assertEqual(receipt.process_count, 5)
         self.assertEqual(receipt.replay_process_count, 2)
@@ -122,9 +111,7 @@ class PlanRunnerContractTests(unittest.TestCase):
                 BuilderSpy(),
                 InstallerSpy(),
                 unchanged_prover=UnchangedProofSpy(),
-            ).run(
-                dataclasses.replace(plan, identity="0" * 64)
-            )
+            ).run(dataclasses.replace(plan, identity="0" * 64))
 
         slow_process = ProcessSpy(duration_seconds=301)
         with self.assertRaises(AcceptanceFailure):

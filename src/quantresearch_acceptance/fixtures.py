@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from .core import AcceptanceFailure
 
@@ -40,7 +40,7 @@ class AcceptanceSession:
     """Initialize expensive workspace state once and isolate callers by namespace."""
 
     def __init__(self, root: Path) -> None:
-        self._workspace = (root.resolve() / "workspace")
+        self._workspace = root.resolve() / "workspace"
         self._workspace.mkdir(parents=True, exist_ok=True)
         self.initialization_count = 1
         self.sqlite = SQLiteSession(self._workspace / "acceptance.sqlite3")

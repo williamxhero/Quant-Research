@@ -1,9 +1,8 @@
+# ruff: noqa: E402
 from __future__ import annotations
 
-import copy
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from quantresearch_acceptance import AcceptanceFailure, AcceptanceSelector
-
 
 BASES = {
     "apex-research": "7cd4d1c97fcfb95194be6710d18191622f753049",
@@ -30,11 +28,12 @@ def scope_literal() -> dict[str, object]:
             name: {
                 "fixed_base": sha,
                 "repository": "." if name == "quant-research" else name,
-                "source_prefixes": [
-                    "src/" if name == "quant-research" else f"{name}/src/"
-                ],
+                "diff_prefixes": ["src/" if name == "quant-research" else f"{name}/src/"],
+                "source_patterns": ["src/"],
                 "import_names": (
-                    ["quantresearch_acceptance"] if name == "quant-research" else [name.replace("-", "_")]
+                    ["quantresearch_acceptance"]
+                    if name == "quant-research"
+                    else [name.replace("-", "_")]
                 ),
                 "build_argv": ["uv", "build", "--wheel", "--out-dir", "{wheel_dir}"],
                 "source_fingerprint": "sha256:" + ("1" if name == "quant-research" else "2") * 64,
@@ -43,9 +42,7 @@ def scope_literal() -> dict[str, object]:
         },
         "public_contract_sources": ["src/quantresearch_acceptance/core.py"],
         "source_to_direct_tests": {
-            "src/quantresearch_acceptance/core.py": [
-                "tools/test_acceptance_selector.py"
-            ]
+            "src/quantresearch_acceptance/core.py": ["tools/test_acceptance_selector.py"]
         },
         "levels": {
             "L0": {
@@ -65,9 +62,13 @@ def scope_literal() -> dict[str, object]:
                     {
                         "owner": "quant-research",
                         "argv": [
-                            "python", "-m", "pytest", "-m",
+                            "python",
+                            "-m",
+                            "pytest",
+                            "-m",
                             "not slow and not oci and not connected and not release",
-                            "--junitxml={junit}", "{direct_tests}",
+                            "--junitxml={junit}",
+                            "{direct_tests}",
                         ],
                         "markers": [],
                         "history_samples_seconds": [20, 24, 25, 30],
@@ -80,9 +81,13 @@ def scope_literal() -> dict[str, object]:
                     {
                         "owner": "quant-research",
                         "argv": [
-                            "python", "-m", "pytest", "-m",
+                            "python",
+                            "-m",
+                            "pytest",
+                            "-m",
                             "not slow and not oci and not connected and not release",
-                            "--junitxml={junit}", "tools/test_acceptance_selector.py",
+                            "--junitxml={junit}",
+                            "tools/test_acceptance_selector.py",
                         ],
                         "markers": [],
                         "history_samples_seconds": [40, 42, 50, 55],
@@ -95,9 +100,13 @@ def scope_literal() -> dict[str, object]:
                     {
                         "owner": "quant-research",
                         "argv": [
-                            "{python}", "-m", "pytest", "-m",
+                            "{python}",
+                            "-m",
+                            "pytest",
+                            "-m",
                             "not slow and not oci and not connected and not release",
-                            "--junitxml={junit}", "--pyargs",
+                            "--junitxml={junit}",
+                            "--pyargs",
                             "quantresearch_acceptance._installed_test",
                         ],
                         "markers": [],
@@ -123,8 +132,7 @@ def diff_literal() -> dict[str, object]:
         "schema": "quant-research.fixed-base-diff.v1",
         "fixed_bases": dict(BASES),
         "source_fingerprints": {
-            name: "sha256:" + ("1" if name == "quant-research" else "2") * 64
-            for name in BASES
+            name: "sha256:" + ("1" if name == "quant-research" else "2") * 64 for name in BASES
         },
         "changed_sources": [
             {
@@ -184,16 +192,18 @@ class AcceptanceSelectorContractTests(unittest.TestCase):
         drifted["fixed_bases"]["quant-research"] = "0" * 40  # type: ignore[index]
         cases.append((scope_literal(), drifted))
         ambiguous = scope_literal()
-        ambiguous["owners"]["apex-research"]["source_prefixes"] = ["src/"]  # type: ignore[index]
+        ambiguous["owners"]["apex-research"]["diff_prefixes"] = ["src/"]  # type: ignore[index]
         cases.append((ambiguous, diff_literal()))
         shell_string = scope_literal()
         shell_string["levels"]["L0"]["commands"][0]["argv"] = "python -m compileall src"  # type: ignore[index]
         cases.append((shell_string, diff_literal()))
 
         for scope, diff in cases:
-            with self.subTest(scope=json.dumps(scope, sort_keys=True)[:100]):
-                with self.assertRaises(AcceptanceFailure):
-                    AcceptanceSelector().select(scope, diff, phase="spec")
+            with (
+                self.subTest(scope=json.dumps(scope, sort_keys=True)[:100]),
+                self.assertRaises(AcceptanceFailure),
+            ):
+                AcceptanceSelector().select(scope, diff, phase="spec")
 
 
 if __name__ == "__main__":

@@ -10,9 +10,10 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 Phase = Literal["spec", "release"]
 _SHA = re.compile(r"[0-9a-f]{40}")
@@ -86,8 +87,7 @@ class AcceptancePlan:
             "owners": list(self.owners),
             "levels": list(self.levels),
             "fingerprints": [
-                {"path": item.path, "fingerprint": item.fingerprint}
-                for item in self.fingerprints
+                {"path": item.path, "fingerprint": item.fingerprint} for item in self.fingerprints
             ],
             "source_fingerprints": dict(self.source_fingerprints),
             "owner_proofs": [
@@ -150,12 +150,13 @@ class AcceptanceSelector:
 
         owner_by_source: dict[str, str] = {}
         direct_tests: set[str] = set()
+        tests_by_owner: dict[str, set[str]] = {}
         public_contract_change = False
         for source in parsed_diff.changed_sources:
             owners = tuple(
                 owner.name
                 for owner in parsed_scope.owners
-                if any(source.path.startswith(prefix) for prefix in owner.source_prefixes)
+                if any(_matches_source(source.path, prefix) for prefix in owner.diff_prefixes)
             )
             if len(owners) != 1:
                 meaning = "unmapped" if not owners else "ambiguous"
@@ -164,6 +165,9 @@ class AcceptanceSelector:
                 raise AcceptanceFailure(f"unmapped changed source: {source.path}")
             owner_by_source[source.path] = owners[0]
             direct_tests.update(parsed_scope.source_to_direct_tests[source.path])
+            tests_by_owner.setdefault(owners[0], set()).update(
+                parsed_scope.source_to_direct_tests[source.path]
+            )
             public_contract_change |= source.path in parsed_scope.public_contract_sources
 
         impacted_owners = tuple(sorted(set(owner_by_source.values())))
@@ -184,7 +188,7 @@ class AcceptanceSelector:
             if not selected_commands:
                 raise AcceptanceFailure(f"selected level has no impacted command: {level_name}")
             for index, command in enumerate(selected_commands, start=1):
-                tests = tuple(sorted(direct_tests))
+                tests = tuple(sorted(tests_by_owner.get(command.owner, ())))
                 argv = _expand_argv(command.argv, direct_tests=tests)
                 steps.append(
                     PlanStep(
@@ -206,9 +210,7 @@ class AcceptanceSelector:
                         direct_tests=tests,
                         junit=f"{level_name.lower()}-{command.owner}-{index}.xml",
                         replay_count=2 if level_name == "L3" else 1,
-                        environment=(
-                            "installed-no-source" if level_name == "L3" else "source"
-                        ),
+                        environment=("installed-no-source" if level_name == "L3" else "source"),
                     )
                 )
 
@@ -269,9 +271,7 @@ class AcceptanceSelector:
             "evidence": parsed_scope.evidence,
         }
         identity = hashlib.sha256(_canonical_json(material)).hexdigest()
-        artifact_root = parsed_scope.evidence["artifact_root"].replace(
-            "{plan_id}", identity
-        )
+        artifact_root = parsed_scope.evidence["artifact_root"].replace("{plan_id}", identity)
         resolved_steps = tuple(
             replace(item, junit=f"{artifact_root}/{item.junit}") for item in steps
         )
@@ -300,7 +300,8 @@ class _Owner:
     name: str
     fixed_base: str
     repository: str
-    source_prefixes: tuple[str, ...]
+    diff_prefixes: tuple[str, ...]
+    source_patterns: tuple[str, ...]
     import_names: tuple[str, ...]
     build_argv: tuple[str, ...]
     source_fingerprint: str
@@ -363,7 +364,8 @@ class _Scope:
                 {
                     "fixed_base",
                     "repository",
-                    "source_prefixes",
+                    "diff_prefixes",
+                    "source_patterns",
                     "import_names",
                     "build_argv",
                     "source_fingerprint",
@@ -374,21 +376,26 @@ class _Scope:
             if _SHA.fullmatch(sha) is None:
                 raise AcceptanceFailure(f"owner {name} fixed base is invalid")
             raw_prefixes = _canonical_strings(
-                raw_owner["source_prefixes"], f"owner {name} source prefixes"
+                raw_owner["diff_prefixes"], f"owner {name} diff prefixes"
             )
-            source_prefixes = tuple(_prefix(item) for item in raw_prefixes)
-            for prefix in source_prefixes:
+            diff_prefixes = tuple(_source_pattern(item) for item in raw_prefixes)
+            for prefix in diff_prefixes:
                 prefixes.append((prefix, name))
             owners.append(
                 _Owner(
                     name=name,
                     fixed_base=sha,
                     repository=(
-                        "."
-                        if raw_owner["repository"] == "."
-                        else _path(raw_owner["repository"])
+                        "." if raw_owner["repository"] == "." else _path(raw_owner["repository"])
                     ),
-                    source_prefixes=source_prefixes,
+                    diff_prefixes=diff_prefixes,
+                    source_patterns=tuple(
+                        _source_pattern(item)
+                        for item in _canonical_strings(
+                            raw_owner["source_patterns"],
+                            f"owner {name} source patterns",
+                        )
+                    ),
                     import_names=_canonical_strings(
                         raw_owner["import_names"], f"owner {name} import names"
                     ),
@@ -400,9 +407,7 @@ class _Scope:
             )
         for index, (prefix, owner) in enumerate(prefixes):
             for other_prefix, other_owner in prefixes[index + 1 :]:
-                if owner != other_owner and (
-                    prefix.startswith(other_prefix) or other_prefix.startswith(prefix)
-                ):
+                if owner != other_owner and _patterns_overlap(prefix, other_prefix):
                     raise AcceptanceFailure(
                         f"ambiguous owner source prefixes: {owner}, {other_owner}"
                     )
@@ -549,9 +554,9 @@ def _expand_argv(argv: tuple[str, ...], *, direct_tests: tuple[str, ...]) -> tup
 
 
 def _canonical_json(value: object) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def historical_timeout(
@@ -608,9 +613,7 @@ def _fingerprint(value: object, label: str) -> str:
     return fingerprint
 
 
-def _canonical_strings(
-    value: object, label: str, *, empty: bool = False
-) -> tuple[str, ...]:
+def _canonical_strings(value: object, label: str, *, empty: bool = False) -> tuple[str, ...]:
     values = _list(value, label)
     if (not values and not empty) or any(not isinstance(item, str) or not item for item in values):
         raise AcceptanceFailure(f"{label} is invalid")
@@ -637,12 +640,24 @@ def _path(value: object) -> str:
     return path
 
 
-def _prefix(value: object) -> str:
-    prefix = _string(value, "source prefix").replace("\\", "/")
-    if not prefix.endswith("/"):
-        raise AcceptanceFailure(f"source prefix must end with '/': {value}")
-    _path(prefix[:-1])
-    return prefix
+def _source_pattern(value: object) -> str:
+    pattern = _string(value, "source prefix").replace("\\", "/")
+    _path(pattern[:-1] if pattern.endswith("/") else pattern)
+    return pattern
+
+
+def _matches_source(path: str, pattern: str) -> bool:
+    return path.startswith(pattern) if pattern.endswith("/") else path == pattern
+
+
+def _patterns_overlap(first: str, second: str) -> bool:
+    if first.endswith("/") and second.endswith("/"):
+        return first.startswith(second) or second.startswith(first)
+    if first.endswith("/"):
+        return second.startswith(first)
+    if second.endswith("/"):
+        return first.startswith(second)
+    return first == second
 
 
 def _argv(value: object) -> tuple[str, ...]:

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quantresearch-acceptance"
+version = "1.0.0"
+description = "Deterministic impact-selected acceptance planning for QuantResearch"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Proprietary"}
+
+[project.scripts]
+quantresearch-acceptance = "quantresearch_acceptance.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quantresearch_acceptance"]
+
+[tool.pytest.ini_options]
+addopts = '-m "not slow and not oci and not connected and not release"'
+markers = [
+  "connected: requires a live external dependency",
+  "oci: requires an OCI runtime",
+  "release: runs only at a release-train gate",
+  "slow: exceeds the ordinary 2-second case or 60-second file budget",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]

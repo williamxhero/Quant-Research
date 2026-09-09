@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "quant-research.acceptance-scope.v2",
+  "title": "QuantResearch acceptance scope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "spec",
+    "owners",
+    "public_contract_sources",
+    "source_to_direct_tests",
+    "levels",
+    "marker_policy",
+    "evidence"
+  ],
+  "properties": {
+    "schema": {"const": "quant-research.acceptance-scope.v2"},
+    "spec": {"type": "string", "pattern": "^(SPEC|TEST)-[0-9]{3}[A-Z]?$"},
+    "owners": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/owner"}
+    },
+    "public_contract_sources": {"$ref": "#/$defs/paths"},
+    "source_to_direct_tests": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/paths"}
+    },
+    "levels": {
+      "type": "object",
+      "minProperties": 3,
+      "maxProperties": 6,
+      "propertyNames": {"pattern": "^L[0-5]$"},
+      "additionalProperties": {"$ref": "#/$defs/level"}
+    },
+    "marker_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "ordinary_exclusion"],
+      "properties": {
+        "allowed": {"const": ["connected", "oci", "release", "slow"]},
+        "ordinary_exclusion": {"const": "not slow and not oci and not connected and not release"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_root", "event_log", "plan"],
+      "properties": {
+        "artifact_root": {"type": "string", "pattern": "\\{plan_id\\}"},
+        "event_log": {"type": "string", "minLength": 1},
+        "plan": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "nonemptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "paths": {"$ref": "#/$defs/nonemptyStrings"},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixed_base", "repository", "diff_prefixes", "source_patterns", "import_names", "build_argv", "source_fingerprint"],
+      "properties": {
+        "fixed_base": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "repository": {"type": "string", "minLength": 1},
+        "diff_prefixes": {"$ref": "#/$defs/nonemptyStrings"},
+        "source_patterns": {"$ref": "#/$defs/nonemptyStrings"},
+        "import_names": {"$ref": "#/$defs/nonemptyStrings"},
+        "build_argv": {"$ref": "#/$defs/nonemptyStrings"},
+        "source_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["budget_seconds", "commands"],
+      "properties": {
+        "budget_seconds": {"type": "integer", "minimum": 1},
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["owner", "argv", "markers", "history_samples_seconds"],
+            "properties": {
+              "owner": {"type": "string", "minLength": 1},
+              "argv": {"$ref": "#/$defs/nonemptyStrings"},
+              "markers": {"type": "array", "uniqueItems": true, "items": {"enum": ["slow", "oci", "connected", "release"]}},
+              "history_samples_seconds": {"type": "array", "minItems": 1, "items": {"type": "number", "exclusiveMinimum": 0}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

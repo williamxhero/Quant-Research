@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from __future__ import annotations
 
 import sys
@@ -28,19 +29,14 @@ class AcceptanceObservabilityContractTests(unittest.TestCase):
             600,
         )
         for samples in ([], [0, 1], [float("nan")]):
-            with self.subTest(samples=samples):
-                with self.assertRaises(AcceptanceFailure):
-                    historical_timeout(samples, budget_seconds=60)
+            with self.subTest(samples=samples), self.assertRaises(AcceptanceFailure):
+                historical_timeout(samples, budget_seconds=60)
 
         plan = AcceptanceSelector().select(scope_literal(), diff_literal(), phase="spec")
-        self.assertEqual(
-            [step.timeout_seconds for step in plan.steps], [15, 38, 69, 60]
-        )
+        self.assertEqual([step.timeout_seconds for step in plan.steps], [15, 38, 69, 60])
         self.assertTrue(
             all(
-                "--junitxml=" in " ".join(step.argv)
-                for step in plan.steps
-                if "pytest" in step.argv
+                "--junitxml=" in " ".join(step.argv) for step in plan.steps if "pytest" in step.argv
             )
         )
 
@@ -65,9 +61,8 @@ class AcceptanceObservabilityContractTests(unittest.TestCase):
         for field in ("markers", "explanation"):
             invalid = [dict(valid[1])]
             invalid[0][field] = [] if field == "markers" else ""
-            with self.subTest(field=field):
-                with self.assertRaises(AcceptanceFailure):
-                    audit_performance(invalid)
+            with self.subTest(field=field), self.assertRaises(AcceptanceFailure):
+                audit_performance(invalid)
 
     def test_process_reports_current_test_and_bounded_cpu_io_samples(self) -> None:
         events: list[dict[str, object]] = []
@@ -75,7 +70,8 @@ class AcceptanceObservabilityContractTests(unittest.TestCase):
             (
                 sys.executable,
                 "-c",
-                "import time; print('tools/test_demo.py::test_live PASSED', flush=True); time.sleep(.06)",
+                "import time; print('tools/test_demo.py::test_live PASSED', "
+                "flush=True); time.sleep(.06)",
             ),
             cwd=ROOT,
             environment={},
@@ -88,7 +84,10 @@ class AcceptanceObservabilityContractTests(unittest.TestCase):
         self.assertGreaterEqual(len(result.resource_samples), 1)
         self.assertLessEqual(len(result.resource_samples), 4)
         self.assertTrue(
-            all({"cpu_seconds", "read_bytes", "write_bytes"} <= set(sample) for sample in result.resource_samples)
+            all(
+                {"cpu_seconds", "read_bytes", "write_bytes"} <= set(sample)
+                for sample in result.resource_samples
+            )
         )
         self.assertIn("current_test", {event["event"] for event in events})
         self.assertIn("resource_sample", {event["event"] for event in events})

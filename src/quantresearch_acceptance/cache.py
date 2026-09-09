@@ -48,9 +48,9 @@ class ArtifactCache:
         path = self._path(key)
         try:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
-        except FileExistsError:
+        except FileExistsError as exc:
             if path.read_bytes() != content:
-                raise AcceptanceFailure(f"immutable cache collision: {key}")
+                raise AcceptanceFailure(f"immutable cache collision: {key}") from exc
             return path
         try:
             with os.fdopen(descriptor, "wb") as stream:
