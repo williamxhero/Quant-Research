@@ -11,6 +11,7 @@
   "public_contract_sources": ["apex-research/src/apex_research/__init__.py", "apex-research/src/apex_research/golden_campaign.py", "src/quantresearch_acceptance/_spec027_installed_test.py", "src/quantresearch_acceptance/runner.py"],
   "source_to_direct_tests": {
     "apex-research/pyproject.toml": ["tests/test_golden_campaign.py"],
+    "apex-research/uv.lock": ["tests/test_boundaries.py"],
     "apex-research/src/apex_research/__init__.py": ["tests/test_golden_campaign.py"],
     "apex-research/src/apex_research/golden_campaign.py": ["tests/test_golden_campaign.py"],
     "apex-research/src/apex_research/replication_orchestration.py": ["tests/test_replication_candidate_lane.py", "tests/test_replication_formal_execution.py", "tests/test_replication_policy.py"],
