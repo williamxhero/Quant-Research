@@ -12,12 +12,31 @@
   "source_to_direct_tests": {
     "apex-research/src/apex_research/__init__.py": ["tests/test_golden_campaign.py"],
     "apex-research/src/apex_research/golden_campaign.py": ["tests/test_golden_campaign.py"],
+    "apex-research/src/apex_research/replication_orchestration.py": ["tests/test_replication_candidate_lane.py", "tests/test_replication_formal_execution.py", "tests/test_replication_policy.py"],
     "apex-research/tests/test_golden_campaign.py": ["tests/test_golden_campaign.py"],
+    "apex-research/tests/test_replication_candidate_lane.py": ["tests/test_replication_candidate_lane.py"],
+    "apex-research/tests/test_replication_formal_execution.py": ["tests/test_replication_formal_execution.py"],
+    "apex-research/tests/test_replication_policy.py": ["tests/test_replication_policy.py"],
     "docs/architecture-admissions/spec-027.acceptance-scope.v2.json": ["tools/test_acceptance_spec027.py"],
     "docs/architecture-admissions/spec-027.v1.json": ["tools/test_acceptance_spec027.py"],
     "src/quantresearch_acceptance/_spec027_installed_test.py": ["tools/test_acceptance_spec027.py"],
     "src/quantresearch_acceptance/runner.py": ["tools/test_acceptance_runner.py"],
-    "tools/test_acceptance_spec027.py": ["tools/test_acceptance_spec027.py"]
+    "tools/installed_wheel_harness.py": ["tools/test_installed_wheel_harness.py"],
+    "tools/spec014_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec015_installed_wheel_tracer.py": ["tools/test_spec015_installed_wheel_tracer.py"],
+    "tools/spec016_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec017_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec018_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec019_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec020_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/spec032_installed_wheel_tracer.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/test_acceptance_spec027.py": ["tools/test_acceptance_spec027.py"],
+    "tools/test_installed_wheel_harness.py": ["tools/test_installed_wheel_harness.py"],
+    "tools/test_spec015_installed_wheel_tracer.py": ["tools/test_spec015_installed_wheel_tracer.py"],
+    "tools/test_validate_architecture_constitution.py": ["tools/test_validate_architecture_constitution.py"],
+    "tools/test_verify_public_seam_architecture.py": ["tools/test_verify_public_seam_architecture.py"],
+    "tools/validate_architecture_constitution.py": ["tools/test_validate_architecture_constitution.py"],
+    "tools/verify_public_seam_architecture.py": ["tools/test_verify_public_seam_architecture.py"]
   },
   "levels": {
     "L0": {"budget_seconds": 60, "commands": [
