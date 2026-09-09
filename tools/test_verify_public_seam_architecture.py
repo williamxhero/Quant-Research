@@ -440,6 +440,21 @@ class PublicSeamArchitectureTests(unittest.TestCase):
             },
         )
 
+    def test_spec017_installed_tracer_freezes_current_unchanged_owners(self) -> None:
+        script = ROOT / "tools/spec017_installed_wheel_tracer.py"
+        spec = importlib.util.spec_from_file_location("spec017_tracer", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertEqual(
+            module.UNCHANGED_SOURCE_BASELINES,
+            {
+                "quant-runtime": "9f513c02ce2e1180a2b8fe5c1ea96ff4592b4860",
+                "strategy-workspace": "f5e186dc4a88a86e8df39d86daaba2844d08c44b",
+            },
+        )
+
     def test_spec014_installed_tracer_runs_complete_apex_flows_from_wheels(
         self,
     ) -> None:
