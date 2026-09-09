@@ -45,7 +45,7 @@
       {"owner": "apex-research", "argv": ["uv", "run", "--group", "dev", "ruff", "check", "src/apex_research/golden_campaign.py", "tests/test_golden_campaign.py"], "markers": [], "history_samples_seconds": [3, 4, 5]}
     ]},
     "L1": {"budget_seconds": 180, "commands": [
-      {"owner": "quant-research", "argv": ["uv", "run", "--with", "pytest", "python", "-m", "pytest", "-vv", "--junitxml={junit}", "{direct_tests}"], "markers": [], "history_samples_seconds": [3, 5, 8]},
+      {"owner": "quant-research", "argv": ["uv", "run", "--with", "pytest", "python", "-m", "pytest", "-vv", "--junitxml={junit}", "{direct_tests}"], "markers": [], "history_samples_seconds": [17, 20, 23]},
       {"owner": "apex-research", "argv": ["uv", "run", "--group", "dev", "pytest", "-vv", "--junitxml={junit}", "{direct_tests}"], "markers": [], "history_samples_seconds": [5, 8, 12]}
     ]},
     "L2": {"budget_seconds": 600, "commands": [
