@@ -570,7 +570,8 @@ def full_gate_plan(
                 "apex_research": "not oci",
                 "strategy_reporting": "not connected",
             }.get(owner)
-            pytest = ("uv", "run", *dev_switch, "pytest")
+            build_backend = ("--with", "hatchling>=1.27") if owner == "strategy_workspace" else ()
+            pytest = ("uv", "run", *dev_switch, *build_backend, "pytest")
             heavy_ignores = (
                 tuple(f"--ignore={path}" for path in _apex_heavy_test_exclusions(acceptance_scope))
                 if owner == "apex_research"

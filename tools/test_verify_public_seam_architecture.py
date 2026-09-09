@@ -510,6 +510,12 @@ class PublicSeamArchitectureTests(unittest.TestCase):
         for required in ("format", "check", "mypy", "pytest", "build", "diff"):
             self.assertTrue(any(required in token for token in commands), required)
         self.assertTrue(all(not item.connected for item in plan))
+        workspace_pytest = next(
+            item
+            for item in plan
+            if item.owner == "strategy_workspace" and item.category == "pytest"
+        )
+        self.assertIn("hatchling>=1.27", workspace_pytest.command)
         baseline_only = {
             item.owner for item in plan if item.category == "format" and item.baseline_only
         }
