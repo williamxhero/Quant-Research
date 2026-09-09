@@ -1,6 +1,8 @@
 # ruff: noqa: E402
 from __future__ import annotations
 
+import dataclasses
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,7 +16,9 @@ from quantresearch_acceptance import (
     AcceptanceSelector,
     AcceptanceSession,
     ArtifactCache,
+    FixedBaseProver,
     PlanRunner,
+    git_source_fingerprint,
 )
 from tools.test_acceptance_runner import BuilderSpy, InstallerSpy, ProcessSpy
 from tools.test_acceptance_selector import diff_literal, scope_literal
@@ -103,6 +107,58 @@ class AcceptanceCacheFixtureContractTests(unittest.TestCase):
                     )
                 )
             )
+
+    def test_fixed_base_proof_rejects_dirty_source_before_build(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "owner"
+            repository.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "acceptance@example.invalid"],
+                cwd=repository,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Acceptance Test"],
+                cwd=repository,
+                check=True,
+            )
+            pyproject = repository / "pyproject.toml"
+            pyproject.write_text("[build-system]\n", encoding="utf-8")
+            subprocess.run(["git", "add", "pyproject.toml"], cwd=repository, check=True)
+            subprocess.run(["git", "commit", "-qm", "fixed"], cwd=repository, check=True)
+            fixed = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repository,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            fingerprint = git_source_fingerprint(repository, fixed, ("pyproject.toml",))
+            pyproject.write_text("[build-system]\nrequires=[]\n", encoding="utf-8")
+            template = (
+                AcceptanceSelector()
+                .select(scope_literal(), diff_literal(), phase="spec")
+                .owner_proofs[0]
+            )
+            proof = dataclasses.replace(
+                template,
+                owner="fixture",
+                fixed_sha=fixed,
+                source_fingerprint=fingerprint,
+                build_argv=(sys.executable, "-c", "pass"),
+            )
+            prover = FixedBaseProver(
+                {"fixture": repository},
+                {"fixture": ("pyproject.toml",)},
+                ArtifactCache(root / "cache"),
+                root / "proof",
+            )
+
+            with self.assertRaisesRegex(AcceptanceFailure, "working tree"):
+                prover.prove(proof)
 
     def test_session_workspace_initializes_once_and_sqlite_rolls_back_namespaces(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

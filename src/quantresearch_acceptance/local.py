@@ -213,6 +213,13 @@ class FixedBaseProver:
         fingerprint = git_source_fingerprint(repository, proof.fixed_sha, patterns)
         if fingerprint != proof.source_fingerprint:
             raise AcceptanceFailure(f"unchanged owner fingerprint drifted: {proof.owner}")
+        source_status = _run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", *patterns],
+            cwd=repository,
+            timeout_seconds=30,
+        )
+        if source_status.strip():
+            raise AcceptanceFailure(f"unchanged owner working tree drifted: {proof.owner}")
         key = self._cache.key(
             owner=proof.owner,
             fixed_sha=proof.fixed_sha,
