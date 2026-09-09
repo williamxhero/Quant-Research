@@ -37,8 +37,8 @@ PACKAGE_REPOSITORIES = (
     "strategy-reporting",
 )
 UNCHANGED_SOURCE_BASELINES = {
-    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
-    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba",
+    "quant-runtime": "9f513c02ce2e1180a2b8fe5c1ea96ff4592b4860",
+    "strategy-workspace": "f5e186dc4a88a86e8df39d86daaba2844d08c44b",
 }
 INSTALLED_TESTS = (
     (

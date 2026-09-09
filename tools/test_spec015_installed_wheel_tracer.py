@@ -23,6 +23,13 @@ class Spec015InstalledWheelTracerTests(unittest.TestCase):
             set(tracer.UNCHANGED_SOURCE_BASELINES),
             {"quant-runtime", "strategy-workspace"},
         )
+        self.assertEqual(
+            tracer.UNCHANGED_SOURCE_BASELINES,
+            {
+                "quant-runtime": "9f513c02ce2e1180a2b8fe5c1ea96ff4592b4860",
+                "strategy-workspace": "f5e186dc4a88a86e8df39d86daaba2844d08c44b",
+            },
+        )
         self.assertIn(
             ("strategy-reporting", ("tests/test_workspace_roundtrip.py",)),
             tracer.INSTALLED_TESTS,
