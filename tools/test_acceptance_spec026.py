@@ -37,6 +37,29 @@ class Spec026AcceptanceContractTests(unittest.TestCase):
 
         self.assertEqual(output, "固定证据")
 
+    def test_tracer_counts_completed_l3_replays_from_resumable_evidence(self) -> None:
+        tracer = _load(ROOT / "tools/spec026_installed_wheel_tracer.py", "spec026_resume")
+        with tempfile.TemporaryDirectory() as temporary:
+            events = Path(temporary) / "events.jsonl"
+            events.write_text(
+                "\n".join(
+                    json.dumps(
+                        {
+                            "event": "step_finished",
+                            "level": "L3",
+                            "plan_identity": "plan-1",
+                            "step_id": "l3-strategy-reporting-1",
+                            "replay": replay,
+                        },
+                        sort_keys=True,
+                    )
+                    for replay in (1, 2)
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(tracer._completed_l3_replays(events, "plan-1"), 2)
+
     def test_machine_admission_freezes_reporting_only_ownership(self) -> None:
         admission = json.loads(
             (ROOT / "docs/architecture-admissions/spec-026.v1.json").read_text(encoding="utf-8")

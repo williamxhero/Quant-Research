@@ -87,14 +87,43 @@ def run(repository_root: Path, owner_roots: dict[str, Path]) -> dict[str, Any]:
             environment=environment,
         )
     receipt = json.loads(output.splitlines()[-1])
-    if receipt.get("ok") is not True or receipt.get("replay_process_count") != 2:
+    plan_identity = receipt.get("plan_identity")
+    event_path = receipt.get("events")
+    executed_replays = receipt.get("replay_process_count")
+    if (
+        receipt.get("ok") is not True
+        or not isinstance(plan_identity, str)
+        or not isinstance(event_path, str)
+        or executed_replays not in {0, 2}
+    ):
         raise TracerFailure("TEST-001 did not complete exactly two installed replays")
+    completed_replays = _completed_l3_replays(repository_root / event_path, plan_identity)
+    if completed_replays != 2:
+        raise TracerFailure("TEST-001 evidence does not contain two installed replays")
     return {
         **receipt,
         "schema": "quant-research.spec-026-installed-tracer.v1",
         "nodes": list(NODES),
+        "executed_replay_process_count": executed_replays,
+        "replay_process_count": completed_replays,
         "unchanged_sources": UNCHANGED_SOURCE_BASELINES,
     }
+
+
+def _completed_l3_replays(event_path: Path, plan_identity: str) -> int:
+    completed: set[tuple[str, int]] = set()
+    for line in event_path.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        if (
+            isinstance(event, dict)
+            and event.get("event") == "step_finished"
+            and event.get("level") == "L3"
+            and event.get("plan_identity") == plan_identity
+            and isinstance(event.get("step_id"), str)
+            and isinstance(event.get("replay"), int)
+        ):
+            completed.add((event["step_id"], event["replay"]))
+    return len(completed)
 
 
 def _verify_architecture(repository_root: Path, owner_roots: dict[str, Path]) -> None:
