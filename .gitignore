@@ -4,8 +4,16 @@
 !.gitignore
 !README.md
 !AGENTS.md
+!pyproject.toml
+!src/
+src/*
+!src/quantresearch_acceptance/
+src/quantresearch_acceptance/*
+!src/quantresearch_acceptance/*.py
 !tools/
 tools/*
+!tools/test_acceptance_*.py
+!tools/test_release_train.py
 !tools/spec014_installed_wheel_tracer.py
 !tools/spec015_installed_wheel_tracer.py
 !tools/spec018_installed_wheel_tracer.py
@@ -32,3 +40,7 @@ docs/architecture-admissions/*
 !docs/architecture-admissions/spec-023.acceptance.v1.json
 !docs/architecture-admissions/spec-031.v1.json
 !docs/architecture-admissions/spec-031.acceptance-scope.v1.json
+!docs/architecture-admissions/test-001*.json
+!docs/contracts/
+docs/contracts/*
+!docs/contracts/acceptance-scope.schema.v2.json
