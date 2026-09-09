@@ -271,14 +271,14 @@ class FixedBaseProver:
     def _proof_python(self) -> Path:
         if self._venv_python is None:
             venv = self._work_root / "fixed-smoke-venv"
-            _run(
-                ["uv", "venv", "--python", "3.12", str(venv)],
-                cwd=self._work_root,
-                timeout_seconds=120,
-            )
-            self._venv_python = (
-                venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-            ).resolve()
+            python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            if not python.is_file():
+                _run(
+                    ["uv", "venv", "--python", "3.12", str(venv)],
+                    cwd=self._work_root,
+                    timeout_seconds=120,
+                )
+            self._venv_python = python.resolve()
         return self._venv_python
 
 

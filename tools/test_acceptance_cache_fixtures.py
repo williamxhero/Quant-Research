@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -162,6 +164,20 @@ class AcceptanceCacheFixtureContractTests(unittest.TestCase):
 
             with self.assertRaisesRegex(AcceptanceFailure, "working tree"):
                 prover.prove(proof)
+
+    def test_fixed_base_proof_reuses_existing_smoke_environment_on_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = Path("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            python = root / "proof" / "fixed-smoke-venv" / executable
+            python.parent.mkdir(parents=True)
+            python.touch()
+            prover = FixedBaseProver({}, {}, ArtifactCache(root / "cache"), root / "proof")
+
+            with mock.patch("quantresearch_acceptance.local._run") as command:
+                self.assertEqual(prover._proof_python(), python.resolve())
+
+            command.assert_not_called()
 
     def test_session_workspace_initializes_once_and_sqlite_rolls_back_namespaces(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
