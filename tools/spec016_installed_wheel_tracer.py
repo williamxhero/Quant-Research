@@ -14,9 +14,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -40,9 +38,7 @@ class TracerFailure(InstalledWheelFailure):
 
 
 def _parse_transcript(output: str, label: str) -> dict[str, Any]:
-    matches = re.findall(
-        r"(?m)^" + re.escape(TRANSCRIPT_PREFIX) + r"(\{[^\r\n]*\})$", output
-    )
+    matches = re.findall(r"(?m)^" + re.escape(TRANSCRIPT_PREFIX) + r"(\{[^\r\n]*\})$", output)
     if len(matches) != 1 or output.count(TRANSCRIPT_PREFIX) != 1:
         raise TracerFailure(f"{label} identity transcript framing is invalid")
     try:
@@ -132,20 +128,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ]
             )
         if replays[0] != replays[1]:
-            raise TracerFailure(
-                "SPEC-016 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-016 installed identity transcript drifted on replay")
         smoke_output = HARNESS.run_command(
             [
                 str(python),
                 "-I",
                 "-B",
-                str(
-                    snapshot
-                    / "quant-research"
-                    / "tools"
-                    / "spec016_installed_wheel_tracer.py"
-                ),
+                str(snapshot / "quant-research" / "tools" / "spec016_installed_wheel_tracer.py"),
                 "--repository-root",
                 str(snapshot),
                 "--smoke-root",
@@ -185,8 +174,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ).encode("utf-8")
             ).hexdigest(),
             "wheel_sha256": {
-                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(wheels)
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
             },
             "unchanged_sources": unchanged,
             "source_topology": topology,

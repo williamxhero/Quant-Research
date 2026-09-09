@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -104,9 +102,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(
-                path, snapshot / name, topology[name]["source_files"]
-            )
+            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
         wheels = HARNESS.build_wheels(snapshot, PACKAGE_REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -115,9 +111,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         transcript_environment["SPEC017_IDENTITY_TRANSCRIPT"] = "1"
         replays: list[dict[str, dict[str, Any]]] = []
         source_roots = tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES)
-        apex_test_file = (
-            snapshot / "apex-research" / "tests" / "test_quality_diversity_archives.py"
-        )
+        apex_test_file = snapshot / "apex-research" / "tests" / "test_quality_diversity_archives.py"
         reporting_test_file = (
             snapshot
             / "strategy-reporting"
@@ -158,30 +152,19 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             _progress(f"replay={replay_index + 1} reporting=passed")
             replays.append(
                 {
-                    "generation": _parse_transcript(
-                        apex_outputs[REPLAY_TESTS[0]], "generation"
-                    ),
-                    "evidence": _parse_transcript(
-                        apex_outputs[REPLAY_TESTS[1]], "evidence"
-                    ),
+                    "generation": _parse_transcript(apex_outputs[REPLAY_TESTS[0]], "generation"),
+                    "evidence": _parse_transcript(apex_outputs[REPLAY_TESTS[1]], "evidence"),
                     "reporting": _parse_transcript(reporting_output, "reporting"),
                 }
             )
         if replays[0] != replays[1]:
-            raise TracerFailure(
-                "SPEC-017 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-017 installed identity transcript drifted on replay")
         smoke_output = HARNESS.run_command(
             [
                 str(python),
                 "-I",
                 "-B",
-                str(
-                    snapshot
-                    / "quant-research"
-                    / "tools"
-                    / "spec017_installed_wheel_tracer.py"
-                ),
+                str(snapshot / "quant-research" / "tools" / "spec017_installed_wheel_tracer.py"),
                 "--repository-root",
                 str(snapshot),
                 "--smoke-root",
@@ -221,8 +204,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ).encode("utf-8")
             ).hexdigest(),
             "wheel_sha256": {
-                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(wheels)
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
             },
             "unchanged_sources": unchanged,
             "source_topology": topology,

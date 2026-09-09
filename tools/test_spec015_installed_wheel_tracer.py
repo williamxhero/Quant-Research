@@ -11,9 +11,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).parents[1]
 MODULE_PATH = ROOT / "tools" / "spec015_installed_wheel_tracer.py"
-SPEC = importlib.util.spec_from_file_location(
-    "spec015_installed_wheel_tracer", MODULE_PATH
-)
+SPEC = importlib.util.spec_from_file_location("spec015_installed_wheel_tracer", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 tracer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(tracer)

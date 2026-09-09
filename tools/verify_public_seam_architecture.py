@@ -16,10 +16,9 @@ from typing import NamedTuple
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from quantresearch_acceptance import validate_test001_admission
+
 HARNESS_PATH = ROOT / "tools" / "installed_wheel_harness.py"
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -253,9 +252,7 @@ def _selected_installed_tracers(
     historical_mode: str,
 ) -> tuple[str, ...]:
     if historical_mode not in {"impacted", "full", "release"}:
-        raise ArchitectureViolation(
-            f"unknown historical validation mode: {historical_mode}"
-        )
+        raise ArchitectureViolation(f"unknown historical validation mode: {historical_mode}")
     if acceptance_scope is not None:
         selected = set(acceptance_scope.required_installed_tracers)
         if historical_mode in {"full", "release"}:
@@ -283,19 +280,13 @@ def _apex_heavy_test_exclusions(
     return tuple(path.removeprefix("apex-research/") for path in paths)
 
 
-def _fixture_token_is_excluded_apex_test(
-    token: str, exclusions: tuple[str, ...]
-) -> bool:
+def _fixture_token_is_excluded_apex_test(token: str, exclusions: tuple[str, ...]) -> bool:
     return any(token == path or token.startswith(f"{path}::") for path in exclusions)
 
 
-def _repository_has_product_changes(
-    acceptance_scope: AcceptanceScope, repository: str
-) -> bool:
+def _repository_has_product_changes(acceptance_scope: AcceptanceScope, repository: str) -> bool:
     prefix = f"{repository}/"
-    return any(
-        path.startswith(prefix) for path in acceptance_scope.product_changed_paths
-    )
+    return any(path.startswith(prefix) for path in acceptance_scope.product_changed_paths)
 
 
 def fixture_plan(
@@ -473,9 +464,7 @@ def full_gate_plan(
         "tools/validate_architecture_constitution.py",
         "tools/verify_public_seam_architecture.py",
     )
-    add(
-        "quant_research", ".", "format", "ruff", "format", "--check", *root_python_files
-    )
+    add("quant_research", ".", "format", "ruff", "format", "--check", *root_python_files)
     add(
         "quant_research",
         ".",
@@ -541,8 +530,7 @@ def full_gate_plan(
             "format",
             "--check",
             *static_targets,
-            baseline_only=owner
-            in {"strategy_workspace", "quant_runtime", "strategy_reporting"},
+            baseline_only=owner in {"strategy_workspace", "quant_runtime", "strategy_reporting"},
         )
         add(
             owner,
@@ -582,10 +570,7 @@ def full_gate_plan(
             }.get(owner)
             pytest = ("uv", "run", *dev_switch, "pytest")
             heavy_ignores = (
-                tuple(
-                    f"--ignore={path}"
-                    for path in _apex_heavy_test_exclusions(acceptance_scope)
-                )
+                tuple(f"--ignore={path}" for path in _apex_heavy_test_exclusions(acceptance_scope))
                 if owner == "apex_research"
                 else ()
             )
@@ -706,9 +691,7 @@ def historical_installed_wheels_required(
 ) -> bool:
     """Select one historical heavy tracer from its actual product-impact paths."""
     if historical_mode not in {"impacted", "full", "release"}:
-        raise ArchitectureViolation(
-            f"unknown historical validation mode: {historical_mode}"
-        )
+        raise ArchitectureViolation(f"unknown historical validation mode: {historical_mode}")
     if historical_mode in {"full", "release"}:
         return True
     if spec not in HISTORICAL_IMPACT_PREFIXES:
@@ -736,13 +719,9 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         return result
 
     try:
-        raw = json.loads(
-            path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys
-        )
+        raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ArchitectureViolation(
-            f"cannot read acceptance scope {path}: {exc}"
-        ) from exc
+        raise ArchitectureViolation(f"cannot read acceptance scope {path}: {exc}") from exc
     required = {
         "schema",
         "spec",
@@ -763,8 +742,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     optional = historical_fields | current_fields | {"test_protocol"}
     keys = set(raw) if isinstance(raw, dict) else set()
     partial_optional_group = any(
-        bool(keys & group) and not group <= keys
-        for group in (historical_fields, current_fields)
+        bool(keys & group) and not group <= keys for group in (historical_fields, current_fields)
     )
     if (
         not isinstance(raw, dict)
@@ -775,9 +753,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         raise ArchitectureViolation("acceptance scope fields are invalid")
     if raw["schema"] != "quant-research.acceptance-scope.v1":
         raise ArchitectureViolation("acceptance scope schema is invalid")
-    if not isinstance(raw["spec"], str) or not re.fullmatch(
-        r"SPEC-\d{3}[A-Z]?", raw["spec"]
-    ):
+    if not isinstance(raw["spec"], str) or not re.fullmatch(r"SPEC-\d{3}[A-Z]?", raw["spec"]):
         raise ArchitectureViolation("acceptance scope spec is invalid")
     baseline_heads = raw["baseline_heads"]
     if (
@@ -810,9 +786,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         if paths:
             for value in result:
                 if _normalized_changed_path(value) != value:
-                    raise ArchitectureViolation(
-                        f"acceptance scope path is not normalized: {value}"
-                    )
+                    raise ArchitectureViolation(f"acceptance scope path is not normalized: {value}")
         return result
 
     product = canonical_strings("product_changed_paths", paths=True)
@@ -832,14 +806,9 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     current_exclusions: tuple[str, ...] = ()
     current_exclusion_reason = ""
     if current_fields <= set(raw):
-        current_exclusions = canonical_strings(
-            "current_spec_heavy_test_exclusions", paths=True
-        )
+        current_exclusions = canonical_strings("current_spec_heavy_test_exclusions", paths=True)
         current_reason_value = raw["current_spec_heavy_exclusion_reason"]
-        if (
-            not isinstance(current_reason_value, str)
-            or not current_reason_value.strip()
-        ):
+        if not isinstance(current_reason_value, str) or not current_reason_value.strip():
             raise ArchitectureViolation(
                 "acceptance scope current-spec-heavy exclusion reason is invalid"
             )
@@ -849,10 +818,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
     if historical_fields <= set(raw):
         exclusions = canonical_strings("historical_heavy_test_exclusions", paths=True)
         exclusion_reason_value = raw["historical_heavy_exclusion_reason"]
-        if (
-            not isinstance(exclusion_reason_value, str)
-            or not exclusion_reason_value.strip()
-        ):
+        if not isinstance(exclusion_reason_value, str) or not exclusion_reason_value.strip():
             raise ArchitectureViolation(
                 "acceptance scope historical-heavy exclusion reason is invalid"
             )
@@ -862,15 +828,11 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         not path.startswith("apex-research/tests/") or not path.endswith(".py")
         for path in all_exclusions
     ):
-        raise ArchitectureViolation(
-            "acceptance scope heavy exclusions must be Apex pytest files"
-        )
+        raise ArchitectureViolation("acceptance scope heavy exclusions must be Apex pytest files")
     if len(set(all_exclusions)) != len(all_exclusions):
         raise ArchitectureViolation("acceptance scope heavy exclusions overlap")
     if current_exclusions and raw["spec"] not in required_tracers:
-        raise ArchitectureViolation(
-            "current-spec heavy exclusions lack required tracer coverage"
-        )
+        raise ArchitectureViolation("current-spec heavy exclusions lack required tracer coverage")
     if exclusions and not deferred_tracers:
         raise ArchitectureViolation(
             "historical heavy exclusions lack deferred release tracer coverage"
@@ -898,24 +860,17 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
         maximum_budgets = {"L0": 60, "L1": 180, "L2": 600}
         for name, level in levels.items():
             if not isinstance(level, dict) or set(level) != level_fields:
-                raise ArchitectureViolation(
-                    f"acceptance scope {name} fields are invalid"
-                )
+                raise ArchitectureViolation(f"acceptance scope {name} fields are invalid")
             if (
                 not isinstance(level["budget_seconds"], int)
                 or level["budget_seconds"] <= 0
-                or (
-                    name in maximum_budgets
-                    and level["budget_seconds"] > maximum_budgets[name]
-                )
+                or (name in maximum_budgets and level["budget_seconds"] > maximum_budgets[name])
                 or not isinstance(level["marker"], str)
                 or not level["marker"]
                 or not isinstance(level["purpose"], str)
                 or not level["purpose"]
             ):
-                raise ArchitectureViolation(
-                    f"acceptance scope {name} metadata is invalid"
-                )
+                raise ArchitectureViolation(f"acceptance scope {name} metadata is invalid")
             commands = level["commands"]
             if (
                 not isinstance(commands, list)
@@ -927,15 +882,12 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
                     or not isinstance(command["argv"], list)
                     or not command["argv"]
                     or not all(
-                        isinstance(argument, str) and argument
-                        for argument in command["argv"]
+                        isinstance(argument, str) and argument for argument in command["argv"]
                     )
                     for command in commands
                 )
             ):
-                raise ArchitectureViolation(
-                    f"acceptance scope {name} commands are invalid"
-                )
+                raise ArchitectureViolation(f"acceptance scope {name} commands are invalid")
             for field in ("direct_tests", "sources"):
                 values = level[field]
                 if (
@@ -943,9 +895,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
                     or not values
                     or not all(isinstance(value, str) and value for value in values)
                 ):
-                    raise ArchitectureViolation(
-                        f"acceptance scope {name} {field} is invalid"
-                    )
+                    raise ArchitectureViolation(f"acceptance scope {name} {field} is invalid")
         mapping = protocol["source_to_direct_tests"]
         if (
             not isinstance(mapping, dict)
@@ -984,9 +934,7 @@ def load_acceptance_scope(path: Path) -> AcceptanceScope:
             or observability["live_current_test"] != "deferred"
             or observability["deferred_requirement"] != "TEST-001"
         ):
-            raise ArchitectureViolation(
-                "acceptance scope performance observability is invalid"
-            )
+            raise ArchitectureViolation("acceptance scope performance observability is invalid")
         test_protocol = protocol
     return AcceptanceScope(
         spec=raw["spec"],
@@ -1041,9 +989,7 @@ def changed_paths_since_origin(repository_root: Path) -> tuple[str, ...]:
                     timeout_seconds=30,
                 )
                 changed.update(
-                    f"{prefix}/{path}" if prefix else path
-                    for path in output.splitlines()
-                    if path
+                    f"{prefix}/{path}" if prefix else path for path in output.splitlines() if path
                 )
         except HARNESS.InstalledWheelFailure as exc:
             raise ArchitectureViolation(
@@ -1172,9 +1118,7 @@ def scan_sources(repository_root: Path) -> None:
                     continue
                 if _ast_rule_present(tree, forbidden):
                     raise ArchitectureViolation(f"{repository}: {reason}: {path}")
-    _scan_apex_governance_seams(
-        repository_root / "apex-research" / "src" / "apex_research"
-    )
+    _scan_apex_governance_seams(repository_root / "apex-research" / "src" / "apex_research")
     _scan_rdagent_seams(repository_root / "apex-research")
     _scan_focused_loop_seams(repository_root / "apex-research")
     _scan_research_memory_seams(repository_root / "apex-research")
@@ -1248,42 +1192,22 @@ def scan_sources(repository_root: Path) -> None:
             repository_root / "docs" / "architecture-admissions" / "spec-025.v1.json"
         ).is_file(),
     )
-    admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
-    )
+    admission = repository_root / "docs" / "architecture-admissions" / "spec-016.v1.json"
     constitution = repository_root / "docs" / "architecture-constitution.v1.json"
     if constitution.is_file() and not admission.is_file():
-        raise ArchitectureViolation(
-            "quant-research: SPEC-016 architecture admission is missing"
-        )
-    spec017_admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-017.v1.json"
-    )
+        raise ArchitectureViolation("quant-research: SPEC-016 architecture admission is missing")
+    spec017_admission = repository_root / "docs" / "architecture-admissions" / "spec-017.v1.json"
     if constitution.is_file() and not spec017_admission.is_file():
-        raise ArchitectureViolation(
-            "quant-research: SPEC-017 architecture admission is missing"
-        )
-    spec018_admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-018.v1.json"
-    )
+        raise ArchitectureViolation("quant-research: SPEC-017 architecture admission is missing")
+    spec018_admission = repository_root / "docs" / "architecture-admissions" / "spec-018.v1.json"
     if constitution.is_file() and not spec018_admission.is_file():
-        raise ArchitectureViolation(
-            "quant-research: SPEC-018 architecture admission is missing"
-        )
-    spec019_admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-019.v1.json"
-    )
+        raise ArchitectureViolation("quant-research: SPEC-018 architecture admission is missing")
+    spec019_admission = repository_root / "docs" / "architecture-admissions" / "spec-019.v1.json"
     if constitution.is_file() and not spec019_admission.is_file():
-        raise ArchitectureViolation(
-            "quant-research: SPEC-019 architecture admission is missing"
-        )
-    spec020_admission = (
-        repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
-    )
+        raise ArchitectureViolation("quant-research: SPEC-019 architecture admission is missing")
+    spec020_admission = repository_root / "docs" / "architecture-admissions" / "spec-020.v1.json"
     if constitution.is_file() and not spec020_admission.is_file():
-        raise ArchitectureViolation(
-            "quant-research: SPEC-020 architecture admission is missing"
-        )
+        raise ArchitectureViolation("quant-research: SPEC-020 architecture admission is missing")
     _scan_spec015_qualification_seam(
         repository_root / "apex-research",
         required=constitution.is_file() or admission.is_file(),
@@ -1291,27 +1215,15 @@ def scan_sources(repository_root: Path) -> None:
     _scan_spec015_non_owner_repositories(repository_root)
 
 
-def _scan_spec025_regression_gate_seam(
-    repository_root: Path, *, required: bool = False
-) -> None:
-    module = (
-        repository_root
-        / "apex-research"
-        / "src"
-        / "apex_research"
-        / "regression_gate.py"
-    )
+def _scan_spec025_regression_gate_seam(repository_root: Path, *, required: bool = False) -> None:
+    module = repository_root / "apex-research" / "src" / "apex_research" / "regression_gate.py"
     cli = repository_root / "apex-research" / "src" / "apex_research" / "cli.py"
-    public_exports = (
-        repository_root / "apex-research" / "src" / "apex_research" / "__init__.py"
-    )
+    public_exports = repository_root / "apex-research" / "src" / "apex_research" / "__init__.py"
     if not required and not module.is_file():
         return
     for path in (module, cli, public_exports):
         if not path.is_file():
-            raise ArchitectureViolation(
-                f"apex-research: SPEC-025 public seam is missing: {path}"
-            )
+            raise ArchitectureViolation(f"apex-research: SPEC-025 public seam is missing: {path}")
     source = module.read_text(encoding="utf-8")
     for marker in (
         "class AIResearcherRegressionGateService",
@@ -1367,9 +1279,7 @@ def _scan_spec025_regression_gate_seam(
         None,
     )
     if command is None:
-        raise ArchitectureViolation(
-            "apex-research: SPEC-025 strict CLI seam is missing"
-        )
+        raise ArchitectureViolation("apex-research: SPEC-025 strict CLI seam is missing")
     command_source = ast.unparse(command)
     for marker in (
         "QuantRuntimeAdapter",
@@ -1389,16 +1299,8 @@ def _scan_spec025_regression_gate_seam(
         )
 
 
-def _scan_spec016_descriptor_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
-    apex = (
-        repository_root
-        / "apex-research"
-        / "src"
-        / "apex_research"
-        / "behavior_descriptors.py"
-    )
+def _scan_spec016_descriptor_seams(repository_root: Path, *, required: bool = False) -> None:
+    apex = repository_root / "apex-research" / "src" / "apex_research" / "behavior_descriptors.py"
     reporting_contract = (
         repository_root
         / "strategy-reporting"
@@ -1455,16 +1357,10 @@ def _scan_spec016_descriptor_seams(
     }
     runtime_invocation_calls = {"submit_run", "execute_run", "get_run", "get_result"}
     if apex_calls & metric_reconstruction_calls:
-        raise ArchitectureViolation(
-            f"SPEC-016 Apex performs metric reconstruction: {apex}"
-        )
+        raise ArchitectureViolation(f"SPEC-016 Apex performs metric reconstruction: {apex}")
     if apex_calls & runtime_invocation_calls:
-        raise ArchitectureViolation(
-            f"SPEC-016 Apex performs Runtime import or invocation: {apex}"
-        )
-    apex_classes = {
-        node.name for node in ast.walk(apex_tree) if isinstance(node, ast.ClassDef)
-    }
+        raise ArchitectureViolation(f"SPEC-016 Apex performs Runtime import or invocation: {apex}")
+    apex_classes = {node.name for node in ast.walk(apex_tree) if isinstance(node, ast.ClassDef)}
     required_apex = {
         "BehaviorTaxonomy",
         "DiscoveryBehaviorDescriptor",
@@ -1472,17 +1368,13 @@ def _scan_spec016_descriptor_seams(
         "BehaviorDescriptorService",
     }
     if not required_apex <= apex_classes:
-        raise ArchitectureViolation(
-            "SPEC-016 Apex descriptor owner contract is incomplete"
-        )
+        raise ArchitectureViolation("SPEC-016 Apex descriptor owner contract is incomplete")
     if any(
         "candidate" in _normalize_identifier(name)
         and name not in {"DiscoveryBehaviorDescriptor", "FormalBehaviorDescriptor"}
         for name in apex_classes
     ):
-        raise ArchitectureViolation(
-            f"SPEC-016 declares a second Candidate truth: {apex}"
-        )
+        raise ArchitectureViolation(f"SPEC-016 declares a second Candidate truth: {apex}")
     service = next(
         node
         for node in ast.walk(apex_tree)
@@ -1493,13 +1385,8 @@ def _scan_spec016_descriptor_seams(
         for node in service.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    if (
-        not {"assign_discovery", "assign_formal", "read_discovery", "read_formal"}
-        <= methods
-    ):
-        raise ArchitectureViolation(
-            "SPEC-016 Apex descriptor service seam is incomplete"
-        )
+    if not {"assign_discovery", "assign_formal", "read_discovery", "read_formal"} <= methods:
+        raise ArchitectureViolation("SPEC-016 Apex descriptor service seam is incomplete")
     for path in (reporting_contract, reporting_adapter):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         _reject_spec016_forbidden_imports(
@@ -1558,20 +1445,15 @@ def _scan_spec016_descriptor_seams(
         "positionmanager",
     )
     if any(marker in name for marker in authority_markers for name in authority_names):
-        raise ArchitectureViolation(
-            "SPEC-016 declares archive, currency, or production authority"
-        )
+        raise ArchitectureViolation("SPEC-016 declares archive, currency, or production authority")
     if not any(
-        isinstance(node, ast.ClassDef)
-        and node.name == "BehaviorDescriptorReadModelBuilder"
+        isinstance(node, ast.ClassDef) and node.name == "BehaviorDescriptorReadModelBuilder"
         for node in ast.walk(adapter_tree)
     ):
         raise ArchitectureViolation("SPEC-016 Reporting read-model seam is incomplete")
 
 
-def _scan_spec017_archive_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec017_archive_seams(repository_root: Path, *, required: bool = False) -> None:
     apex = (
         repository_root
         / "apex-research"
@@ -1601,8 +1483,7 @@ def _scan_spec017_archive_seams(
     if not all(path.is_file() for path in paths):
         raise ArchitectureViolation("SPEC-017 owner or presentation seam is missing")
     trees = {
-        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for path in paths
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path)) for path in paths
     }
     _reject_spec016_forbidden_imports(
         trees[apex],
@@ -1631,9 +1512,7 @@ def _scan_spec017_archive_seams(
                 "subprocess": "subprocess-based upstream access",
             },
         )
-    apex_classes = {
-        node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)
-    }
+    apex_classes = {node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)}
     required_apex = {
         "ExplorationArchivePolicy",
         "EvidenceArchivePolicy",
@@ -1644,9 +1523,7 @@ def _scan_spec017_archive_seams(
         "QualityDiversityArchiveService",
     }
     if not required_apex <= apex_classes:
-        raise ArchitectureViolation(
-            "SPEC-017 Apex archive owner contract is incomplete"
-        )
+        raise ArchitectureViolation("SPEC-017 Apex archive owner contract is incomplete")
     source = apex.read_text(encoding="utf-8")
     for marker in (
         "apex-research.exploration-archive.v1",
@@ -1654,9 +1531,7 @@ def _scan_spec017_archive_seams(
         "SPEC-032 exact currency owner fact unavailable",
     ):
         if marker not in source:
-            raise ArchitectureViolation(
-                f"SPEC-017 Apex archive invariant is missing: {marker}"
-            )
+            raise ArchitectureViolation(f"SPEC-017 Apex archive invariant is missing: {marker}")
     reporting_classes = {
         node.name
         for path in (reporting_contract, reporting_adapter)
@@ -1690,17 +1565,13 @@ def _scan_spec017_archive_seams(
     _scan_spec017_non_owner_repositories(repository_root)
 
 
-def _scan_spec018_evolution_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec018_evolution_seams(repository_root: Path, *, required: bool = False) -> None:
     apex = repository_root / "apex-research/src/apex_research/evolution.py"
     reporting_contract = (
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/contracts/evolution.py"
+        repository_root / "strategy-reporting/src/strategy_reporting/contracts/evolution.py"
     )
     reporting_adapter = (
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/adapters/evolution.py"
+        repository_root / "strategy-reporting/src/strategy_reporting/adapters/evolution.py"
     )
     paths = (apex, reporting_contract, reporting_adapter)
     if not required and not any(path.is_file() for path in paths):
@@ -1708,8 +1579,7 @@ def _scan_spec018_evolution_seams(
     if not all(path.is_file() for path in paths):
         raise ArchitectureViolation("SPEC-018 owner or presentation seam is missing")
     trees = {
-        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for path in paths
+        path: ast.parse(path.read_text(encoding="utf-8"), filename=str(path)) for path in paths
     }
     _reject_spec016_forbidden_imports(
         trees[apex],
@@ -1732,9 +1602,7 @@ def _scan_spec018_evolution_seams(
         "EvolutionLifecycleEvent",
         "EvolutionResearchService",
     }
-    apex_classes = {
-        node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)
-    }
+    apex_classes = {node.name for node in ast.walk(trees[apex]) if isinstance(node, ast.ClassDef)}
     if not required_apex <= apex_classes:
         raise ArchitectureViolation("SPEC-018 Apex evolution seam is incomplete")
     service = next(
@@ -1775,16 +1643,13 @@ def _scan_spec018_evolution_seams(
             },
         )
     if not any(
-        isinstance(node, ast.ClassDef)
-        and node.name == "EvolutionProgressReadModelBuilder"
+        isinstance(node, ast.ClassDef) and node.name == "EvolutionProgressReadModelBuilder"
         for node in ast.walk(trees[reporting_adapter])
     ):
         raise ArchitectureViolation("SPEC-018 Reporting read-model seam is incomplete")
 
 
-def _scan_spec019_empirical_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec019_empirical_seams(repository_root: Path, *, required: bool = False) -> None:
     apex = repository_root / "apex-research/src/apex_research/empirical.py"
     if not apex.is_file():
         if required:
@@ -1823,9 +1688,7 @@ def _scan_spec019_empirical_seams(
         if isinstance(node, ast.ClassDef) and node.name == "EmpiricalResearchPort"
     )
     port_methods = {
-        node.name
-        for node in port.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        node.name for node in port.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     if port_methods != {"capabilities", "execute"}:
         raise ArchitectureViolation("SPEC-019 empirical Port surface drifted")
@@ -1864,9 +1727,7 @@ def _scan_spec019_empirical_seams(
                 )
 
 
-def _scan_spec030_coevolution_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec030_coevolution_seams(repository_root: Path, *, required: bool = False) -> None:
     apex_modules = (
         repository_root / "apex-research/src/apex_research/factor_model_coevolution.py",
         repository_root / "apex-research/src/apex_research/factor_model_discovery.py",
@@ -1874,9 +1735,7 @@ def _scan_spec030_coevolution_seams(
     runtime = repository_root / "quant-runtime/src/quant_runtime/candidate_discovery.py"
     if not all(path.is_file() for path in (*apex_modules, runtime)):
         if required:
-            raise ArchitectureViolation(
-                "SPEC-030 public co-evolution seams are incomplete"
-            )
+            raise ArchitectureViolation("SPEC-030 public co-evolution seams are incomplete")
         return
     for path in apex_modules:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -1946,14 +1805,10 @@ def _scan_spec030_coevolution_seams(
         for path in source_root.rglob("*.py"):
             compact = path.read_text(encoding="utf-8").replace("_", "").lower()
             if any(marker in compact for marker in markers):
-                raise ArchitectureViolation(
-                    f"SPEC-030 Apex owner leaked into {repository}: {path}"
-                )
+                raise ArchitectureViolation(f"SPEC-030 Apex owner leaked into {repository}: {path}")
 
 
-def _scan_spec031_replication_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec031_replication_seams(repository_root: Path, *, required: bool = False) -> None:
     owner_markers = (
         "replicationcasepublisher",
         "replicationcomparisonservice",
@@ -1970,29 +1825,21 @@ def _scan_spec031_replication_seams(
         for path in source_root.rglob("*.py"):
             compact = path.read_text(encoding="utf-8").replace("_", "").lower()
             if any(marker in compact for marker in owner_markers):
-                raise ArchitectureViolation(
-                    f"SPEC-031 Apex owner leaked into {repository}: {path}"
-                )
+                raise ArchitectureViolation(f"SPEC-031 Apex owner leaked into {repository}: {path}")
 
     apex_modules = (
         repository_root / "apex-research/src/apex_research/replication.py",
-        repository_root
-        / "apex-research/src/apex_research/replication_orchestration.py",
+        repository_root / "apex-research/src/apex_research/replication_orchestration.py",
         repository_root / "apex-research/src/apex_research/replication_comparison.py",
     )
     reporting_modules = (
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/contracts/replication.py",
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/adapters/replication.py",
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/renderers/replication.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/contracts/replication.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/adapters/replication.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/renderers/replication.py",
     )
     if not all(path.is_file() for path in (*apex_modules, *reporting_modules)):
         if required:
-            raise ArchitectureViolation(
-                "SPEC-031 public replication seams are incomplete"
-            )
+            raise ArchitectureViolation("SPEC-031 public replication seams are incomplete")
         return
 
     for path in apex_modules:
@@ -2066,9 +1913,7 @@ def _scan_spec031_replication_seams(
         }
         <= reporting_classes
     ):
-        raise ArchitectureViolation(
-            "SPEC-031 Reporting replication contract is incomplete"
-        )
+        raise ArchitectureViolation("SPEC-031 Reporting replication contract is incomplete")
 
 
 def _scan_spec026_campaign_reporting_seams(
@@ -2097,9 +1942,7 @@ def _scan_spec026_campaign_reporting_seams(
     )
     if not all(path.is_file() for path in reporting_modules):
         if required:
-            raise ArchitectureViolation(
-                "SPEC-026 public campaign reporting seams are incomplete"
-            )
+            raise ArchitectureViolation("SPEC-026 public campaign reporting seams are incomplete")
         return
 
     forbidden = {
@@ -2119,20 +1962,18 @@ def _scan_spec026_campaign_reporting_seams(
         _reject_spec016_forbidden_imports(tree, path=path, forbidden=forbidden)
 
     classes = {
-        node.name
-        for tree in trees
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
+        node.name for tree in trees for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
     }
-    if not {
-        "CampaignReport",
-        "CampaignReportSourceAdapter",
-        "CampaignReadModelBuilder",
-        "CampaignRenderer",
-    } <= classes:
-        raise ArchitectureViolation(
-            "SPEC-026 public campaign reporting seams are incomplete"
-        )
+    if (
+        not {
+            "CampaignReport",
+            "CampaignReportSourceAdapter",
+            "CampaignReadModelBuilder",
+            "CampaignRenderer",
+        }
+        <= classes
+    ):
+        raise ArchitectureViolation("SPEC-026 public campaign reporting seams are incomplete")
     adapter_source = reporting_modules[1].read_text(encoding="utf-8")
     if "query_lineage" in adapter_source or not all(
         token in adapter_source for token in ("list_records", "get_record", "get_run")
@@ -2155,9 +1996,7 @@ def _scan_spec026_campaign_reporting_seams(
                 )
 
 
-def _scan_spec032_revalidation_seams(
-    repository_root: Path, *, required: bool = False
-) -> None:
+def _scan_spec032_revalidation_seams(repository_root: Path, *, required: bool = False) -> None:
     owner_markers = (
         "currencyevaluation",
         "decayevaluator",
@@ -2174,31 +2013,23 @@ def _scan_spec032_revalidation_seams(
         for path in source_root.rglob("*.py"):
             compact = path.read_text(encoding="utf-8").replace("_", "").lower()
             if any(marker in compact for marker in owner_markers):
-                raise ArchitectureViolation(
-                    f"SPEC-032 Apex owner leaked into {repository}: {path}"
-                )
+                raise ArchitectureViolation(f"SPEC-032 Apex owner leaked into {repository}: {path}")
 
     apex_modules = (
         repository_root / "apex-research/src/apex_research/revalidation.py",
         repository_root / "apex-research/src/apex_research/qualification.py",
-        repository_root
-        / "apex-research/src/apex_research/quality_diversity_archives.py",
+        repository_root / "apex-research/src/apex_research/quality_diversity_archives.py",
     )
     runtime_module = repository_root / "quant-runtime/src/quant_runtime/preflight.py"
     reporting_modules = (
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/contracts/revalidation.py",
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/adapters/revalidation.py",
-        repository_root
-        / "strategy-reporting/src/strategy_reporting/renderers/revalidation.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/contracts/revalidation.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/adapters/revalidation.py",
+        repository_root / "strategy-reporting/src/strategy_reporting/renderers/revalidation.py",
     )
     required_modules = (*apex_modules, runtime_module, *reporting_modules)
     if not all(path.is_file() for path in required_modules):
         if required:
-            raise ArchitectureViolation(
-                "SPEC-032 public revalidation seams are incomplete"
-            )
+            raise ArchitectureViolation("SPEC-032 public revalidation seams are incomplete")
         return
 
     for path in apex_modules:
@@ -2258,9 +2089,7 @@ def _scan_spec032_revalidation_seams(
         raise ArchitectureViolation("SPEC-032 Apex revalidation contract is incomplete")
     runtime_source = runtime_module.read_text(encoding="utf-8")
     if "quant-runtime.data-change-observation.v1" not in runtime_source:
-        raise ArchitectureViolation(
-            "SPEC-032 Runtime observation contract is incomplete"
-        )
+        raise ArchitectureViolation("SPEC-032 Runtime observation contract is incomplete")
     reporting_classes = {
         node.name
         for path in reporting_modules
@@ -2314,9 +2143,7 @@ def _scan_spec020_qrafti_seam(repository_root: Path, *, required: bool = False) 
         "QraftiRuntimeIdentity",
         "QraftiSourceIdentity",
     }
-    functions = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-    }
+    functions = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
     required_functions = {
         "create_qrafti_capability_policy",
         "create_qrafti_empirical_port",
@@ -2326,9 +2153,7 @@ def _scan_spec020_qrafti_seam(repository_root: Path, *, required: bool = False) 
         "validate_qrafti_replication_result",
     }
     if not required_classes <= classes or not required_functions <= functions:
-        raise ArchitectureViolation(
-            "SPEC-020 QRAFTI public adapter contract is incomplete"
-        )
+        raise ArchitectureViolation("SPEC-020 QRAFTI public adapter contract is incomplete")
     allowlists = [
         node
         for node in tree.body
@@ -2398,9 +2223,7 @@ def _scan_spec017_non_owner_repositories(repository_root: Path) -> None:
             names = {
                 _normalize_identifier(node.name)
                 for node in ast.walk(tree)
-                if isinstance(
-                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-                )
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
             }
             if any(marker in name for marker in owner_markers for name in names):
                 raise ArchitectureViolation(
@@ -2427,18 +2250,14 @@ def _scan_spec016_non_owner_repositories(repository_root: Path) -> None:
             semantic_names = {
                 _normalize_identifier(node.name)
                 for node in ast.walk(tree)
-                if isinstance(
-                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-                )
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
             }
             semantic_names.update(
                 _normalize_identifier(node.id)
                 for node in ast.walk(tree)
                 if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
             )
-            if any(
-                marker in name for marker in owner_markers for name in semantic_names
-            ):
+            if any(marker in name for marker in owner_markers for name in semantic_names):
                 raise ArchitectureViolation(
                     f"{repository}: descriptor ownership outside Apex Research: {path}"
                 )
@@ -2505,15 +2324,12 @@ def _ast_rule_present(tree: ast.Module, forbidden: str) -> bool:
             if call_name in {"__import__", "import_module"} and node.args:
                 module = constant_string(node.args[0])
                 if module is not None and (
-                    module == requested_module
-                    or module.startswith(requested_module + ".")
+                    module == requested_module or module.startswith(requested_module + ".")
                 ):
                     return True
         if "-" in lowered or lowered == "workspace.sqlite3":
             literal = constant_string(node)
-            if literal == lowered or (
-                literal is not None and literal.startswith(lowered + ".")
-            ):
+            if literal == lowered or (literal is not None and literal.startswith(lowered + ".")):
                 return True
         elif "." in lowered and isinstance(node, ast.Attribute):
             expression = ast.unparse(node).lower()
@@ -2576,8 +2392,7 @@ def _safe_python_sources(source_root: Path) -> tuple[Path, ...]:
     )
     if linked_ancestor is not None:
         raise ArchitectureViolation(
-            f"source root or repository ancestor is a symbolic link or junction: "
-            f"{linked_ancestor}"
+            f"source root or repository ancestor is a symbolic link or junction: {linked_ancestor}"
         )
     pending = [source_root]
     sources: list[Path] = []
@@ -2586,15 +2401,11 @@ def _safe_python_sources(source_root: Path) -> tuple[Path, ...]:
         try:
             entries = tuple(os.scandir(directory))
         except OSError as exc:
-            raise ArchitectureViolation(
-                f"cannot safely inspect source tree: {directory}"
-            ) from exc
+            raise ArchitectureViolation(f"cannot safely inspect source tree: {directory}") from exc
         for entry in entries:
             path = Path(entry.path)
             if entry.is_symlink() or getattr(path, "is_junction", lambda: False)():
-                raise ArchitectureViolation(
-                    f"source contains a symbolic link or junction: {path}"
-                )
+                raise ArchitectureViolation(f"source contains a symbolic link or junction: {path}")
             if entry.is_dir(follow_symlinks=False):
                 pending.append(path)
             elif entry.is_file(follow_symlinks=False) and path.suffix == ".py":
@@ -2602,16 +2413,13 @@ def _safe_python_sources(source_root: Path) -> tuple[Path, ...]:
     return tuple(sorted(sources))
 
 
-def _scan_spec015_qualification_seam(
-    repository: Path, *, required: bool = False
-) -> None:
+def _scan_spec015_qualification_seam(repository: Path, *, required: bool = False) -> None:
     package = repository / "src" / "apex_research"
     qualification = package / "qualification.py"
     if not qualification.is_file():
         if required:
             raise ArchitectureViolation(
-                "apex-research: qualification owner seam is missing: "
-                + str(qualification)
+                "apex-research: qualification owner seam is missing: " + str(qualification)
             )
         return
     all_package_paths = _safe_python_sources(package)
@@ -2741,9 +2549,7 @@ def _scan_spec015_qualification_seam(
                     if isinstance(statement, ast.Assign)
                     else (statement.target,)
                 )
-                target_names = {
-                    name for target in targets for name in bound_names(target)
-                }
+                target_names = {name for target in targets for name in bound_names(target)}
                 value = statement.value
                 source_name = (
                     value.id
@@ -2772,8 +2578,7 @@ def _scan_spec015_qualification_seam(
                 )
                 alternative_owner = (
                     bool(methods & SPEC015_OWNER_METHODS)
-                    and (path, node.name)
-                    not in admitted_non_qualification_policy_owners
+                    and (path, node.name) not in admitted_non_qualification_policy_owners
                     or inherited_owner
                     or (
                         "Qualification" in node.name
@@ -2791,9 +2596,7 @@ def _scan_spec015_qualification_seam(
                     )
                 )
                 canonical_owner = (
-                    top_level
-                    and path in subsystem_paths
-                    and node.name in canonical_class_names
+                    top_level and path in subsystem_paths and node.name in canonical_class_names
                 )
                 if (
                     node.name
@@ -2821,9 +2624,7 @@ def _scan_spec015_qualification_seam(
                     or (
                         node.name not in classes
                         and "Qualification" in node.name
-                        and any(
-                            marker in node.name for marker in forbidden_owner_markers
-                        )
+                        and any(marker in node.name for marker in forbidden_owner_markers)
                     )
                 ):
                     raise ArchitectureViolation(
@@ -2854,8 +2655,7 @@ def _scan_spec015_qualification_seam(
                 if isinstance(candidate, ast.ClassDef)
                 and (
                     candidate.name == "QualificationService"
-                    or (path, candidate.name)
-                    in admitted_non_qualification_policy_owners
+                    or (path, candidate.name) in admitted_non_qualification_policy_owners
                 )
                 for item in candidate.body
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -2871,9 +2671,7 @@ def _scan_spec015_qualification_seam(
             if isinstance(node, (ast.Assign, ast.AnnAssign)) and any(
                 name in canonical_class_names
                 for target in (
-                    tuple(node.targets)
-                    if isinstance(node, ast.Assign)
-                    else (node.target,)
+                    tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                 )
                 for name in bound_names(target)
             ):
@@ -2921,8 +2719,7 @@ def _scan_spec015_qualification_seam(
     missing = required_classes - set(classes)
     if missing:
         raise ArchitectureViolation(
-            "apex-research: qualification seam lacks public classes "
-            + ", ".join(sorted(missing))
+            "apex-research: qualification seam lacks public classes " + ", ".join(sorted(missing))
         )
     required_fields = {
         "QualificationPolicy": {
@@ -3006,9 +2803,7 @@ def _scan_spec015_qualification_seam(
 
     for class_name in required_fields:
         class_node = classes[class_name]
-        source_tree = next(
-            tree for _, tree in subsystem_trees if class_node in tree.body
-        )
+        source_tree = next(tree for _, tree in subsystem_trees if class_node in tree.body)
         frozen_model_imported = any(
             isinstance(node, ast.ImportFrom)
             and node.module == "apex_research.records"
@@ -3025,16 +2820,13 @@ def _scan_spec015_qualification_seam(
             and any(
                 "FrozenModel" in bound_names(target)
                 for target in (
-                    tuple(node.targets)
-                    if isinstance(node, ast.Assign)
-                    else (node.target,)
+                    tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                 )
             )
             for node in source_tree.body
         )
         directly_frozen = any(
-            isinstance(base, ast.Name) and base.id == "FrozenModel"
-            for base in class_node.bases
+            isinstance(base, ast.Name) and base.id == "FrozenModel" for base in class_node.bases
         )
         if not frozen_model_imported or frozen_model_rebound or not directly_frozen:
             raise ArchitectureViolation(
@@ -3068,12 +2860,8 @@ def _scan_spec015_qualification_seam(
             )
 
     identity_methods = {
-        "QualificationPolicy": {
-            "create": ({"canonical_sha256"}, "policy_id", "identity")
-        },
-        "QualificationEvaluation": {
-            "create": ({"canonical_sha256"}, "evaluation_id", "identity")
-        },
+        "QualificationPolicy": {"create": ({"canonical_sha256"}, "policy_id", "identity")},
+        "QualificationEvaluation": {"create": ({"canonical_sha256"}, "evaluation_id", "identity")},
         "QualificationDecision": {
             "target_ref": ({"canonical_sha256"}, "record_id", "identity"),
             "create": ({"target_ref"}, "decision_id", "evaluation"),
@@ -3122,15 +2910,10 @@ def _scan_spec015_qualification_seam(
                             *(item.value for item in direct.keywords),
                         )
                     )
-                    and (
-                        not isinstance(value, ast.Attribute)
-                        or value.attr == "record_id"
-                    )
+                    and (not isinstance(value, ast.Attribute) or value.attr == "record_id")
                 )
 
-            returns = [
-                node for node in ast.walk(method) if isinstance(node, ast.Return)
-            ]
+            returns = [node for node in ast.walk(method) if isinstance(node, ast.Return)]
             returned = returns[0].value if len(returns) == 1 else None
             supplies_identity = isinstance(returned, ast.Call) and any(
                 isinstance(node, ast.Dict)
@@ -3179,9 +2962,7 @@ def _scan_spec015_qualification_seam(
                 }
                 includes_values = any(
                     key is None and isinstance(value, ast.Name) and value.id == "values"
-                    for key, value in zip(
-                        identity_dict.keys, identity_dict.values, strict=True
-                    )
+                    for key, value in zip(identity_dict.keys, identity_dict.values, strict=True)
                 )
                 popped = {
                     str(call.args[0].value)
@@ -3217,8 +2998,7 @@ def _scan_spec015_qualification_seam(
                 if substituted:
                     raise ArchitectureViolation(
                         f"apex-research: {class_name}.{method_name} canonical identity "
-                        "substitutes meaning-bearing fields: "
-                        + ", ".join(sorted(substituted))
+                        "substitutes meaning-bearing fields: " + ", ".join(sorted(substituted))
                     )
 
                 def identity_target(target: ast.AST) -> bool:
@@ -3257,8 +3037,7 @@ def _scan_spec015_qualification_seam(
                             )
                             != "canonical_sha256"
                             and any(
-                                isinstance(argument, ast.Name)
-                                and argument.id == "identity"
+                                isinstance(argument, ast.Name) and argument.id == "identity"
                                 for argument in (
                                     *node.args,
                                     *(item.value for item in node.keywords),
@@ -3281,9 +3060,7 @@ def _scan_spec015_qualification_seam(
         "strategy_workspace.storage": "private Workspace access",
     }
     subsystem_nodes = tuple(
-        node
-        for _, subsystem_tree in subsystem_trees
-        for node in ast.walk(subsystem_tree)
+        node for _, subsystem_tree in subsystem_trees for node in ast.walk(subsystem_tree)
     )
     functions = {
         node.name: node
@@ -3309,8 +3086,7 @@ def _scan_spec015_qualification_seam(
         alias.name
         for _, subsystem_tree in subsystem_trees
         for node in subsystem_tree.body
-        if isinstance(node, ast.ImportFrom)
-        and node.module == "apex_research.governance"
+        if isinstance(node, ast.ImportFrom) and node.module == "apex_research.governance"
         for alias in node.names
         if alias.asname in {None, alias.name}
     }
@@ -3319,15 +3095,11 @@ def _scan_spec015_qualification_seam(
         for node in ast.walk(subsystem_tree):
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
                 candidates = {node.name}
-            elif isinstance(
-                node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
-            ):
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
                 candidates = {
                     item
                     for target in (
-                        tuple(node.targets)
-                        if isinstance(node, ast.Assign)
-                        else (node.target,)
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                     )
                     for item in bound_names(target)
                 }
@@ -3336,10 +3108,7 @@ def _scan_spec015_qualification_seam(
             else:
                 candidates = set()
             governance_names_rebound.update(candidates & required_governance_imports)
-    if (
-        not required_governance_imports <= governance_imports
-        or governance_names_rebound
-    ):
+    if not required_governance_imports <= governance_imports or governance_names_rebound:
         raise ArchitectureViolation(
             "apex-research: qualification governance types must come directly from "
             "apex_research.governance"
@@ -3369,15 +3138,11 @@ def _scan_spec015_qualification_seam(
             rebound = any(
                 isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name == helper_name
-                or isinstance(
-                    node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
-                )
+                or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
                 and any(
                     helper_name in bound_names(target)
                     for target in (
-                        tuple(node.targets)
-                        if isinstance(node, ast.Assign)
-                        else (node.target,)
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                     )
                 )
                 or isinstance(node, ast.arg)
@@ -3426,8 +3191,7 @@ def _scan_spec015_qualification_seam(
                 )
                 if call in {"list_records", "submit_run"}:
                     raise ArchitectureViolation(
-                        f"apex-research: qualification uses forbidden call {call}: "
-                        f"{subsystem_path}"
+                        f"apex-research: qualification uses forbidden call {call}: {subsystem_path}"
                     )
         workspace_method_aliases: dict[str, str] = {}
         aliases_changed = True
@@ -3447,14 +3211,8 @@ def _scan_spec015_qualification_seam(
                 )
                 if method is None:
                     continue
-                targets = (
-                    tuple(node.targets)
-                    if isinstance(node, ast.Assign)
-                    else (node.target,)
-                )
-                for alias in {
-                    name for target in targets for name in bound_names(target)
-                }:
+                targets = tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
+                for alias in {name for target in targets for name in bound_names(target)}:
                     if workspace_method_aliases.get(alias) != method:
                         workspace_method_aliases[alias] = method
                         aliases_changed = True
@@ -3531,11 +3289,7 @@ def _scan_spec015_qualification_seam(
             )
         execute_call = governed_returns[0].value
         assert isinstance(execute_call, ast.Call)
-        keywords = {
-            item.arg: item.value
-            for item in execute_call.keywords
-            if item.arg is not None
-        }
+        keywords = {item.arg: item.value for item in execute_call.keywords if item.arg is not None}
         if set(keywords) != {
             "action",
             "campaign_id",
@@ -3555,8 +3309,7 @@ def _scan_spec015_qualification_seam(
         }[method_name]
         if (
             ast.unparse(keywords["action"]) != "action"
-            or ast.unparse(keywords["campaign_id"])
-            != f"{publication_value}.campaign.record_id"
+            or ast.unparse(keywords["campaign_id"]) != f"{publication_value}.campaign.record_id"
             or ast.unparse(keywords["idempotency_key"])
             != f"qualification_publication_idempotency_key({publication_value})"
         ):
@@ -3579,9 +3332,7 @@ def _scan_spec015_qualification_seam(
             None,
         )
         completion_definition = (
-            completion_callable
-            if isinstance(completion_callable, ast.Lambda)
-            else named_completion
+            completion_callable if isinstance(completion_callable, ast.Lambda) else named_completion
         )
         completion_defaults = (
             (
@@ -3592,8 +3343,7 @@ def _scan_spec015_qualification_seam(
             else ()
         )
         if any(
-            default is not None
-            and any(isinstance(node, ast.Call) for node in ast.walk(default))
+            default is not None and any(isinstance(node, ast.Call) for node in ast.walk(default))
             for default in completion_defaults
         ):
             raise ArchitectureViolation(
@@ -3605,9 +3355,7 @@ def _scan_spec015_qualification_seam(
                 return False
             seen.add(function_name)
             function = functions[function_name]
-            for call in (
-                node for node in ast.walk(function) if isinstance(node, ast.Call)
-            ):
+            for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
                 called = (
                     call.func.attr
                     if isinstance(call.func, ast.Attribute)
@@ -3618,8 +3366,7 @@ def _scan_spec015_qualification_seam(
                 if called == "publish_record" and (
                     isinstance(call.func, ast.Attribute)
                     and isinstance(call.func.value, ast.Name)
-                    and call.func.value.id
-                    in {argument.arg for argument in function.args.args}
+                    and call.func.value.id in {argument.arg for argument in function.args.args}
                     or isinstance(call.func, ast.Attribute)
                     and isinstance(call.func.value, ast.Attribute)
                     and isinstance(call.func.value.value, ast.Name)
@@ -3639,9 +3386,7 @@ def _scan_spec015_qualification_seam(
 
         def callback_calls(
             value: ast.AST,
-            local_catalog: dict[
-                str, ast.FunctionDef | ast.AsyncFunctionDef
-            ] = local_functions,
+            local_catalog: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = local_functions,
         ) -> set[str]:
             if isinstance(value, ast.Name) and value.id in local_catalog:
                 roots: tuple[ast.AST, ...] = (local_catalog[value.id],)
@@ -3685,9 +3430,7 @@ def _scan_spec015_qualification_seam(
                 set(),
             )
             for statement in methods[method_name].body
-            if not isinstance(
-                statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Return)
-            )
+            if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Return))
             for node in ast.walk(statement)
             if isinstance(node, ast.Call)
         )
@@ -3842,8 +3585,7 @@ def _scan_spec015_qualification_seam(
     authorize_functions = [
         node
         for node in execute_publication.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "authorize"
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "authorize"
     ]
     exact_grant_guard = len(authorize_functions) == 1 and any(
         isinstance(statement, ast.If)
@@ -3872,9 +3614,7 @@ def _scan_spec015_qualification_seam(
         and not node.value.keywords
     ]
     governance_aliases = (
-        {governance_assignments[0][1].targets[0].id}
-        if len(governance_assignments) == 1
-        else set()
+        {governance_assignments[0][1].targets[0].id} if len(governance_assignments) == 1 else set()
     )
     execute_assignments = [
         (index, statement)
@@ -3899,9 +3639,7 @@ def _scan_spec015_qualification_seam(
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
         and any(
             "action" in bound_names(target)
-            for target in (
-                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
         )
     ]
     if action_rebindings:
@@ -3918,9 +3656,7 @@ def _scan_spec015_qualification_seam(
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
         and any(
             bool(bound_names(target) & governance_aliases)
-            for target in (
-                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
         )
     ]
     if len(governance_assignments) != 1 or governance_rebindings:
@@ -3947,9 +3683,7 @@ def _scan_spec015_qualification_seam(
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "publish_record"
     ]
-    result_name = (
-        execute_assignments[0][1].targets[0].id if len(execute_assignments) == 1 else ""
-    )
+    result_name = execute_assignments[0][1].targets[0].id if len(execute_assignments) == 1 else ""
 
     def writes_result(target: ast.AST) -> bool:
         if isinstance(target, ast.Name):
@@ -3971,9 +3705,7 @@ def _scan_spec015_qualification_seam(
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
         and any(
             writes_result(target)
-            for target in (
-                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
         )
         and node is not (execute_assignments[0][1] if execute_assignments else None)
     ]
@@ -3991,8 +3723,7 @@ def _scan_spec015_qualification_seam(
         and any(
             isinstance(node, ast.Assign)
             and any(
-                isinstance(target, ast.Name) and target.id == "recovered"
-                for target in node.targets
+                isinstance(target, ast.Name) and target.id == "recovered" for target in node.targets
             )
             and isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Attribute)
@@ -4031,10 +3762,7 @@ def _scan_spec015_qualification_seam(
                     ("status", "committed"),
                     ("reason", "success"),
                 )
-                if any(
-                    result_inequality(value, field, expected)
-                    for value in statement.test.values
-                )
+                if any(result_inequality(value, field, expected) for value in statement.test.values)
             }
             == {"status", "reason"}
             and len(statement.body) == 1
@@ -4159,9 +3887,7 @@ def _scan_spec015_qualification_seam(
         lexical_assignments = [
             node
             for node in ast.walk(reader)
-            if isinstance(
-                node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
-            )
+            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
         ]
         top_level_assignments: list[ast.Assign | ast.AnnAssign] = []
         for statement in reader.body:
@@ -4169,9 +3895,7 @@ def _scan_spec015_qualification_seam(
                 top_level_assignments.append(statement)
             elif isinstance(statement, ast.Try):
                 top_level_assignments.extend(
-                    item
-                    for item in statement.body
-                    if isinstance(item, (ast.Assign, ast.AnnAssign))
+                    item for item in statement.body if isinstance(item, (ast.Assign, ast.AnnAssign))
                 )
         fetched_names: set[str] = set()
         envelope_names: set[str] = set()
@@ -4206,15 +3930,12 @@ def _scan_spec015_qualification_seam(
                 else ""
             )
             return call_name in {"as_mapping", "record_payload", "dumps"} and any(
-                exact_envelope_expression(argument, names)
-                for argument in value.args[:1]
+                exact_envelope_expression(argument, names) for argument in value.args[:1]
             )
 
         for assignment in top_level_assignments:
             targets = (
-                assignment.targets
-                if isinstance(assignment, ast.Assign)
-                else (assignment.target,)
+                assignment.targets if isinstance(assignment, ast.Assign) else (assignment.target,)
             )
             names = {name for target in targets for name in bound_names(target)}
             value = assignment.value
@@ -4225,9 +3946,7 @@ def _scan_spec015_qualification_seam(
                 and value.func.id == "as_mapping"
                 and bool(value.args)
                 and (
-                    exact_envelope_expression(
-                        value.args[0], fetched_names | envelope_names
-                    )
+                    exact_envelope_expression(value.args[0], fetched_names | envelope_names)
                     or exact_workspace_get_record(value.args[0])
                 )
             )
@@ -4238,9 +3957,7 @@ def _scan_spec015_qualification_seam(
                 and isinstance(value.func.value, ast.Name)
                 and value.func.value.id == model_name
                 and bool(value.args)
-                and exact_envelope_expression(
-                    value.args[0], fetched_names | envelope_names
-                )
+                and exact_envelope_expression(value.args[0], fetched_names | envelope_names)
             )
             fetched_names.difference_update(names)
             envelope_names.difference_update(names)
@@ -4277,13 +3994,10 @@ def _scan_spec015_qualification_seam(
                 and isinstance(expected_value.args[0], ast.Name)
                 and expected_value.args[0].id == typed_name
             )
-        returns = [
-            statement for statement in reader.body if isinstance(statement, ast.Return)
-        ]
+        returns = [statement for statement in reader.body if isinstance(statement, ast.Return)]
         returns_verified = (
             len(returns) == 1
-            and len([node for node in ast.walk(reader) if isinstance(node, ast.Return)])
-            == 1
+            and len([node for node in ast.walk(reader) if isinstance(node, ast.Return)]) == 1
             and isinstance(returns[0].value, ast.Name)
             and returns[0].value.id == typed_name
             and bool(verify_statements)
@@ -4318,9 +4032,7 @@ def _scan_spec015_qualification_seam(
                 else (assignment.target,)
             )
             if isinstance(value, ast.Name) and value.id in protected_names:
-                protected_names.update(
-                    name for target in targets for name in bound_names(target)
-                )
+                protected_names.update(name for target in targets for name in bound_names(target))
 
         def protected_root(
             value: ast.AST, names: frozenset[str] = frozenset(protected_names)
@@ -4332,16 +4044,11 @@ def _scan_spec015_qualification_seam(
         post_verify_mutation = bool(verify_statements) and any(
             getattr(node, "lineno", -1) > verify_statements[0].lineno
             and (
-                isinstance(
-                    node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)
-                )
+                isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
                 and any(
-                    isinstance(target, (ast.Attribute, ast.Subscript))
-                    and protected_root(target)
+                    isinstance(target, (ast.Attribute, ast.Subscript)) and protected_root(target)
                     for target in (
-                        tuple(node.targets)
-                        if isinstance(node, ast.Assign)
-                        else (node.target,)
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                     )
                 )
                 or isinstance(node, ast.Delete)
@@ -4392,9 +4099,7 @@ def _scan_spec015_qualification_seam(
                 ) and any(
                     parameter_root(target)
                     for target in (
-                        tuple(node.targets)
-                        if isinstance(node, ast.Assign)
-                        else (node.target,)
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                     )
                 ):
                     return True
@@ -4436,9 +4141,7 @@ def _scan_spec015_qualification_seam(
                         isinstance(argument, ast.Name)
                         and argument.id == parameter
                         and index < len(nested.args.args)
-                        and helper_mutates_parameter(
-                            called, nested.args.args[index].arg, visited
-                        )
+                        and helper_mutates_parameter(called, nested.args.args[index].arg, visited)
                     ):
                         return True
             return False
@@ -4447,9 +4150,7 @@ def _scan_spec015_qualification_seam(
             bool(verify_statements)
             and bool(returns)
             and any(
-                verify_statements[0].lineno
-                < getattr(node, "lineno", -1)
-                < returns[0].lineno
+                verify_statements[0].lineno < getattr(node, "lineno", -1) < returns[0].lineno
                 and isinstance(node, ast.Call)
                 and (
                     called := (
@@ -4465,9 +4166,7 @@ def _scan_spec015_qualification_seam(
                     isinstance(argument, ast.Name)
                     and argument.id in protected_names
                     and index < len(functions[called].args.args)
-                    and helper_mutates_parameter(
-                        called, functions[called].args.args[index].arg
-                    )
+                    and helper_mutates_parameter(called, functions[called].args.args[index].arg)
                     for index, argument in enumerate(node.args)
                 )
                 for node in ast.walk(reader)
@@ -4528,11 +4227,7 @@ def _scan_spec015_qualification_seam(
     )
     history_result = history_returns[0].value if len(history_returns) == 1 else None
     history_keywords = (
-        {
-            item.arg: item.value
-            for item in history_result.keywords
-            if item.arg is not None
-        }
+        {item.arg: item.value for item in history_result.keywords if item.arg is not None}
         if isinstance(history_result, ast.Call)
         and isinstance(history_result.func, ast.Name)
         and history_result.func.id == "QualificationHistory"
@@ -4599,9 +4294,7 @@ def _scan_spec015_qualification_seam(
             return False
         seen.add(function_name)
         for call in (
-            node
-            for node in ast.walk(functions[function_name])
-            if isinstance(node, ast.Call)
+            node for node in ast.walk(functions[function_name]) if isinstance(node, ast.Call)
         ):
             called = (
                 call.func.id
@@ -4635,11 +4328,7 @@ def _scan_spec015_qualification_seam(
         else []
     )
     lineage_keywords = (
-        {
-            keyword.arg: keyword.value
-            for keyword in lineage_call.keywords
-            if keyword.arg is not None
-        }
+        {keyword.arg: keyword.value for keyword in lineage_call.keywords if keyword.arg is not None}
         if lineage_call is not None
         else {}
     )
@@ -4647,11 +4336,9 @@ def _scan_spec015_qualification_seam(
     relations_argument = lineage_keywords.get("relations")
     lineage_bound_to_root = (
         lineage_reader is not None
-        and [argument.arg for argument in lineage_reader.args.args[:2]]
-        == ["workspace", "root"]
+        and [argument.arg for argument in lineage_reader.args.args[:2]] == ["workspace", "root"]
         and roots_argument is not None
-        and ast.unparse(roots_argument)
-        == "({'kind': root.record_type, 'id': root.record_id},)"
+        and ast.unparse(roots_argument) == "({'kind': root.record_type, 'id': root.record_id},)"
         and isinstance(lineage_keywords.get("direction"), ast.Constant)
         and lineage_keywords["direction"].value == "descendants"
         and relations_argument is not None
@@ -4707,8 +4394,7 @@ def _scan_spec015_qualification_seam(
             and all(isinstance(operator, ast.LtE) for operator in node.test.operand.ops)
             and any(isinstance(value, ast.Raise) for value in node.body)
             for index, node in enumerate(lineage_reader.body)
-            if bounded_loop is not None
-            and index < lineage_reader.body.index(bounded_loop)
+            if bounded_loop is not None and index < lineage_reader.body.index(bounded_loop)
         )
 
     def direct_guard(
@@ -4750,11 +4436,7 @@ def _scan_spec015_qualification_seam(
                 if isinstance(statement, ast.AnnAssign)
                 else ()
             )
-            value = (
-                statement.value
-                if isinstance(statement, (ast.Assign, ast.AnnAssign))
-                else None
-            )
+            value = statement.value if isinstance(statement, (ast.Assign, ast.AnnAssign)) else None
             if (
                 len(targets) == 1
                 and isinstance(targets[0], ast.Name)
@@ -4883,9 +4565,7 @@ def _scan_spec015_qualification_seam(
                 isinstance(test, ast.BoolOp)
                 and isinstance(test.op, ast.And)
                 and len(test.values) == 2
-                and exact_name_constant_compare(
-                    test.values[0], "snapshot_token", ast.IsNot, None
-                )
+                and exact_name_constant_compare(test.values[0], "snapshot_token", ast.IsNot, None)
                 and isinstance(test.values[1], ast.Compare)
                 and isinstance(test.values[1].left, ast.Name)
                 and test.values[1].left.id == "page_token"
@@ -5015,9 +4695,7 @@ def _scan_spec015_qualification_seam(
 
     def rejects_invalid_snapshot_token(test: ast.AST) -> bool:
         if not (
-            isinstance(test, ast.BoolOp)
-            and isinstance(test.op, ast.Or)
-            and len(test.values) == 2
+            isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or) and len(test.values) == 2
         ):
             return False
         checks = {ast.dump(value, include_attributes=False) for value in test.values}
@@ -5037,9 +4715,7 @@ def _scan_spec015_qualification_seam(
                 include_attributes=False,
             ),
             ast.dump(
-                ast.UnaryOp(
-                    op=ast.Not(), operand=ast.Name(id="page_token", ctx=ast.Load())
-                ),
+                ast.UnaryOp(op=ast.Not(), operand=ast.Name(id="page_token", ctx=ast.Load())),
                 include_attributes=False,
             ),
         }
@@ -5058,9 +4734,7 @@ def _scan_spec015_qualification_seam(
             isinstance(node, (ast.Assign, ast.AnnAssign))
             and any(
                 isinstance(target, ast.Name) and target.id == "records"
-                for target in (
-                    node.targets if isinstance(node, ast.Assign) else (node.target,)
-                )
+                for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
             )
             and isinstance(node.value, ast.List)
             for node in lineage_reader.body[: lineage_reader.body.index(bounded_loop)]
@@ -5183,9 +4857,7 @@ def _scan_spec015_qualification_seam(
             len(publication_assignments) == 1
             and len(payload_positions) == 1
             and len(append_positions) == 1
-            and publication_assignments[0][0]
-            < payload_positions[0]
-            < append_positions[0]
+            and publication_assignments[0][0] < payload_positions[0] < append_positions[0]
         )
     next_cursor_assignments = (
         [
@@ -5310,15 +4982,11 @@ def _scan_spec015_qualification_seam(
         isinstance(node, (ast.Assign, ast.AnnAssign))
         and any(
             isinstance(target, ast.Name) and target.id == "records"
-            for target in (
-                node.targets if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
         )
         for node in ast.walk(bounded_loop)
     )
-    lineage_mutations = (
-        tuple(ast.walk(lineage_reader)) if lineage_reader is not None else ()
-    )
+    lineage_mutations = tuple(ast.walk(lineage_reader)) if lineage_reader is not None else ()
 
     def mutation_targets_name(node: ast.AST, name: str) -> bool:
         targets: tuple[ast.AST, ...] = ()
@@ -5353,9 +5021,7 @@ def _scan_spec015_qualification_seam(
         key=lambda item: (getattr(item, "lineno", -1), getattr(item, "col_offset", -1)),
     ):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = (
-                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-            )
+            targets = tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
             target_names = {
                 candidate.id
                 for target in targets
@@ -5390,8 +5056,7 @@ def _scan_spec015_qualification_seam(
         len(lineage_calls) != 1
         or indirect_lineage_queries
         or not lineage_bound_to_root
-        or not {"max_depth", "page_size", "cursor", "snapshot_token"}
-        <= set(lineage_keywords)
+        or not {"max_depth", "page_size", "cursor", "snapshot_token"} <= set(lineage_keywords)
         or not bounded_page_size
         or not bounded_depth
         or not page_counter_bound
@@ -5545,9 +5210,7 @@ def _scan_spec015_qualification_seam(
         target.id
         for node in state_class.body
         if isinstance(node, (ast.Assign, ast.AnnAssign))
-        for target in (
-            tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-        )
+        for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
         if isinstance(target, ast.Name) and not target.id.startswith("_")
     }
     expected_state_mapping = {
@@ -5571,8 +5234,7 @@ def _scan_spec015_qualification_seam(
         isinstance(node, ast.ImportFrom)
         and node.module == "enum"
         and any(
-            alias.name == "StrEnum" and (alias.asname in {None, "StrEnum"})
-            for alias in node.names
+            alias.name == "StrEnum" and (alias.asname in {None, "StrEnum"}) for alias in node.names
         )
         for node in state_tree.body
     )
@@ -5582,9 +5244,7 @@ def _scan_spec015_qualification_seam(
         or isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
         and any(
             isinstance(target, ast.Name) and target.id == "StrEnum"
-            for target in (
-                tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
-            )
+            for target in (tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,))
         )
         for node in state_tree.body
     )
@@ -5596,9 +5256,7 @@ def _scan_spec015_qualification_seam(
         or state_mapping != expected_state_mapping
         or any(isinstance(node, ast.AnnAssign) for node in state_class.body)
     ):
-        raise ArchitectureViolation(
-            "apex-research: qualification maturity states drifted"
-        )
+        raise ArchitectureViolation("apex-research: qualification maturity states drifted")
 
     for class_name, expected_fields in required_fields.items():
         if not {"scope", "operational_authority"} <= expected_fields:
@@ -5634,9 +5292,7 @@ def _scan_spec015_qualification_seam(
             if function is not None
             else []
         )
-        returned_expression: ast.AST | None = (
-            returns[0].value if len(returns) == 1 else None
-        )
+        returned_expression: ast.AST | None = returns[0].value if len(returns) == 1 else None
         if (
             isinstance(returned_expression, ast.Call)
             and returned_expression.args
@@ -5654,9 +5310,7 @@ def _scan_spec015_qualification_seam(
                 )
             ]
             returned_expression = (
-                relation_assignments[0].value
-                if len(relation_assignments) == 1
-                else None
+                relation_assignments[0].value if len(relation_assignments) == 1 else None
             )
 
         def constant_relation(value: ast.AST) -> str | None:
@@ -5681,9 +5335,7 @@ def _scan_spec015_qualification_seam(
             else []
         )
         required_sources = [
-            source
-            for relation, source in returned_relations
-            if relation == required_relation
+            source for relation, source in returned_relations if relation == required_relation
         ]
 
         parameter = function.args.args[0].arg if function is not None else ""
@@ -5827,8 +5479,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     qualification_modules.update(
                         alias.asname or alias.name
                         for alias in node.names
-                        if node.module == "apex_research"
-                        and alias.name == "qualification"
+                        if node.module == "apex_research" and alias.name == "qualification"
                     )
                     qualification_symbols.update(
                         alias.asname or alias.name
@@ -5871,19 +5522,14 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
 
                 for node in ast.walk(tree):
                     if not (
-                        isinstance(node, (ast.Assign, ast.AnnAssign))
-                        and node.value is not None
+                        isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
                     ):
                         continue
                     targets = (
-                        tuple(node.targets)
-                        if isinstance(node, ast.Assign)
-                        else (node.target,)
+                        tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
                     )
                     for target in targets:
-                        for bound_target, bound_value in assignment_pairs(
-                            target, node.value
-                        ):
+                        for bound_target, bound_value in assignment_pairs(target, node.value):
                             dynamic_qualification_module = (
                                 isinstance(bound_value, ast.Call)
                                 and (
@@ -5943,10 +5589,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 symbol_aliases: set[str] = qualification_symbols,
             ) -> bool:
                 for candidate in ast.walk(value):
-                    if (
-                        isinstance(candidate, ast.Name)
-                        and candidate.id in symbol_aliases
-                    ):
+                    if isinstance(candidate, ast.Name) and candidate.id in symbol_aliases:
                         return True
                     if not isinstance(candidate, ast.Attribute):
                         continue
@@ -5958,10 +5601,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     if (
                         isinstance(root, ast.Name)
                         and root.id in module_aliases
-                        and any(
-                            name in SPEC015_PARALLEL_OWNER_CLASSES
-                            for name in attributes
-                        )
+                        and any(name in SPEC015_PARALLEL_OWNER_CLASSES for name in attributes)
                     ):
                         return True
                 return False
@@ -5997,13 +5637,9 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     return True
 
                 def constant_text(candidate: ast.AST) -> str | None:
-                    if isinstance(candidate, ast.Constant) and isinstance(
-                        candidate.value, str
-                    ):
+                    if isinstance(candidate, ast.Constant) and isinstance(candidate.value, str):
                         return candidate.value
-                    if isinstance(candidate, ast.BinOp) and isinstance(
-                        candidate.op, ast.Add
-                    ):
+                    if isinstance(candidate, ast.BinOp) and isinstance(candidate.op, ast.Add):
                         left = constant_text(candidate.left)
                         right = constant_text(candidate.right)
                         if left is not None and right is not None:
@@ -6023,9 +5659,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             and key.value in {"record_type", "schema_id"}
                             and (semantic_type := constant_text(item)) is not None
                             and semantic_type.startswith("apex-research.qualification-")
-                            for key, item in zip(
-                                candidate.keys, candidate.values, strict=True
-                            )
+                            for key, item in zip(candidate.keys, candidate.values, strict=True)
                             if key is not None
                         )
                     )
@@ -6043,9 +5677,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                     for candidate in ast.walk(value)
                 )
 
-            functions_by_name: dict[
-                str, list[ast.FunctionDef | ast.AsyncFunctionDef]
-            ] = {}
+            functions_by_name: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     functions_by_name.setdefault(node.name, []).append(node)
@@ -6079,23 +5711,15 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 parameters = parameter_names(function)
                 if parameter in parameters:
                     index = parameters.index(parameter)
-                    positional_count = len(function.args.posonlyargs) + len(
-                        function.args.args
-                    )
+                    positional_count = len(function.args.posonlyargs) + len(function.args.args)
                     if index < positional_count and index < len(call.args):
                         return call.args[index]
                 return next(
-                    (
-                        keyword.value
-                        for keyword in call.keywords
-                        if keyword.arg == parameter
-                    ),
+                    (keyword.value for keyword in call.keywords if keyword.arg == parameter),
                     None,
                 )
 
-            helper_parameters: dict[str, set[str]] = {
-                name: set() for name in functions_by_name
-            }
+            helper_parameters: dict[str, set[str]] = {name: set() for name in functions_by_name}
             changed = True
             while changed:
                 changed = False
@@ -6112,9 +5736,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             (
                                 item
                                 for item in ast.walk(function)
-                                if isinstance(
-                                    item, (ast.Assign, ast.AnnAssign, ast.Call)
-                                )
+                                if isinstance(item, (ast.Assign, ast.AnnAssign, ast.Call))
                             ),
                             key=lambda item: (item.lineno, item.col_offset),
                         ):
@@ -6125,9 +5747,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                         dependency
                                         for candidate in ast.walk(value)
                                         if isinstance(candidate, ast.Name)
-                                        for dependency in dependencies.get(
-                                            candidate.id, ()
-                                        )
+                                        for dependency in dependencies.get(candidate.id, ())
                                     }
                                     if value is not None
                                     else set()
@@ -6198,9 +5818,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                     if isinstance(candidate, ast.Name)
                                     for dependency in dependencies.get(candidate.id, ())
                                 )
-                            callee_name = helper_aliases.get(
-                                called_name(node), called_name(node)
-                            )
+                            callee_name = helper_aliases.get(called_name(node), called_name(node))
                             callees = functions_by_name.get(callee_name, ())
                             for callee in callees:
                                 for parameter in helper_parameters[callee.name]:
@@ -6211,9 +5829,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                         dependency
                                         for candidate in ast.walk(argument)
                                         if isinstance(candidate, ast.Name)
-                                        for dependency in dependencies.get(
-                                            candidate.id, ()
-                                        )
+                                        for dependency in dependencies.get(candidate.id, ())
                                     )
                         if not sensitive <= helper_parameters[name]:
                             helper_parameters[name].update(sensitive)
@@ -6236,9 +5852,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             (
                                 node
                                 for node in ast.walk(function)
-                                if isinstance(
-                                    node, (ast.Assign, ast.AnnAssign, ast.Return)
-                                )
+                                if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Return))
                             ),
                             key=lambda item: (item.lineno, item.col_offset),
                         )
@@ -6249,8 +5863,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                 if value is not None and (
                                     contains_direct_qualification(value)
                                     or any(
-                                        isinstance(node, ast.Name)
-                                        and node.id in local_direct
+                                        isinstance(node, ast.Name) and node.id in local_direct
                                         for node in ast.walk(value)
                                     )
                                     or any(
@@ -6271,8 +5884,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             parameters.update(
                                 node.id
                                 for node in ast.walk(returned.value)
-                                if isinstance(node, ast.Name)
-                                and node.id in function_parameters
+                                if isinstance(node, ast.Name) and node.id in function_parameters
                             )
                             for call in (
                                 node
@@ -6283,12 +5895,8 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                 if callee_name in helper_returns_direct:
                                     direct = True
                                 for callee in functions_by_name.get(callee_name, ()):
-                                    for parameter in helper_return_parameters[
-                                        callee.name
-                                    ]:
-                                        argument = call_argument(
-                                            call, callee, parameter
-                                        )
+                                    for parameter in helper_return_parameters[callee.name]:
+                                        argument = call_argument(call, callee, parameter)
                                         if argument is not None:
                                             parameters.update(
                                                 node.id
@@ -6306,17 +5914,14 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
             publishes_qualification = False
             frozen_helper_returns = frozenset(helper_returns_direct)
             frozen_return_parameters = {
-                name: set(parameters)
-                for name, parameters in helper_return_parameters.items()
+                name: set(parameters) for name, parameters in helper_return_parameters.items()
             }
 
             def scan_statements(
                 statements: list[ast.stmt],
                 qualification_values: set[str],
                 publication_aliases: set[str],
-                function_catalog: dict[
-                    str, list[ast.FunctionDef | ast.AsyncFunctionDef]
-                ],
+                function_catalog: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]],
                 helper_catalog: dict[str, set[str]],
             ) -> tuple[set[str], set[str]]:
                 nonlocal publishes_qualification
@@ -6348,16 +5953,13 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                 ) -> bool:
                     if contains_direct_qualification(value):
                         return True
-                    for call in (
-                        node for node in ast.walk(value) if isinstance(node, ast.Call)
-                    ):
+                    for call in (node for node in ast.walk(value) if isinstance(node, ast.Call)):
                         callee_name = called_name(call)
                         if callee_name in direct_returns:
                             return True
                         for callee in function_catalog.get(callee_name, ()):
                             if any(
-                                (argument := call_argument(call, callee, parameter))
-                                is not None
+                                (argument := call_argument(call, callee, parameter)) is not None
                                 and contains_qualification(argument)
                                 for parameter in return_parameters[callee.name]
                             ):
@@ -6374,9 +5976,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
 
                 def assign_target(target: ast.AST, value: ast.AST | None) -> None:
                     aliases = assigned_names(target)
-                    mutates_container = isinstance(
-                        target, (ast.Attribute, ast.Subscript)
-                    )
+                    mutates_container = isinstance(target, (ast.Attribute, ast.Subscript))
                     if not mutates_container:
                         qualification_values.difference_update(aliases)
                         publication_aliases.difference_update(aliases)
@@ -6392,8 +5992,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         and value.value.startswith("apex-research.qualification-")
                     )
                     if value is not None and (
-                        contains_qualification(value)
-                        or assigns_qualification_discriminator
+                        contains_qualification(value) or assigns_qualification_discriminator
                     ):
                         qualification_values.update(aliases)
                     if assigns_qualification_discriminator:
@@ -6448,9 +6047,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
 
                 def inspect_calls(value: ast.AST) -> None:
                     nonlocal publishes_qualification
-                    for call in (
-                        node for node in ast.walk(value) if isinstance(node, ast.Call)
-                    ):
+                    for call in (node for node in ast.walk(value) if isinstance(node, ast.Call)):
                         arguments = (
                             *call.args,
                             *(item.value for item in call.keywords),
@@ -6459,8 +6056,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             isinstance(call.func, ast.Attribute)
                             and call.func.attr == "update"
                             and any(
-                                contains_direct_qualification(argument)
-                                for argument in arguments
+                                contains_direct_qualification(argument) for argument in arguments
                             )
                         ):
                             mutated = ast.unparse(call.func.value)
@@ -6478,9 +6074,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                             for argument in arguments
                         ):
                             publishes_qualification = True
-                        resolved_callee = callable_aliases.get(
-                            called_name(call), called_name(call)
-                        )
+                        resolved_callee = callable_aliases.get(called_name(call), called_name(call))
                         for callee in function_catalog.get(resolved_callee, ()):
                             sensitive_call = False
                             for parameter in helper_catalog[callee.name]:
@@ -6497,9 +6091,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                                             argument = call.args[index]
                                 if argument is None:
                                     argument = call_argument(call, callee, parameter)
-                                if argument is not None and contains_qualification(
-                                    argument
-                                ):
+                                if argument is not None and contains_qualification(argument):
                                     sensitive_call = True
                                     break
                             if sensitive_call:
@@ -6583,9 +6175,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
                         branches = [statement.body, statement.orelse]
                     elif isinstance(statement, (ast.For, ast.While, ast.With)):
                         branches = [statement.body]
-                        branches.extend(
-                            [statement.orelse] if hasattr(statement, "orelse") else []
-                        )
+                        branches.extend([statement.orelse] if hasattr(statement, "orelse") else [])
                     if branches:
                         branch_results = [
                             scan_statements(
@@ -6628,9 +6218,7 @@ def _scan_spec015_non_owner_repositories(repository_root: Path) -> None:
 
 def _scan_spec014_evidence_seams(repository_root: Path) -> None:
     apex_root = repository_root / "apex-research" / "src" / "apex_research"
-    reporting_root = (
-        repository_root / "strategy-reporting" / "src" / "strategy_reporting"
-    )
+    reporting_root = repository_root / "strategy-reporting" / "src" / "strategy_reporting"
     apex_paths = tuple(
         sorted(
             {
@@ -6655,12 +6243,8 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
             "report_models.py",
         }
         if not required_files <= set(apex_by_name):
-            raise ArchitectureViolation(
-                "apex-research: Evidence v2 acceptance seam is incomplete"
-            )
-        evidence_source = "\n".join(
-            path.read_text(encoding="utf-8") for path in apex_paths
-        )
+            raise ArchitectureViolation("apex-research: Evidence v2 acceptance seam is incomplete")
+        evidence_source = "\n".join(path.read_text(encoding="utf-8") for path in apex_paths)
         for marker in (
             "EvidenceV2",
             "EvidenceSection",
@@ -6679,9 +6263,7 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
                 raise ArchitectureViolation(
                     f"apex-research: Evidence v2 lacks public seam {marker}"
                 )
-        backfill_source = apex_by_name["evidence_backfill.py"].read_text(
-            encoding="utf-8"
-        )
+        backfill_source = apex_by_name["evidence_backfill.py"].read_text(encoding="utf-8")
         for marker in (
             "EvidenceV2BackfillService",
             "EvidenceV2StudySourcePublisher",
@@ -6696,9 +6278,7 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
                 raise ArchitectureViolation(
                     f"apex-research: Evidence v2 backfill lacks bounded seam {marker}"
                 )
-        extension_source = apex_by_name["evidence_extensions.py"].read_text(
-            encoding="utf-8"
-        )
+        extension_source = apex_by_name["evidence_extensions.py"].read_text(encoding="utf-8")
         for marker in ("AuxiliaryValidationRecord", "FutureOptionalEvidenceRecord"):
             if marker not in extension_source:
                 raise ArchitectureViolation(
@@ -6711,9 +6291,7 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
             )
 
     if reporting_paths:
-        reporting_source = "\n".join(
-            path.read_text(encoding="utf-8") for path in reporting_paths
-        )
+        reporting_source = "\n".join(path.read_text(encoding="utf-8") for path in reporting_paths)
         for marker in (
             "EvidenceV2ReadModelBuilder",
             "EvidenceV2ReadModel",
@@ -6728,15 +6306,12 @@ def _scan_spec014_evidence_seams(repository_root: Path) -> None:
                     f"strategy-reporting: Evidence v2 read model lacks public seam {marker}"
                 )
         if not any(
-            marker in reporting_source
-            for marker in ("WorkspaceAdapter", "WorkspaceClientPort")
+            marker in reporting_source for marker in ("WorkspaceAdapter", "WorkspaceClientPort")
         ):
             raise ArchitectureViolation(
                 "strategy-reporting: Evidence v2 read model lacks Workspace public port"
             )
-        if not any(
-            marker in reporting_source for marker in ("verify_ref", "verify_artifact")
-        ):
+        if not any(marker in reporting_source for marker in ("verify_ref", "verify_artifact")):
             raise ArchitectureViolation(
                 "strategy-reporting: Evidence v2 read model lacks artifact verification"
             )
@@ -6783,9 +6358,7 @@ def _reject_spec014_forbidden(paths: tuple[Path, ...], *, owner: str) -> None:
                     else ""
                 )
                 if name in forbidden_calls:
-                    raise ArchitectureViolation(
-                        f"{owner}: {forbidden_calls[name]}: {path}"
-                    )
+                    raise ArchitectureViolation(f"{owner}: {forbidden_calls[name]}: {path}")
             if isinstance(node, ast.ClassDef) and any(
                 term in node.name
                 for term in (
@@ -6798,20 +6371,12 @@ def _reject_spec014_forbidden(paths: tuple[Path, ...], *, owner: str) -> None:
             ):
                 raise ArchitectureViolation(f"{owner}: parallel owner: {path}")
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                targets = (
-                    node.targets if isinstance(node, ast.Assign) else [node.target]
-                )
-                names = {
-                    target.id for target in targets if isinstance(target, ast.Name)
-                }
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                names = {target.id for target in targets if isinstance(target, ast.Name)}
                 if "qualification" in names:
-                    raise ArchitectureViolation(
-                        f"{owner}: qualification masquerade: {path}"
-                    )
+                    raise ArchitectureViolation(f"{owner}: qualification masquerade: {path}")
                 if "production_approval" in names:
-                    raise ArchitectureViolation(
-                        f"{owner}: production-approval masquerade: {path}"
-                    )
+                    raise ArchitectureViolation(f"{owner}: production-approval masquerade: {path}")
 
 
 def _scan_statistical_control_seams(repository: Path) -> None:
@@ -6905,11 +6470,7 @@ def _scan_validation_matrix_seams(repository: Path) -> None:
 def _scan_research_memory_seams(repository: Path) -> None:
     source_root = repository / "src" / "apex_research"
     memory = tuple(
-        sorted(
-            path
-            for path in source_root.rglob("memory*.py")
-            if "__pycache__" not in path.parts
-        )
+        sorted(path for path in source_root.rglob("memory*.py") if "__pycache__" not in path.parts)
     )
     if not memory:
         return
@@ -6946,9 +6507,7 @@ def _scan_research_memory_seams(repository: Path) -> None:
         ),
     )
     query_path = source_root / "memory_query.py"
-    query_source = (
-        query_path.read_text(encoding="utf-8") if query_path.is_file() else ""
-    )
+    query_source = query_path.read_text(encoding="utf-8") if query_path.is_file() else ""
     if "snapshot_token" not in query_source:
         raise ArchitectureViolation(
             "apex-research: Research Memory lacks reusable Workspace snapshot token"
@@ -7009,19 +6568,13 @@ def _scan_apex_public_seam(
     if not paths:
         return
     trees = tuple(
-        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
-        for path in paths
+        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path))) for path in paths
     )
     nodes = tuple(node for _, tree in trees for node in ast.walk(tree))
     classes = {node.name for node in nodes if isinstance(node, ast.ClassDef)}
     names = {node.id for node in nodes if isinstance(node, ast.Name)}
     imports = (
-        {
-            alias.name
-            for node in nodes
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        }
+        {alias.name for node in nodes if isinstance(node, ast.Import) for alias in node.names}
         | {node.module or "" for node in nodes if isinstance(node, ast.ImportFrom)}
         | {
             f"{node.module}.{alias.name}"
@@ -7033,8 +6586,7 @@ def _scan_apex_public_seam(
     calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
         for node in nodes
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, (ast.Attribute, ast.Name))
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
     }
     attributes = {
         f"{node.value.id}.{node.attr}"
@@ -7080,16 +6632,8 @@ def _scan_apex_public_seam(
 def _scan_spec024_strategy_benchmark_seams(
     repository_root: Path, *, required: bool = False
 ) -> None:
-    apex = (
-        repository_root
-        / "apex-research"
-        / "src"
-        / "apex_research"
-        / "strategy_benchmark.py"
-    )
-    runtime = (
-        repository_root / "quant-runtime" / "src" / "quant_runtime" / "benchmark.py"
-    )
+    apex = repository_root / "apex-research" / "src" / "apex_research" / "strategy_benchmark.py"
+    runtime = repository_root / "quant-runtime" / "src" / "quant_runtime" / "benchmark.py"
     if not apex.is_file() or not runtime.is_file():
         if required:
             raise ArchitectureViolation("SPEC-024 owner or transport seam is missing")
@@ -7125,9 +6669,7 @@ def _scan_spec024_strategy_benchmark_seams(
     runtime_tree = ast.parse(runtime.read_text(encoding="utf-8"), filename=str(runtime))
     runtime_source = runtime.read_text(encoding="utf-8")
     runtime_imports = {
-        node.module or ""
-        for node in ast.walk(runtime_tree)
-        if isinstance(node, ast.ImportFrom)
+        node.module or "" for node in ast.walk(runtime_tree) if isinstance(node, ast.ImportFrom)
     } | {
         alias.name
         for node in ast.walk(runtime_tree)
@@ -7145,19 +6687,14 @@ def _scan_spec024_strategy_benchmark_seams(
         for module in runtime_imports
         for forbidden in forbidden_runtime_imports
     ):
-        raise ArchitectureViolation(
-            "quant-runtime: SPEC-024 transport crosses an owner boundary"
-        )
+        raise ArchitectureViolation("quant-runtime: SPEC-024 transport crosses an owner boundary")
     runtime_calls = {
         node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
         for node in ast.walk(runtime_tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, (ast.Attribute, ast.Name))
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name))
     }
     if {"submit_run", "preflight", "score"} & runtime_calls:
-        raise ArchitectureViolation(
-            "quant-runtime: SPEC-024 transport owns forbidden semantics"
-        )
+        raise ArchitectureViolation("quant-runtime: SPEC-024 transport owns forbidden semantics")
     for marker in (
         "class BenchmarkExecutionService",
         '"strategy_event_trace"',
@@ -7225,9 +6762,7 @@ def _scan_rdagent_seams(repository: Path) -> None:
             ("submit_run(", "Runtime bypass"),
         ):
             if marker in strategy_source:
-                raise ArchitectureViolation(
-                    f"apex-research: RD-Agent {reason}: {strategy}"
-                )
+                raise ArchitectureViolation(f"apex-research: RD-Agent {reason}: {strategy}")
         for marker in (
             "GovernedExternalResearchRunner",
             "readback_strategy_package_draft_artifacts",
@@ -7278,13 +6813,9 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
     application = source_root / "application.py"
     for path in source_root.rglob("*.py"):
         source = path.read_text(encoding="utf-8")
-        owns_process_control = (
-            "import subprocess" in source or "from subprocess" in source
-        )
+        owns_process_control = "import subprocess" in source or "from subprocess" in source
         if owns_process_control and path not in allowed_process_seams:
-            raise ArchitectureViolation(
-                f"apex-research: ungoverned subprocess seam: {path}"
-            )
+            raise ArchitectureViolation(f"apex-research: ungoverned subprocess seam: {path}")
     adapters = source_root / "adapters"
     if adapters.is_dir():
         for path in adapters.rglob("*.py"):
@@ -7301,8 +6832,7 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                 )
             if external_adapter:
                 production_enabled = any(
-                    marker in source
-                    for marker in ("production = True", "production=True")
+                    marker in source for marker in ("production = True", "production=True")
                 )
                 qrafti_disabled = (
                     path.name == "qrafti.py"
@@ -7312,8 +6842,7 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
                 )
                 if not production_enabled and not qrafti_disabled:
                     raise ArchitectureViolation(
-                        "apex-research: external adapter must declare production execution: "
-                        f"{path}"
+                        f"apex-research: external adapter must declare production execution: {path}"
                     )
             if external_adapter:
                 forbidden_adapter_seams = (
@@ -7367,9 +6896,7 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
     if application.is_file():
         source = application.read_text(encoding="utf-8")
         if "workspace.submit_run(" in source:
-            raise ArchitectureViolation(
-                "apex-research: run submitted before Runtime preflight"
-            )
+            raise ArchitectureViolation("apex-research: run submitted before Runtime preflight")
         for marker in (
             "governance.execute(",
             "GovernedAction.CANDIDATE_PACKAGE_INTAKE",
@@ -7383,18 +6910,16 @@ def _scan_apex_governance_seams(source_root: Path) -> None:
 
 
 def validate_constitution() -> None:
-    try:
-        validate_test001_admission(
-            ROOT / "docs" / "architecture-admissions" / "test-001.v1.json"
-        )
-    except Exception as exc:
-        raise ArchitectureViolation(
-            f"quant-research: TEST-001 architecture admission is invalid: {exc}"
-        ) from exc
+    test001 = ROOT / "docs" / "architecture-admissions" / "test-001.v1.json"
+    if test001.is_file():
+        try:
+            validate_test001_admission(test001)
+        except Exception as exc:
+            raise ArchitectureViolation(
+                f"quant-research: TEST-001 architecture admission is invalid: {exc}"
+            ) from exc
     module_path = ROOT / "tools" / "validate_architecture_constitution.py"
-    specification = importlib.util.spec_from_file_location(
-        "constitution_validator", module_path
-    )
+    specification = importlib.util.spec_from_file_location("constitution_validator", module_path)
     assert specification is not None and specification.loader is not None
     validator = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(validator)
@@ -7411,9 +6936,7 @@ def validate_constitution() -> None:
             )
             validator.validate_candidate(candidate, policy)
             if candidate != contract:
-                raise validator.ConstitutionError(
-                    f"{spec} machine admission contract drifted"
-                )
+                raise validator.ConstitutionError(f"{spec} machine admission contract drifted")
     except Exception as exc:
         failed_spec = locals().get("spec", "SPEC-016")
         raise ArchitectureViolation(
@@ -7435,9 +6958,7 @@ def run_fixture_checks(
         "spec016_installed_wheels": 7_200,
     }
     selected_paths = (
-        changed_paths_since_origin(repository_root)
-        if changed_paths is None
-        else changed_paths
+        changed_paths_since_origin(repository_root) if changed_paths is None else changed_paths
     )
     for check in fixture_plan(
         repository_root,
@@ -7447,9 +6968,7 @@ def run_fixture_checks(
     ):
         repository = repository_root / check.repository
         if not repository.is_dir():
-            raise ArchitectureViolation(
-                f"fixture repository is unavailable: {repository}"
-            )
+            raise ArchitectureViolation(f"fixture repository is unavailable: {repository}")
         try:
             HARNESS.run_command(
                 list(check.command),
@@ -7552,9 +7071,7 @@ def run_full_gate_checks(
         repository_root = repository_root.resolve()
         environment = HARNESS.sanitized_environment()
         selected_paths = (
-            changed_paths_since_origin(repository_root)
-            if changed_paths is None
-            else changed_paths
+            changed_paths_since_origin(repository_root) if changed_paths is None else changed_paths
         )
         for check in full_gate_plan(
             repository_root,
@@ -7563,17 +7080,11 @@ def run_full_gate_checks(
             acceptance_scope=acceptance_scope,
         ):
             if check.connected:
-                raise ArchitectureViolation(
-                    "connected checks must not enter the full gate plan"
-                )
+                raise ArchitectureViolation("connected checks must not enter the full gate plan")
             repository = repository_root / check.repository
             if not repository.is_dir():
-                raise ArchitectureViolation(
-                    f"gate repository is unavailable: {repository}"
-                )
-            command = tuple(
-                token.replace("{dist}", str(dist)) for token in check.command
-            )
+                raise ArchitectureViolation(f"gate repository is unavailable: {repository}")
+            command = tuple(token.replace("{dist}", str(dist)) for token in check.command)
             try:
                 HARNESS.run_command(
                     list(command),
@@ -7604,9 +7115,7 @@ def run_full_gate_checks(
                             f"{check.owner} baseline probe failed:\n{probe_exc}"
                         ) from probe_exc
                 exact_baseline = (
-                    baseline is not None
-                    and baseline_head == baseline
-                    and not baseline_status
+                    baseline is not None and baseline_head == baseline and not baseline_status
                 )
                 formatter_only = _formatter_only_drift(exc)
                 if check.baseline_only and exact_baseline and formatter_only:
@@ -7671,9 +7180,7 @@ def run_connected_status_checks(repository_root: Path) -> list[dict[str, str]]:
             counts = _pytest_terminal_counts(output)
             passed = 0 if counts is None else counts["passed"] + counts["xpassed"]
             skipped = 0 if counts is None else counts["skipped"] + counts["xfailed"]
-            if counts is None or (
-                counts["failed"] or counts["error"] or not (passed or skipped)
-            ):
+            if counts is None or (counts["failed"] or counts["error"] or not (passed or skipped)):
                 status = "indeterminate"
             elif passed and skipped:
                 status = "partial"
@@ -7752,18 +7259,14 @@ def main(argv: list[str] | None = None) -> int:
                     if acceptance_scope is None
                     else {
                         "spec": acceptance_scope.spec,
-                        "product_changed_paths": list(
-                            acceptance_scope.product_changed_paths
-                        ),
+                        "product_changed_paths": list(acceptance_scope.product_changed_paths),
                         "selection_maintenance_paths": list(
                             acceptance_scope.selection_maintenance_paths
                         ),
                         "required_installed_tracers": list(
                             acceptance_scope.required_installed_tracers
                         ),
-                        "deferred_release_tracers": list(
-                            acceptance_scope.deferred_release_tracers
-                        ),
+                        "deferred_release_tracers": list(acceptance_scope.deferred_release_tracers),
                         "current_spec_heavy_test_exclusions": list(
                             acceptance_scope.current_spec_heavy_test_exclusions
                         ),

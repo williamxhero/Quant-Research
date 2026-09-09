@@ -25,9 +25,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             snapshot = isolated / "snapshot"
             snapshot.mkdir()
             test_file = snapshot / "test_fixture.py"
-            test_file.write_text(
-                "def test_passes():\n    assert True\n", encoding="utf-8"
-            )
+            test_file.write_text("def test_passes():\n    assert True\n", encoding="utf-8")
 
             harness.run_installed_pytest(
                 Path(sys.executable),
@@ -40,10 +38,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                sorted(
-                    path.relative_to(snapshot).as_posix()
-                    for path in snapshot.rglob("*")
-                ),
+                sorted(path.relative_to(snapshot).as_posix() for path in snapshot.rglob("*")),
                 ["test_fixture.py"],
             )
             self.assertEqual(
@@ -95,9 +90,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             mock.patch.object(
                 harness.subprocess, "Popen", side_effect=OSError("missing executable")
             ),
-            self.assertRaisesRegex(
-                harness.InstalledWheelFailure, "command could not start"
-            ),
+            self.assertRaisesRegex(harness.InstalledWheelFailure, "command could not start"),
         ):
             harness.run_command(
                 ["missing-command"],
@@ -134,20 +127,14 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             tools.mkdir(parents=True)
             (tools / "tracer.py").write_text("VALUE = 1\n", encoding="utf-8")
             (repository / "说明.md").write_text("验收\n", encoding="utf-8")
-            subprocess.run(
-                ["git", "init"], cwd=repository, check=True, capture_output=True
-            )
+            subprocess.run(["git", "init"], cwd=repository, check=True, capture_output=True)
             subprocess.run(
                 ["git", "config", "user.email", "test@example.invalid"],
                 cwd=repository,
                 check=True,
             )
-            subprocess.run(
-                ["git", "config", "user.name", "Test"], cwd=repository, check=True
-            )
-            subprocess.run(
-                ["git", "add", "tools/tracer.py", "说明.md"], cwd=repository, check=True
-            )
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=repository, check=True)
+            subprocess.run(["git", "add", "tools/tracer.py", "说明.md"], cwd=repository, check=True)
             subprocess.run(
                 ["git", "commit", "-m", "root"],
                 cwd=repository,
@@ -170,13 +157,9 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             (repository / "hooks").mkdir()
             (repository / "assets").mkdir()
             (repository / "src/package/__init__.py").write_text("", encoding="utf-8")
-            (repository / "strategies/example.py").write_text(
-                "VALUE = 1\n", encoding="utf-8"
-            )
+            (repository / "strategies/example.py").write_text("VALUE = 1\n", encoding="utf-8")
             (repository / "README.md").write_text("package\n", encoding="utf-8")
-            (repository / "licenses/LICENSE.txt").write_text(
-                "license\n", encoding="utf-8"
-            )
+            (repository / "licenses/LICENSE.txt").write_text("license\n", encoding="utf-8")
             (repository / "hooks/build.py").write_text("", encoding="utf-8")
             (repository / "assets/data.json").write_text("{}\n", encoding="utf-8")
             (repository / "pyproject.toml").write_text(
@@ -285,9 +268,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             mock.patch.object(harness.os, "kill") as kill,
             mock.patch.object(harness.os, "WNOHANG", 1, create=True),
             mock.patch.object(harness.signal, "SIGKILL", 9, create=True),
-            mock.patch.object(
-                harness, "_posix_process_map", side_effect=[process_map, {}]
-            ),
+            mock.patch.object(harness, "_posix_process_map", side_effect=[process_map, {}]),
             mock.patch.object(harness, "_kill_posix_identity") as kill_identity,
             mock.patch.object(harness.os, "waitpid"),
         ):
@@ -307,9 +288,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             mock.patch.object(harness.os, "WNOHANG", 1, create=True),
             mock.patch.object(harness.time, "monotonic", side_effect=[0.0, 0.0, 2.0]),
             mock.patch.object(harness.time, "sleep"),
-            self.assertRaisesRegex(
-                harness.InstalledWheelFailure, "survived bounded cleanup"
-            ),
+            self.assertRaisesRegex(harness.InstalledWheelFailure, "survived bounded cleanup"),
         ):
             harness._kill_owned_subreaper_children({}, {}, timeout_seconds=1.0)
 
@@ -319,16 +298,12 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             test_file = repository / "tests/test_acceptance.py"
             test_file.parent.mkdir()
             test_file.write_text("def test_acceptance(): pass\n", encoding="utf-8")
-            subprocess.run(
-                ["git", "add", "tests/test_acceptance.py"], cwd=repository, check=True
-            )
+            subprocess.run(["git", "add", "tests/test_acceptance.py"], cwd=repository, check=True)
             subprocess.run(["git", "commit", "-m", "tests"], cwd=repository, check=True)
 
             topology = harness.verify_source_topology(repository, dict(os.environ))
             self.assertIn("tests/test_acceptance.py", topology["source_files"])
-            test_file.write_text(
-                "def test_acceptance(): assert False\n", encoding="utf-8"
-            )
+            test_file.write_text("def test_acceptance(): assert False\n", encoding="utf-8")
             with self.assertRaises(harness.InstalledWheelFailure):
                 harness.verify_source_topology(repository, dict(os.environ))
 
@@ -336,18 +311,14 @@ class InstalledWheelHarnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             _root, repository, _baseline = self._source_repository(Path(temporary))
             nested = repository / "src/package"
-            with self.assertRaisesRegex(
-                harness.InstalledWheelFailure, "exact Git work-tree root"
-            ):
+            with self.assertRaisesRegex(harness.InstalledWheelFailure, "exact Git work-tree root"):
                 harness._validated_repository_path(nested, require_git=True)
 
     def test_snapshot_repository_copies_only_the_attested_closure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root, repository, _baseline = self._source_repository(Path(temporary))
             destination = root / "snapshot"
-            harness.snapshot_repository(
-                repository, destination, ["src/package/__init__.py"]
-            )
+            harness.snapshot_repository(repository, destination, ["src/package/__init__.py"])
 
             self.assertEqual(
                 (destination / "src/package/__init__.py").read_text(encoding="utf-8"),
@@ -358,13 +329,9 @@ class InstalledWheelHarnessTests(unittest.TestCase):
     def test_unchanged_source_check_rejects_ignored_build_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root, repository, baseline = self._source_repository(Path(temporary))
-            (repository / ".gitignore").write_text(
-                "src/package/ignored.py\n", encoding="utf-8"
-            )
+            (repository / ".gitignore").write_text("src/package/ignored.py\n", encoding="utf-8")
             subprocess.run(["git", "add", ".gitignore"], cwd=repository, check=True)
-            subprocess.run(
-                ["git", "commit", "-m", "ignore"], cwd=repository, check=True
-            )
+            subprocess.run(["git", "commit", "-m", "ignore"], cwd=repository, check=True)
             baseline = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=repository,
@@ -395,14 +362,10 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             cwd=repository,
             check=True,
         )
-        subprocess.run(
-            ["git", "config", "user.name", "Test"], cwd=repository, check=True
-        )
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repository, check=True)
         tracked = repository / "src" / "package" / "__init__.py"
         tracked.write_text("VALUE = 1\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", "src/package/__init__.py"], cwd=repository, check=True
-        )
+        subprocess.run(["git", "add", "src/package/__init__.py"], cwd=repository, check=True)
         subprocess.run(["git", "commit", "-m", "baseline"], cwd=repository, check=True)
         baseline = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -432,9 +395,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
     def test_source_topology_rejects_dirty_owner_build_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             _root, repository, _baseline = self._source_repository(Path(temporary))
-            (repository / "src/package/__init__.py").write_text(
-                "VALUE = 9\n", encoding="utf-8"
-            )
+            (repository / "src/package/__init__.py").write_text("VALUE = 9\n", encoding="utf-8")
 
             with self.assertRaises(harness.InstalledWheelFailure):
                 harness.verify_source_topology(repository, dict(os.environ))
@@ -458,9 +419,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             )
             (repository / "src/package/__init__.py").unlink()
 
-            with self.assertRaisesRegex(
-                harness.InstalledWheelFailure, "unsafe Git index flags"
-            ):
+            with self.assertRaisesRegex(harness.InstalledWheelFailure, "unsafe Git index flags"):
                 harness.verify_source_topology(repository, dict(os.environ))
 
     def test_source_build_inputs_rejects_links_that_escape_the_source_tree(
@@ -479,9 +438,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
             except OSError as exc:
                 self.skipTest(f"file symlinks unavailable: {exc}")
 
-            with self.assertRaisesRegex(
-                harness.InstalledWheelFailure, "symbolic link or junction"
-            ):
+            with self.assertRaisesRegex(harness.InstalledWheelFailure, "symbolic link or junction"):
                 harness._source_build_inputs(repository)
 
     def test_source_build_inputs_rejects_a_linked_source_root(self) -> None:
@@ -520,9 +477,7 @@ class InstalledWheelHarnessTests(unittest.TestCase):
                     autospec=True,
                     side_effect=lambda path: path == injected or original(path),
                 ),
-                self.assertRaisesRegex(
-                    harness.InstalledWheelFailure, "symbolic link or junction"
-                ),
+                self.assertRaisesRegex(harness.InstalledWheelFailure, "symbolic link or junction"),
             ):
                 harness._source_build_inputs(repository)
 

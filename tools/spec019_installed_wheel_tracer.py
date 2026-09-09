@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -49,9 +47,7 @@ APEX_NODES = (
     "test_outcome_bounds_partial_items_and_namespace_isolation",
     "test_external_discovery_and_execution_only_cross_the_governed_runner",
 )
-TRANSCRIPT_NODE = (
-    "test_panel_analysis_runs_once_through_canonical_governance_and_publication"
-)
+TRANSCRIPT_NODE = "test_panel_analysis_runs_once_through_canonical_governance_and_publication"
 TRANSCRIPT_PREFIX = "SPEC019_APEX_TRANSCRIPT="
 
 
@@ -80,9 +76,7 @@ def _run_node(
     replay: int,
 ) -> str:
     started = time.monotonic()
-    _progress(
-        f"replay={replay} node={node} start timeout_seconds={NODE_TIMEOUT_SECONDS}"
-    )
+    _progress(f"replay={replay} node={node} start timeout_seconds={NODE_TIMEOUT_SECONDS}")
     output = HARNESS.run_installed_pytest(
         python,
         (Path(f"{test_file}::{node}"),),
@@ -93,9 +87,7 @@ def _run_node(
         timeout_seconds=NODE_TIMEOUT_SECONDS,
         pytest_args=("-s",),
     )
-    _progress(
-        f"replay={replay} node={node} passed_seconds={time.monotonic() - started:.1f}"
-    )
+    _progress(f"replay={replay} node={node} passed_seconds={time.monotonic() - started:.1f}")
     return output
 
 
@@ -133,9 +125,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(
-                path, snapshot / name, topology[name]["source_files"]
-            )
+            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
         wheels = HARNESS.build_wheels(snapshot, PACKAGE_REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -162,17 +152,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     output = current
             transcripts.append(_transcript(output))
         if transcripts[0] != transcripts[1]:
-            raise TracerFailure(
-                "SPEC-019 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-019 installed identity transcript drifted on replay")
         smoke_output = HARNESS.run_command(
             [
                 str(python),
                 "-I",
                 "-B",
-                str(
-                    snapshot / "quant-research/tools/spec019_installed_wheel_tracer.py"
-                ),
+                str(snapshot / "quant-research/tools/spec019_installed_wheel_tracer.py"),
                 "--repository-root",
                 str(snapshot),
                 "--smoke-root",
@@ -190,13 +176,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             "replays": 2,
             "identity_transcript": transcripts[0],
             "identity_transcript_sha256": hashlib.sha256(
-                json.dumps(
-                    transcripts[0], sort_keys=True, separators=(",", ":")
-                ).encode()
+                json.dumps(transcripts[0], sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
             "wheel_sha256": {
-                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(wheels)
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
             },
             "unchanged_sources": unchanged,
             "source_topology": topology,

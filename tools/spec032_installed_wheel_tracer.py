@@ -11,9 +11,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -32,9 +30,7 @@ REPOSITORIES = (
     "apex-research",
     "strategy-reporting",
 )
-UNCHANGED_SOURCE_BASELINES = {
-    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
-}
+UNCHANGED_SOURCE_BASELINES = {"strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"}
 TIMEOUT_SECONDS = 240
 NODES = (
     (
@@ -143,9 +139,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(
-                path, snapshot / name, topology[name]["source_files"]
-            )
+            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
         wheels = HARNESS.build_wheels(snapshot, REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -174,10 +168,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                     str(python),
                     "-I",
                     "-B",
-                    str(
-                        snapshot
-                        / "quant-research/tools/spec032_installed_wheel_tracer.py"
-                    ),
+                    str(snapshot / "quant-research/tools/spec032_installed_wheel_tracer.py"),
                     "--repository-root",
                     str(snapshot),
                     "--smoke-root",
@@ -189,9 +180,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             )
             smoke_results.append(json.loads(output))
         if smoke_results[0] != smoke_results[1]:
-            raise TracerFailure(
-                "SPEC-032 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-032 installed identity transcript drifted on replay")
         return {
             **smoke_results[0],
             "nodes": len(NODES),
@@ -307,9 +296,7 @@ def smoke(_root: Path) -> dict[str, Any]:
     )
     policy_service = RevalidationPolicyService(workspace)
     policy_service.publish_policy(policy)
-    evidence = PublishedRecordRef(
-        record_id="1" * 64, record_type="apex-research.evidence.v2"
-    )
+    evidence = PublishedRecordRef(record_id="1" * 64, record_type="apex-research.evidence.v2")
     qualification = PublishedRecordRef(
         record_id="2" * 64, record_type="apex-research.qualification-decision.v1"
     )
@@ -322,9 +309,7 @@ def smoke(_root: Path) -> dict[str, Any]:
         as_of="2026-01-01T00:00:15Z",
         observations=(),
     )
-    resource = ResourceRef(
-        kind=ResourceKind.DATASET, resource_id="fixture", version="v1"
-    )
+    resource = ResourceRef(kind=ResourceKind.DATASET, resource_id="fixture", version="v1")
     budget = (
         BudgetAmount(
             dimension=BudgetDimension.ACTION_CALLS,
@@ -410,9 +395,7 @@ def smoke(_root: Path) -> dict[str, Any]:
             ),
         ),
     )
-    closure = service.close(
-        success_plan.ref(), decays=(decay,), prior_currency=currency
-    )
+    closure = service.close(success_plan.ref(), decays=(decay,), prior_currency=currency)
     recovered = service.recover(success_plan.ref())
     failure_plan = service.schedule_from_plan(plan("installed-failure"))
     failed = service.advance(

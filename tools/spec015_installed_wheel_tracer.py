@@ -14,9 +14,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -156,9 +154,7 @@ def _validated_identity_transcript(
     seen: set[str] = set()
     for item in transcript:
         if not isinstance(item, dict) or set(item) != {"label", "identities"}:
-            raise TracerFailure(
-                "stable installed identity transcript payload is invalid"
-            )
+            raise TracerFailure("stable installed identity transcript payload is invalid")
         label = item["label"]
         identities = item["identities"]
         if (
@@ -168,9 +164,7 @@ def _validated_identity_transcript(
             or not isinstance(identities, dict)
             or set(identities) != IDENTITY_TRANSCRIPT_FIELDS[label]
         ):
-            raise TracerFailure(
-                "stable installed identity transcript payload is invalid"
-            )
+            raise TracerFailure("stable installed identity transcript payload is invalid")
         seen.add(label)
         terminal = identities.get("terminal_state")
         expected_terminal = {
@@ -178,9 +172,7 @@ def _validated_identity_transcript(
             "held-successor-retirement": "retired",
         }.get(label)
         if expected_terminal is not None and terminal != expected_terminal:
-            raise TracerFailure(
-                "stable installed identity transcript payload is invalid"
-            )
+            raise TracerFailure("stable installed identity transcript payload is invalid")
         for key, value in identities.items():
             if key == "terminal_state":
                 continue
@@ -198,13 +190,9 @@ def _validated_identity_transcript(
                         for member in value
                     )
                 ):
-                    raise TracerFailure(
-                        "stable installed identity transcript payload is invalid"
-                    )
+                    raise TracerFailure("stable installed identity transcript payload is invalid")
             elif not isinstance(value, str) or HEX_ID.fullmatch(value) is None:
-                raise TracerFailure(
-                    "stable installed identity transcript payload is invalid"
-                )
+                raise TracerFailure("stable installed identity transcript payload is invalid")
         validated.append({"label": label, "identities": identities})
     by_label = {str(item["label"]): item["identities"] for item in validated}
     policy = by_label["policy"]
@@ -284,10 +272,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         dist.mkdir()
         repositories = {
             "quant-research": root_repository,
-            **{
-                repository: repository_root / repository
-                for repository in PACKAGE_REPOSITORIES
-            },
+            **{repository: repository_root / repository for repository in PACKAGE_REPOSITORIES},
         }
         source_topology = {
             repository: verify_source_topology(path, environment)
@@ -317,9 +302,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             repository: source_topology[repository]["source_fingerprint"]
             for repository in repositories
         }:
-            raise TracerFailure(
-                "build snapshot does not match initial source attestation"
-            )
+            raise TracerFailure("build snapshot does not match initial source attestation")
         snapshot_trees = {
             repository: _snapshot_tree_identity(snapshot_root / repository)
             for repository in repositories
@@ -330,9 +313,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             dist,
             environment,
         )
-        _assert_snapshot_trees(
-            snapshot_root, repositories, snapshot_trees, phase="wheel build"
-        )
+        _assert_snapshot_trees(snapshot_root, repositories, snapshot_trees, phase="wheel build")
         source_topology_after_build = {
             repository: verify_source_topology(path, environment)
             for repository, path in repositories.items()
@@ -345,9 +326,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             environment,
         )
         if unchanged_after_build != unchanged_sources:
-            raise TracerFailure(
-                "unchanged repository source identity raced during wheel build"
-            )
+            raise TracerFailure("unchanged repository source identity raced during wheel build")
         python = create_installed_environment(
             isolated,
             wheels,
@@ -378,10 +357,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         for _ in range(2):
             stable_output = run_installed_pytest(
                 python,
-                (
-                    snapshot_root / "apex-research" / target
-                    for target in STABLE_BEHAVIORAL_TESTS
-                ),
+                (snapshot_root / "apex-research" / target for target in STABLE_BEHAVIORAL_TESTS),
                 (
                     "apex_research",
                     "quant_runtime",
@@ -398,21 +374,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 r"(?m)^" + re.escape(IDENTITY_TRANSCRIPT_PREFIX) + r"(\{[^\r\n]*\})$",
                 stable_output,
             )
-            if stable_output.count(IDENTITY_TRANSCRIPT_PREFIX) != len(
-                encoded_transcript
-            ):
-                raise TracerFailure(
-                    "stable installed identity transcript framing is invalid"
-                )
+            if stable_output.count(IDENTITY_TRANSCRIPT_PREFIX) != len(encoded_transcript):
+                raise TracerFailure("stable installed identity transcript framing is invalid")
             try:
                 transcript = [json.loads(value) for value in encoded_transcript]
             except json.JSONDecodeError as exc:
-                raise TracerFailure(
-                    "stable installed identity transcript JSON is invalid"
-                ) from exc
-            stable_identity_transcripts.append(
-                _validated_identity_transcript(transcript)
-            )
+                raise TracerFailure("stable installed identity transcript JSON is invalid") from exc
+            stable_identity_transcripts.append(_validated_identity_transcript(transcript))
             _assert_snapshot_trees(
                 snapshot_root,
                 repositories,
@@ -432,10 +400,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 "-I",
                 "-B",
                 str(
-                    snapshot_root
-                    / "quant-research"
-                    / "tools"
-                    / "spec015_installed_wheel_tracer.py"
+                    snapshot_root / "quant-research" / "tools" / "spec015_installed_wheel_tracer.py"
                 ),
                 "--repository-root",
                 str(snapshot_root),
@@ -449,22 +414,16 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         try:
             result = json.loads(output)
         except json.JSONDecodeError as exc:
-            raise TracerFailure(
-                f"installed tracer emitted invalid JSON: {output}"
-            ) from exc
+            raise TracerFailure(f"installed tracer emitted invalid JSON: {output}") from exc
         if result.get("ok") is not True:
             raise TracerFailure(f"installed tracer failed: {result}")
-        _assert_snapshot_trees(
-            snapshot_root, repositories, snapshot_trees, phase="installed smoke"
-        )
+        _assert_snapshot_trees(snapshot_root, repositories, snapshot_trees, phase="installed smoke")
         final_source_topology = {
             repository: verify_source_topology(path, environment)
             for repository, path in repositories.items()
         }
         if final_source_topology != source_topology:
-            raise TracerFailure(
-                "repository source topology raced during installed execution"
-            )
+            raise TracerFailure("repository source topology raced during installed execution")
         final_unchanged_sources = verify_unchanged_sources(
             repository_root,
             UNCHANGED_SOURCE_BASELINES,
@@ -492,8 +451,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             ).encode("utf-8")
         ).hexdigest()
         result["wheel_sha256"] = {
-            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(wheels)
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
         }
         result["unchanged_sources"] = unchanged_sources
         result["source_topology"] = source_topology
@@ -533,12 +491,9 @@ def smoke(repository_root: Path, smoke_root: Path) -> dict[str, Any]:
         QualificationValidationMetricRequirement,
     )
     if any(
-        not value.__module__.startswith("apex_research.qualification")
-        for value in public_types
+        not value.__module__.startswith("apex_research.qualification") for value in public_types
     ):
-        raise TracerFailure(
-            "qualification public exports do not resolve to the installed owner"
-        )
+        raise TracerFailure("qualification public exports do not resolve to the installed owner")
     workspace = WorkspaceClient(smoke_root)
     workspace.init()
     if workspace.list_records(limit=1) != []:

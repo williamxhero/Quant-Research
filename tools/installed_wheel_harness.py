@@ -73,9 +73,7 @@ def _run_command(
     timeout_seconds: int,
 ) -> str:
     subreaper_baseline = _prepare_posix_containment()
-    creationflags = (
-        subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
-    )
+    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004 if os.name == "nt" else 0
     cwd = Path(os.path.abspath(cwd))
     try:
         process = subprocess.Popen(
@@ -90,14 +88,10 @@ def _run_command(
             start_new_session=os.name != "nt",
         )
     except OSError as exc:
-        raise InstalledWheelFailure(
-            f"command could not start: {' '.join(command)}: {exc}"
-        ) from exc
+        raise InstalledWheelFailure(f"command could not start: {' '.join(command)}: {exc}") from exc
     job_handle: int | None = None
     process_start_time = (
-        None
-        if os.name == "nt"
-        else _posix_process_map().get(process.pid, (None, None))[1]
+        None if os.name == "nt" else _posix_process_map().get(process.pid, (None, None))[1]
     )
     descendant_pids: dict[int, int] = {}
     tracker_stop: threading.Event | None = None
@@ -135,8 +129,7 @@ def _run_command(
                 process.stderr.close()
             stdout, stderr = "", "process pipes remained open after tree termination"
         raise InstalledWheelFailure(
-            f"command timed out after {timeout_seconds}s: {' '.join(command)}\n"
-            f"{stdout}{stderr}"
+            f"command timed out after {timeout_seconds}s: {' '.join(command)}\n{stdout}{stderr}"
         ) from exc
     except BaseException:
         _terminate_process_tree(
@@ -248,9 +241,7 @@ def _assign_windows_kill_job(process: subprocess.Popen[str]) -> int | None:
     if not configured or not assigned:
         kernel32.CloseHandle(job)
         process.kill()
-        raise InstalledWheelFailure(
-            "failed to own subprocess tree with a Windows Job Object"
-        )
+        raise InstalledWheelFailure("failed to own subprocess tree with a Windows Job Object")
     return int(job)
 
 
@@ -276,9 +267,7 @@ def _close_windows_handle(handle: int | None) -> None:
         import ctypes
         from ctypes import wintypes
 
-        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(
-            wintypes.HANDLE(handle)
-        )
+        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(handle))
 
 
 def _terminate_process_tree(
@@ -479,9 +468,7 @@ def build_wheels(
         )
         built = set(dist.glob("*.whl")) - before
         if len(built) != 1:
-            raise InstalledWheelFailure(
-                f"{repository} did not produce exactly one wheel"
-            )
+            raise InstalledWheelFailure(f"{repository} did not produce exactly one wheel")
         wheels.extend(built)
     return tuple(wheels)
 
@@ -525,9 +512,7 @@ def create_installed_environment(
         timeout_seconds=30,
     ).strip()
     if version != "3.12":
-        raise InstalledWheelFailure(
-            f"isolated interpreter is not Python 3.12: {version}"
-        )
+        raise InstalledWheelFailure(f"isolated interpreter is not Python 3.12: {version}")
     return python
 
 
@@ -674,9 +659,7 @@ def path_exposes_source(source: Path, candidate: Path) -> bool:
     source = source.resolve()
     candidate = candidate.resolve()
     return (
-        candidate == source
-        or candidate.is_relative_to(source)
-        or source.is_relative_to(candidate)
+        candidate == source or candidate.is_relative_to(source) or source.is_relative_to(candidate)
     )
 
 
@@ -720,8 +703,7 @@ def verify_source_topology(
         )
         if special_index_entries:
             raise InstalledWheelFailure(
-                "wheel build inputs use unsafe Git index flags: "
-                + ", ".join(special_index_entries)
+                "wheel build inputs use unsafe Git index flags: " + ", ".join(special_index_entries)
             )
         run_command(
             ["git", "diff", "--quiet"],
@@ -747,8 +729,7 @@ def verify_source_topology(
         missing = sorted(path for path in tracked if not (repository / path).is_file())
         if missing:
             raise InstalledWheelFailure(
-                "tracked wheel build inputs are absent from the work tree: "
-                + ", ".join(missing)
+                "tracked wheel build inputs are absent from the work tree: " + ", ".join(missing)
             )
         untracked = sorted(declared_inputs - tracked)
         if untracked:
@@ -770,8 +751,7 @@ def verify_source_topology(
         ).splitlines()
         if unexpected:
             raise InstalledWheelFailure(
-                "repository has untracked attestation inputs: "
-                + ", ".join(sorted(unexpected))
+                "repository has untracked attestation inputs: " + ", ".join(sorted(unexpected))
             )
         source_files = sorted(tracked)
         for relative in source_files:
@@ -799,9 +779,7 @@ def _validated_repository_path(
 ) -> Path:
     """Resolve only ordinary directories or verified sibling Git worktree links."""
     unresolved = Path(os.path.abspath(repository))
-    linked = (
-        unresolved.is_symlink() or getattr(unresolved, "is_junction", lambda: False)()
-    )
+    linked = unresolved.is_symlink() or getattr(unresolved, "is_junction", lambda: False)()
     resolved = unresolved.resolve(strict=True)
 
     def verify_git_root() -> None:
@@ -820,9 +798,7 @@ def _validated_repository_path(
             document = tomllib.loads(pyproject.read_text(encoding="utf-8"))
             project = document.get("project", {})
             project_name = project.get("name") if isinstance(project, dict) else None
-            if isinstance(project_name, str) and project_name.lower().replace(
-                "_", "-"
-            ) != (
+            if isinstance(project_name, str) and project_name.lower().replace("_", "-") != (
                 (unresolved.name if linked else resolved.name).lower().replace("_", "-")
             ):
                 raise InstalledWheelFailure(
@@ -846,22 +822,14 @@ def _validated_repository_path(
         )
     marker_text = marker.read_text(encoding="utf-8").strip()
     if not marker_text.startswith("gitdir:"):
-        raise InstalledWheelFailure(
-            f"repository worktree marker is invalid: {unresolved}"
-        )
+        raise InstalledWheelFailure(f"repository worktree marker is invalid: {unresolved}")
     git_dir = Path(marker_text.split(":", 1)[1].strip()).resolve(strict=True)
     backpointer = git_dir / "gitdir"
     common_pointer = git_dir / "commondir"
     if not backpointer.is_file() or not common_pointer.is_file():
-        raise InstalledWheelFailure(
-            f"repository worktree metadata is incomplete: {unresolved}"
-        )
-    linked_marker = Path(backpointer.read_text(encoding="utf-8").strip()).resolve(
-        strict=True
-    )
-    common_dir = (git_dir / common_pointer.read_text(encoding="utf-8").strip()).resolve(
-        strict=True
-    )
+        raise InstalledWheelFailure(f"repository worktree metadata is incomplete: {unresolved}")
+    linked_marker = Path(backpointer.read_text(encoding="utf-8").strip()).resolve(strict=True)
+    common_dir = (git_dir / common_pointer.read_text(encoding="utf-8").strip()).resolve(strict=True)
     if linked_marker != marker.resolve(strict=True) or not common_dir.is_dir():
         raise InstalledWheelFailure(
             f"repository worktree metadata does not point back to its link: {unresolved}"
@@ -877,13 +845,8 @@ def _source_build_inputs(repository: Path) -> list[str]:
     for relative_root in _declared_build_roots(repository):
         unresolved_root = repository / relative_root
         if not unresolved_root.exists():
-            raise InstalledWheelFailure(
-                f"declared wheel build input is missing: {relative_root}"
-            )
-        if (
-            unresolved_root.is_symlink()
-            or getattr(unresolved_root, "is_junction", lambda: False)()
-        ):
+            raise InstalledWheelFailure(f"declared wheel build input is missing: {relative_root}")
+        if unresolved_root.is_symlink() or getattr(unresolved_root, "is_junction", lambda: False)():
             raise InstalledWheelFailure(
                 f"production source root is a symbolic link or junction: {unresolved_root}"
             )
@@ -897,11 +860,7 @@ def _source_build_inputs(repository: Path) -> list[str]:
                 raise InstalledWheelFailure(
                     f"production source contains a symbolic link or junction: {path}"
                 )
-            if (
-                not path.is_file()
-                or "__pycache__" in path.parts
-                or path.suffix in {".pyc", ".pyo"}
-            ):
+            if not path.is_file() or "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
                 continue
             resolved = path.resolve()
             try:
@@ -1017,9 +976,7 @@ def _declared_build_roots(repository: Path) -> list[str]:
     return sorted(roots)
 
 
-def snapshot_repository(
-    repository: Path, destination: Path, source_files: Iterable[str]
-) -> None:
+def snapshot_repository(repository: Path, destination: Path, source_files: Iterable[str]) -> None:
     """Copy an attested repository closure into an isolated build snapshot."""
     repository = _validated_repository_path(
         repository,
@@ -1031,9 +988,7 @@ def snapshot_repository(
         source = repository / relative
         target = destination / relative
         if not source.is_file() or source.is_symlink():
-            raise InstalledWheelFailure(
-                f"attested snapshot input is unavailable: {source}"
-            )
+            raise InstalledWheelFailure(f"attested snapshot input is unavailable: {source}")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         target.chmod(stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)

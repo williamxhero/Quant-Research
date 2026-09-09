@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -94,9 +92,7 @@ def _run_node(
     replay: int,
 ) -> str:
     started = time.monotonic()
-    _progress(
-        f"replay={replay} node={node} start timeout_seconds={NODE_TIMEOUT_SECONDS}"
-    )
+    _progress(f"replay={replay} node={node} start timeout_seconds={NODE_TIMEOUT_SECONDS}")
     output = HARNESS.run_installed_pytest(
         python,
         (Path(f"{test_file}::{node}"),),
@@ -107,9 +103,7 @@ def _run_node(
         timeout_seconds=NODE_TIMEOUT_SECONDS,
         pytest_args=("-s",),
     )
-    _progress(
-        f"replay={replay} node={node} passed_seconds={time.monotonic() - started:.1f}"
-    )
+    _progress(f"replay={replay} node={node} passed_seconds={time.monotonic() - started:.1f}")
     return output
 
 
@@ -137,9 +131,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(
-                path, snapshot / name, topology[name]["source_files"]
-            )
+            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
         wheels = HARNESS.build_wheels(snapshot, PACKAGE_REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -148,15 +140,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         transcript_environment["SPEC018_IDENTITY_TRANSCRIPT"] = "1"
         source_roots = tuple(snapshot / name / "src" for name in PACKAGE_REPOSITORIES)
         apex_file = snapshot / "apex-research/tests/test_evolution_research.py"
-        reporting_file = (
-            snapshot / "strategy-reporting/tests/test_evolution_read_model.py"
-        )
-        root_file = (
-            snapshot / "quant-research/tools/test_validate_architecture_constitution.py"
-        )
+        reporting_file = snapshot / "strategy-reporting/tests/test_evolution_read_model.py"
+        root_file = snapshot / "quant-research/tools/test_validate_architecture_constitution.py"
         root_node = (
-            "ConstitutionValidationTests::"
-            "test_spec_018_evolution_research_admission_is_valid"
+            "ConstitutionValidationTests::test_spec_018_evolution_research_admission_is_valid"
         )
         transcripts: list[dict[str, dict[str, Any]]] = []
         for replay in (1, 2):
@@ -198,24 +185,18 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 )
             transcripts.append(
                 {
-                    label: _parse_transcript(
-                        outputs[f"{label}:{TRANSCRIPT_NODES[label]}"], label
-                    )
+                    label: _parse_transcript(outputs[f"{label}:{TRANSCRIPT_NODES[label]}"], label)
                     for label in ("apex", "reporting")
                 }
             )
         if transcripts[0] != transcripts[1]:
-            raise TracerFailure(
-                "SPEC-018 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-018 installed identity transcript drifted on replay")
         smoke_output = HARNESS.run_command(
             [
                 str(python),
                 "-I",
                 "-B",
-                str(
-                    snapshot / "quant-research/tools/spec018_installed_wheel_tracer.py"
-                ),
+                str(snapshot / "quant-research/tools/spec018_installed_wheel_tracer.py"),
                 "--repository-root",
                 str(snapshot),
                 "--smoke-root",
@@ -257,8 +238,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 ).encode("utf-8")
             ).hexdigest(),
             "wheel_sha256": {
-                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(wheels)
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
             },
             "unchanged_sources": unchanged,
             "source_topology": topology,

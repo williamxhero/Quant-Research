@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import Any
 
 HARNESS_PATH = Path(__file__).with_name("installed_wheel_harness.py")
-HARNESS_SPEC = importlib.util.spec_from_file_location(
-    "installed_wheel_harness", HARNESS_PATH
-)
+HARNESS_SPEC = importlib.util.spec_from_file_location("installed_wheel_harness", HARNESS_PATH)
 assert HARNESS_SPEC is not None and HARNESS_SPEC.loader is not None
 HARNESS = importlib.util.module_from_spec(HARNESS_SPEC)
 HARNESS_SPEC.loader.exec_module(HARNESS)
@@ -56,9 +54,7 @@ IMPACTED_NODES = (
         "test_success_publication_crash_recovers_retained_output_without_rerun",
     ),
 )
-TRANSCRIPT_NODE = (
-    "test_qrafti_replication_uses_distinct_grant_and_replays_without_execute"
-)
+TRANSCRIPT_NODE = "test_qrafti_replication_uses_distinct_grant_and_replays_without_execute"
 TRANSCRIPT_PREFIX = "SPEC020_APEX_TRANSCRIPT="
 
 
@@ -136,9 +132,7 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
         snapshot = isolated / "source-snapshot"
         snapshot.mkdir()
         for name, path in repositories.items():
-            HARNESS.snapshot_repository(
-                path, snapshot / name, topology[name]["source_files"]
-            )
+            HARNESS.snapshot_repository(path, snapshot / name, topology[name]["source_files"])
         wheels = HARNESS.build_wheels(snapshot, PACKAGE_REPOSITORIES, dist, environment)
         python = HARNESS.create_installed_environment(
             isolated, wheels, environment, install_pytest=True
@@ -175,17 +169,13 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
                 replay=1,
             )
         if transcripts[0] != transcripts[1]:
-            raise TracerFailure(
-                "SPEC-020 installed identity transcript drifted on replay"
-            )
+            raise TracerFailure("SPEC-020 installed identity transcript drifted on replay")
         smoke_output = HARNESS.run_command(
             [
                 str(python),
                 "-I",
                 "-B",
-                str(
-                    snapshot / "quant-research/tools/spec020_installed_wheel_tracer.py"
-                ),
+                str(snapshot / "quant-research/tools/spec020_installed_wheel_tracer.py"),
                 "--repository-root",
                 str(snapshot),
                 "--smoke-root",
@@ -203,13 +193,10 @@ def build_and_run(repository_root: Path) -> dict[str, Any]:
             "replays": 2,
             "identity_transcript": transcripts[0],
             "identity_transcript_sha256": hashlib.sha256(
-                json.dumps(
-                    transcripts[0], sort_keys=True, separators=(",", ":")
-                ).encode()
+                json.dumps(transcripts[0], sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
             "wheel_sha256": {
-                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(wheels)
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(wheels)
             },
             "unchanged_sources": unchanged,
             "source_topology": topology,
@@ -255,10 +242,7 @@ def smoke(smoke_root: Path) -> dict[str, Any]:
             / "docs/architecture-admissions/spec-020.worker-manifest.v1.json"
         ).read_text(encoding="utf-8")
     )
-    if (
-        manifest.get("production_ready") is not False
-        or manifest.get("status") != "blocked"
-    ):
+    if manifest.get("production_ready") is not False or manifest.get("status") != "blocked":
         raise TracerFailure("QRAFTI worker manifest must remain fail-closed")
     return {
         "ok": True,

@@ -16,9 +16,7 @@ SPEC.loader.exec_module(validator)
 
 class ConstitutionValidationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.policy = validator.read_json(
-            ROOT / "docs" / "architecture-constitution.v1.json"
-        )
+        self.policy = validator.read_json(ROOT / "docs" / "architecture-constitution.v1.json")
 
     def test_committed_policy_is_valid(self) -> None:
         validator.validate_policy(self.policy)
@@ -39,9 +37,7 @@ class ConstitutionValidationTests(unittest.TestCase):
 
         validator.validate_candidate(candidate, self.policy)
         self.assertEqual(candidate["canonical_owner"], "apex_research")
-        self.assertEqual(
-            candidate["public_seam"], "ResearchOrchestrator / WorkspaceClient"
-        )
+        self.assertEqual(candidate["public_seam"], "ResearchOrchestrator / WorkspaceClient")
         self.assertEqual(
             candidate["lifecycle_states"],
             [
@@ -54,9 +50,7 @@ class ConstitutionValidationTests(unittest.TestCase):
                 "cancelled",
             ],
         )
-        self.assertIn(
-            "reconciliation_required blocker", candidate["fail_closed_behavior"]
-        )
+        self.assertIn("reconciliation_required blocker", candidate["fail_closed_behavior"])
 
     def test_spec_003_package_intake_admission_is_valid(self) -> None:
         candidate = validator.read_json(
@@ -65,9 +59,7 @@ class ConstitutionValidationTests(unittest.TestCase):
 
         validator.validate_candidate(candidate, self.policy)
         self.assertEqual(candidate["canonical_owner"], "strategy_workspace")
-        self.assertEqual(
-            candidate["public_seam"], "WorkspaceClient package registration"
-        )
+        self.assertEqual(candidate["public_seam"], "WorkspaceClient package registration")
         self.assertIn("deterministic bundle", candidate["identity_impact"])
         self.assertIn("without execution", candidate["evidence_level"])
 
@@ -78,9 +70,7 @@ class ConstitutionValidationTests(unittest.TestCase):
 
         validator.validate_candidate(candidate, self.policy)
         self.assertEqual(candidate["canonical_owner"], "quant_runtime")
-        self.assertEqual(
-            candidate["public_seam"], "quant-runtime preflight / WorkspaceClient"
-        )
+        self.assertEqual(candidate["public_seam"], "quant-runtime preflight / WorkspaceClient")
 
     def test_spec_005_sandbox_admission_is_valid(self) -> None:
         candidate = validator.read_json(
@@ -128,9 +118,7 @@ class ConstitutionValidationTests(unittest.TestCase):
 
         validator.validate_candidate(candidate, self.policy)
         self.assertEqual(candidate["canonical_owner"], "apex_research")
-        self.assertEqual(
-            candidate["public_seam"], "ExternalResearchRunner / WorkspaceClient"
-        )
+        self.assertEqual(candidate["public_seam"], "ExternalResearchRunner / WorkspaceClient")
         self.assertIn("runner policy", candidate["identity_impact"])
         self.assertIn("zero launch", candidate["fail_closed_behavior"])
 
@@ -323,9 +311,7 @@ class ConstitutionValidationTests(unittest.TestCase):
         self.assertIn("two distinct archive families", candidate["identity_impact"])
         self.assertIn("historical formal evidence", candidate["evidence_level"])
         self.assertIn("SPEC-032", candidate["fail_closed_behavior"])
-        self.assertIn(
-            "empty current active Evidence view", candidate["fail_closed_behavior"]
-        )
+        self.assertIn("empty current active Evidence view", candidate["fail_closed_behavior"])
         self.assertEqual(candidate["claims"], [])
         self.assertEqual(candidate["lifecycle_states"], [])
 
@@ -426,9 +412,7 @@ class ConstitutionValidationTests(unittest.TestCase):
         validator.validate_candidate(candidate, self.policy)
         self.assertEqual(candidate["canonical_owner"], "apex_research")
         self.assertIn("RevalidationPolicyService", candidate["public_seam"])
-        self.assertIn(
-            "Strategy Reporting strict revalidation", candidate["public_seam"]
-        )
+        self.assertIn("Strategy Reporting strict revalidation", candidate["public_seam"])
         self.assertIn("maturity remains a separate", candidate["evidence_level"])
         self.assertIn("durably reserve budget", candidate["fail_closed_behavior"])
         self.assertEqual(candidate["claims"], [])
@@ -438,12 +422,8 @@ class ConstitutionValidationTests(unittest.TestCase):
         )
 
     def test_future_spec_requires_all_machine_readable_declarations(self) -> None:
-        with self.assertRaisesRegex(
-            validator.ConstitutionError, "missing required declarations"
-        ):
-            validator.validate_candidate(
-                {"canonical_owner": "quant_runtime"}, self.policy
-            )
+        with self.assertRaisesRegex(validator.ConstitutionError, "missing required declarations"):
+            validator.validate_candidate({"canonical_owner": "quant_runtime"}, self.policy)
 
     def test_future_spec_rejects_parallel_formal_truth_and_production_lifecycle(
         self,
@@ -460,17 +440,13 @@ class ConstitutionValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(validator.ConstitutionError, "forbidden claims"):
             validator.validate_candidate(candidate, self.policy)
         candidate["claims"] = []
-        with self.assertRaisesRegex(
-            validator.ConstitutionError, "forbidden lifecycle states"
-        ):
+        with self.assertRaisesRegex(validator.ConstitutionError, "forbidden lifecycle states"):
             validator.validate_candidate(candidate, self.policy)
 
     def test_cli_rejects_invalid_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             candidate = Path(temporary) / "candidate.json"
-            candidate.write_text(
-                json.dumps({"canonical_owner": "unknown"}), encoding="utf-8"
-            )
+            candidate.write_text(json.dumps({"canonical_owner": "unknown"}), encoding="utf-8")
             self.assertEqual(validator.main(["--candidate", str(candidate)]), 1)
 
 
