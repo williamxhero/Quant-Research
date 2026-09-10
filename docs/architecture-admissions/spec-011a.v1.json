@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-011A",
+  "canonical_owner": "strategy_workspace",
+  "public_seam": "WorkspaceClient lineage query",
+  "identity_impact": "Normalized immutable lineage roots, filters, depth, page size, snapshot high-water marks, and authenticated opaque cursor position determine a traversal; publication content identities remain unchanged.",
+  "evidence_level": "Workspace returns immutable publication envelopes and lineage only; it creates no Apex evidence truth and no formal execution metrics.",
+  "fail_closed_behavior": "Reject malformed or unknown roots, invalid direction/filter/depth/page bounds, cyclic traversal, and expired, tampered, or query-mismatched cursors without exposing storage internals.",
+  "claims": [],
+  "lifecycle_states": []
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-002",
+  "canonical_owner": "apex_research",
+  "public_seam": "ResearchOrchestrator / WorkspaceClient",
+  "identity_impact": "Immutable lifecycle commands, transitions, policy decisions, observations, blockers, and exact owner-result references receive canonical SHA-256 identities linked to the frozen Research Brief and Campaign; private claims and projections are non-canonical and rebuildable.",
+  "evidence_level": "Campaign lifecycle and orchestration explanations only; no single-run metrics, execution truth, budget ledger, runner truth, or research qualification is recreated.",
+  "fail_closed_behavior": "Reject tampered campaign roots, illegal transitions, stale predecessors, same-key semantic conflicts, multiple successors, unconfirmed owner records, and uncertain crash recovery as paused with a structured reconciliation_required blocker; never launch duplicate work or add an eighth lifecycle state.",
+  "claims": [],
+  "lifecycle_states": [
+    "created",
+    "running",
+    "paused",
+    "completed",
+    "exhausted",
+    "failed",
+    "cancelled"
+  ]
+}

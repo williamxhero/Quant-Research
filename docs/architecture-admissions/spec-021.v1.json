@@ -1,0 +1,55 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-021",
+  "canonical_owner": "apex_research",
+  "public_seam": "Architecture adoption record only; no IndependentValidatorPort is admitted and no production repository seam changes.",
+  "identity_impact": "None. FINSABER v2.0.1, commit 4d3be1e0168224d678151eb7aee72bee3c7930d1, and wheel SHA-256 ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140 identify this rejected-dependency study only and do not enter Strategy Package, run, formal evidence, or report identities.",
+  "evidence_level": "Throwaway installed-wheel transcripts and source-bound compatibility classifications are research evidence for the adoption decision only; they are not validation, qualification, formal truth, or production evidence.",
+  "fail_closed_behavior": "Decision is no_go: SPEC-022 remains blocked, FINSABER must not enter formal.nautilus, and no validator, backtester, runner, registry, ledger, adapter, or evidence-truth fallback may be created from this spike.",
+  "decision": "no_go",
+  "adoption_category": "rejected-dependency",
+  "spec_022_status": "blocked",
+  "independent_validator_port": null,
+  "formal_truth_namespace": "formal.nautilus",
+  "baseline": {
+    "release_tag": "v2.0.1",
+    "commit": "4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140",
+    "main_drift": "b0e97d26c2415583160a5af5da152f742c1a2a7a is observation-only"
+  },
+  "blocking_findings": [
+    {
+      "id": "data-contract-loss",
+      "evidence": "compatibility-matrix#dimensions.data",
+      "reason": "As-of, PIT availability, provider lineage, missing-bar causes, and intraday frequency cannot be preserved as an independently enforceable contract."
+    },
+    {
+      "id": "execution-contract-loss",
+      "evidence": "compatibility-matrix#dimensions.timing_order_fill",
+      "reason": "The engine imposes a 21-row minimum and a forced terminal close, while typed order state and time-in-force are absent."
+    },
+    {
+      "id": "market-rules-incompatible",
+      "evidence": "compatibility-matrix#dimensions.cost_slippage_liquidity_margin_rounding",
+      "reason": "Commission/tax, margin, shorting, lot, tick, rounding, and rejection semantics differ from Quant Runtime owner facts."
+    },
+    {
+      "id": "artifact-identity-incompatible",
+      "evidence": "compatibility-matrix#dimensions.artifact_metric",
+      "reason": "Artifacts are not identity-bound, manifests vary between equal semantic runs, and metric units are not a typed canonical contract."
+    },
+    {
+      "id": "operational-reproducibility-incompatible",
+      "evidence": "compatibility-matrix#dimensions.environment_license_security_operations",
+      "reason": "Dependencies lack a complete hash lock and custom output-root aggregation fails after partial writes."
+    }
+  ],
+  "compatible_subset_observation": "A daily long-only fixed-share equity candidate can reproduce one next-open entry and normalized semantic replay, but that bounded success is insufficient for independent validation adoption.",
+  "compatibility": [
+    "spec-003-data-snapshot-owner",
+    "spec-004-nautilus-formal-truth",
+    "spec-014-evidence-v2"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}

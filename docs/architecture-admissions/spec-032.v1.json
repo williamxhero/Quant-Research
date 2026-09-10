@@ -1,0 +1,26 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-032",
+  "canonical_owner": "apex_research",
+  "public_seam": "RevalidationPolicyService, RevalidationService, DecayEvaluator, RevalidationEvidencePublisher and QualityDiversityArchiveService / Quant Runtime versioned preflight observation / WorkspaceClient immutable record, artifact, run and lineage readback / Strategy Reporting strict revalidation read model",
+  "identity_impact": "Revalidation identity freezes the exact prior Evidence and qualification, Factor Model and Strategy candidate closure, policy, as-of instant, Runtime-owned data observation, package and dependency locks, model artifact identity, staged protocol, budget reservation and every terminal comparison while excluding wall-clock reads, local paths, mutable archive state and presentation metadata.",
+  "evidence_level": "Apex-owned trigger, campaign, decay, comparison, currency, supersession and revalidation decisions over Runtime-owned data and formal facts; maturity remains a separate immutable qualification history, discovery remains exploratory, and unsupported decay remains not_evaluated.",
+  "fail_closed_behavior": "Never infer current currency, sample counts, data corrections, decay or qualification renewal from timestamps, hashes or discovery alone; freeze scope and durably reserve budget before each side effect, preserve all historical records, exclude stale superseded invalidated and overdue Evidence from active views, and expose unavailable connected OCI and MarketHub checks independently without fallback.",
+  "compatibility": [
+    "spec-012-validation-protocol",
+    "spec-013-statistical-controls",
+    "spec-014-evidence-v2",
+    "spec-015-qualification-maturity",
+    "spec-016-behavior-descriptors",
+    "spec-017-quality-diversity-archives",
+    "spec-028-candidate-ir"
+  ],
+  "claims": [],
+  "lifecycle_states": [
+    "current",
+    "revalidation_due",
+    "stale",
+    "superseded",
+    "invalidated"
+  ]
+}

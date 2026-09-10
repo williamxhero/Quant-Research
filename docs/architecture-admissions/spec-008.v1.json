@@ -1,0 +1,36 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-008",
+  "canonical_owner": "apex_research",
+  "public_seam": "ResearchEnginePort / ExternalResearchRunner / WorkspaceClient",
+  "identity_impact": "Each bounded RD-Agent request freezes the exact upstream release and commit, license notice, dependency lock, OCI image, adapter and worker protocol, model, prompt, tool, resource, seed, environment, frozen data materialization, continuation context, budget reservation, and idempotency semantics while existing Candidate, package, Runtime, and evidence identities remain unchanged.",
+  "evidence_level": "Typed Candidate proposals, hypotheses, usage, bounded failures, artifacts, and Qlib discovery-only observations; never behavioral, formal, qualification, production, runner, ledger, or lifecycle truth.",
+  "fail_closed_behavior": "Tag, commit, license, dependency lock, image, protocol, schema, input, artifact, continuation, budget, capability, or output drift causes zero launch or structured item rejection; disabled operation requires no upstream installation; fin_quant and incomplete Strategy semantics are rejected without fallback, guessing, private cross-repository access, package registration, Runtime submission, or alternate data access.",
+  "native_capabilities": ["factor", "model"],
+  "conditional_capabilities": ["strategy"],
+  "forbidden_operations": ["fin_quant", "factor-model-co-evolution", "upstream-lifecycle"],
+  "pinned_upstream": {
+    "release_tag": "v0.8.0",
+    "commit": "274e274d5dbb72cc2ea139d1a7c93d73ce9b1198",
+    "license": "MIT",
+    "license_notice_sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "wheel_sha256": "5914499f7e896d5547d414a51db12332c78b2e4862595a98e895608450e65123",
+    "dependency_lock": "sha256:5ebc2ea8abbca92b7516b44332ae243f3f0e81d0602fcb1d0120581f2cbf9182",
+    "oci_image": "sha256:f6ddd8c86e431ca960fcf51b2bfb4b05b63c14b8fd5a15ef137d3ff23ae68b5d",
+    "adapter_version": "1",
+    "worker_protocol": "apex-research.rdagent-worker-protocol.v1",
+    "worker_schema_digest": "sha256:b8e17eb6230a5d99f98d076faf94ee5e3af2581551c9bc3c3f8740198086d41a"
+  },
+  "compatibility": [
+    "spec-003-package-intake",
+    "spec-004-markethub-preflight",
+    "spec-005-generated-package-sandbox",
+    "spec-006-governance",
+    "spec-007-research-engine-port",
+    "spec-009-candidate-gate",
+    "spec-028-candidate-ir",
+    "spec-029-external-runner"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}

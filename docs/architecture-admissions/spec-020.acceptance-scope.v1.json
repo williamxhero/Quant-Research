@@ -1,0 +1,57 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-020",
+  "baseline_heads": {
+    "apex-research": "ebf3b62df7b244ad755ce3b6d461a8b6024d1221",
+    "quant-research": "16c7a4e5da4a2b8fd31e5d56fdfd17e1ca485371",
+    "quant-runtime": "c97428c51e8f7265b006872c15999800e5ae1fc9",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/adapters/qrafti.py",
+    "apex-research/src/apex_research/empirical.py",
+    "apex-research/tests/test_qrafti_adapter.py",
+    "docs/architecture-admissions/spec-020.v1.json"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-020.acceptance-scope.v1.json",
+    "docs/architecture-admissions/spec-020.worker-manifest.v1.json",
+    "tools/spec020_installed_wheel_tracer.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-020"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_qrafti_adapter.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already passed current-spec installed heavy: the SPEC-020 tracer runs every QRAFTI public contract node and the two directly affected generic recovery nodes with bounded timeouts from built wheels, then replays the meaning-bearing QRAFTI transcript twice.",
+  "historical_heavy_test_exclusions": [
+    "apex-research/tests/test_behavior_descriptors.py",
+    "apex-research/tests/test_empirical_research.py",
+    "apex-research/tests/test_evidence_v2.py",
+    "apex-research/tests/test_evolution_research.py",
+    "apex-research/tests/test_focused_loop_e2e.py",
+    "apex-research/tests/test_focused_stop_resume.py",
+    "apex-research/tests/test_qualification_cli.py",
+    "apex-research/tests/test_qualification_evaluation.py",
+    "apex-research/tests/test_qualification_fixture_replay.py",
+    "apex-research/tests/test_qualification_history.py",
+    "apex-research/tests/test_qualification_policy.py",
+    "apex-research/tests/test_qualification_robustness.py",
+    "apex-research/tests/test_qualification_validation.py",
+    "apex-research/tests/test_quality_diversity_archives.py"
+  ],
+  "historical_heavy_exclusion_reason": "SPEC-020 is an adapter extension of the SPEC-019 EmpiricalResearchPort. The current installed tracer covers the changed generic recovery seams; unrelated historical heavy tracers remain deferred to the final overall release suite."
+}

@@ -1,0 +1,73 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-030",
+  "baseline_heads": {
+    "apex-research": "a4a604ff1699e0ebf0731bfff31324157165d8b4",
+    "quant-research": "a2bcffb7f34ec0a05270c20a883a87f0d65a6fcb",
+    "quant-runtime": "5d79104a760642ea26a95f987c4084096c91ea72",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/pyproject.toml",
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/adapters/tools.py",
+    "apex-research/src/apex_research/factor_model_coevolution.py",
+    "apex-research/src/apex_research/factor_model_discovery.py",
+    "apex-research/tests/test_factor_model_coevolution.py",
+    "apex-research/tests/test_factor_model_descendants.py",
+    "apex-research/tests/test_factor_model_discovery.py",
+    "apex-research/uv.lock",
+    "docs/architecture-admissions/spec-030.v1.json",
+    "quant-runtime/pyproject.toml",
+    "quant-runtime/src/quant_runtime/__init__.py",
+    "quant-runtime/src/quant_runtime/candidate_discovery.py",
+    "quant-runtime/src/quant_runtime/cli.py",
+    "quant-runtime/tests/test_candidate_discovery_cli.py",
+    "quant-runtime/tests/test_cli_and_distribution.py",
+    "quant-runtime/uv.lock"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-030.acceptance-scope.v1.json",
+    "tools/spec030_installed_wheel_tracer.py",
+    "tools/test_spec030_installed_wheel_tracer.py",
+    "tools/test_validate_architecture_constitution.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-030"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_factor_model_coevolution.py",
+    "apex-research/tests/test_factor_model_descendants.py",
+    "apex-research/tests/test_factor_model_discovery.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already passed current-spec installed heavy: the SPEC-030 tracer runs every co-evolution policy, typed descendant, governed Runtime discovery, trained Model materialization, selection, recovery, and bounded formal-promotion node twice from built wheels with per-node timeouts.",
+  "historical_heavy_test_exclusions": [
+    "apex-research/tests/test_behavior_descriptors.py",
+    "apex-research/tests/test_empirical_research.py",
+    "apex-research/tests/test_evidence_v2.py",
+    "apex-research/tests/test_evolution_research.py",
+    "apex-research/tests/test_focused_loop_e2e.py",
+    "apex-research/tests/test_focused_stop_resume.py",
+    "apex-research/tests/test_qualification_cli.py",
+    "apex-research/tests/test_qualification_evaluation.py",
+    "apex-research/tests/test_qualification_fixture_replay.py",
+    "apex-research/tests/test_qualification_history.py",
+    "apex-research/tests/test_qualification_policy.py",
+    "apex-research/tests/test_qualification_robustness.py",
+    "apex-research/tests/test_qualification_validation.py",
+    "apex-research/tests/test_quality_diversity_archives.py"
+  ],
+  "historical_heavy_exclusion_reason": "SPEC-030 changes only the co-evolution and candidate-discovery seams. The current installed tracer covers those changed seams; unrelated historical heavy suites remain deferred to the final overall release run."
+}

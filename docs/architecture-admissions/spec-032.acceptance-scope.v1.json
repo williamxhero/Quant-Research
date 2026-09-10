@@ -1,0 +1,64 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-032",
+  "baseline_heads": {
+    "apex-research": "c6c036e1e88a9076d0fc6e5a14e0e72bf4337a06",
+    "quant-research": "23217b4df202fbeac2d9670238ec6705fc4e1332",
+    "quant-runtime": "62ae7b00f6b31515b81760fe1d34c7f13dc36857",
+    "strategy-reporting": "689417371d4128066d0c46586125df09f59516b5",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/adapters/tools.py",
+    "apex-research/src/apex_research/cli.py",
+    "apex-research/src/apex_research/qualification.py",
+    "apex-research/src/apex_research/quality_diversity_archives.py",
+    "apex-research/src/apex_research/revalidation.py",
+    "apex-research/tests/test_revalidation.py",
+    "apex-research/tests/test_revalidation_cli.py",
+    "docs/architecture-admissions/spec-032.v1.json",
+    "quant-runtime/src/quant_runtime/adapters/data/markethub/adapter.py",
+    "quant-runtime/src/quant_runtime/cli.py",
+    "quant-runtime/src/quant_runtime/preflight.py",
+    "quant-runtime/tests/test_cli_and_distribution.py",
+    "quant-runtime/tests/test_preflight.py",
+    "strategy-reporting/src/strategy_reporting/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/revalidation.py",
+    "strategy-reporting/src/strategy_reporting/cli.py",
+    "strategy-reporting/src/strategy_reporting/contracts/__init__.py",
+    "strategy-reporting/src/strategy_reporting/contracts/revalidation.py",
+    "strategy-reporting/src/strategy_reporting/renderers/revalidation.py",
+    "strategy-reporting/tests/test_revalidation_read_model.py"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-032.acceptance-scope.v1.json",
+    "tools/spec032_installed_wheel_tracer.py",
+    "tools/test_validate_architecture_constitution.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-032"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020",
+    "SPEC-023",
+    "SPEC-024",
+    "SPEC-025",
+    "SPEC-030",
+    "SPEC-031"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_revalidation.py",
+    "apex-research/tests/test_revalidation_cli.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-032 tracer runs policy and currency separation, Runtime observation consumption, bounded stages and budget, decay honesty, closure and supersession, active versus historical archive semantics, deterministic CLI, and strict Reporting twice from built non-editable wheels with source roots excluded."
+}

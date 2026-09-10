@@ -1,0 +1,87 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-031",
+  "baseline_heads": {
+    "apex-research": "8baaacd4e0a90aa81342c39cf9d6f10adf3d165c",
+    "quant-research": "f8b769ec7805777638f7b938c7733e674e78940d",
+    "quant-runtime": "62ae7b00f6b31515b81760fe1d34c7f13dc36857",
+    "strategy-reporting": "c601c5c03ed012fbba616713155fa80e527ba0d6",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/replication.py",
+    "apex-research/src/apex_research/replication_comparison.py",
+    "apex-research/src/apex_research/replication_orchestration.py",
+    "apex-research/tests/test_replication_candidate_lane.py",
+    "apex-research/tests/test_replication_comparison.py",
+    "apex-research/tests/test_replication_fail_closed.py",
+    "apex-research/tests/test_replication_formal_execution.py",
+    "apex-research/tests/test_replication_policy.py",
+    "docs/architecture-admissions/spec-031.v1.json",
+    "strategy-reporting/src/strategy_reporting/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/__init__.py",
+    "strategy-reporting/src/strategy_reporting/adapters/replication.py",
+    "strategy-reporting/src/strategy_reporting/application.py",
+    "strategy-reporting/src/strategy_reporting/cli.py",
+    "strategy-reporting/src/strategy_reporting/contracts/__init__.py",
+    "strategy-reporting/src/strategy_reporting/contracts/replication.py",
+    "strategy-reporting/src/strategy_reporting/models.py",
+    "strategy-reporting/src/strategy_reporting/publishing/workspace.py",
+    "strategy-reporting/src/strategy_reporting/renderers/registry.py",
+    "strategy-reporting/src/strategy_reporting/renderers/replication.py",
+    "strategy-reporting/tests/test_replication_reporting.py"
+  ],
+  "selection_maintenance_paths": [
+    ".gitignore",
+    "docs/architecture-admissions/spec-031.acceptance-scope.v1.json",
+    "tools/spec031_installed_wheel_tracer.py",
+    "tools/test_validate_architecture_constitution.py",
+    "tools/test_verify_public_seam_architecture.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-031"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020",
+    "SPEC-023",
+    "SPEC-024",
+    "SPEC-025",
+    "SPEC-030"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_evidence_v2.py",
+    "apex-research/tests/test_replication_candidate_lane.py",
+    "apex-research/tests/test_replication_comparison.py",
+    "apex-research/tests/test_replication_fail_closed.py",
+    "apex-research/tests/test_replication_formal_execution.py",
+    "apex-research/tests/test_replication_policy.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-031 tracer runs the canonical case, closed ambiguity classes, original-versus-available data mapping, typed Candidate admission, zero-side-effect not_reproducible decision, exact Evidence v2 Runtime lineage/data/cost/artifact composition, formal attachment, closed comparison outcomes and strict Reporting nodes twice from built wheels with bounded per-node timeouts.",
+  "historical_heavy_test_exclusions": [
+    "apex-research/tests/test_behavior_descriptors.py",
+    "apex-research/tests/test_empirical_research.py",
+    "apex-research/tests/test_evolution_research.py",
+    "apex-research/tests/test_factor_model_coevolution.py",
+    "apex-research/tests/test_factor_model_descendants.py",
+    "apex-research/tests/test_factor_model_discovery.py",
+    "apex-research/tests/test_focused_loop_e2e.py",
+    "apex-research/tests/test_focused_stop_resume.py",
+    "apex-research/tests/test_qualification_cli.py",
+    "apex-research/tests/test_qualification_evaluation.py",
+    "apex-research/tests/test_qualification_fixture_replay.py",
+    "apex-research/tests/test_qualification_history.py",
+    "apex-research/tests/test_qualification_policy.py",
+    "apex-research/tests/test_qualification_robustness.py",
+    "apex-research/tests/test_qualification_validation.py",
+    "apex-research/tests/test_quality_diversity_archives.py"
+  ],
+  "historical_heavy_exclusion_reason": "SPEC-031 changes only Apex replication policy/orchestration/comparison and Strategy Reporting replication read-model seams. Unrelated historical heavy suites remain deferred to the final overall release run."
+}

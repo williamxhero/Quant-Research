@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-003",
+  "canonical_owner": "strategy_workspace",
+  "public_seam": "WorkspaceClient package registration",
+  "identity_impact": "A versioned generated-package manifest and every declared source, configuration, helper, model, support, provenance, capability, data-requirement, parameter, dependency, and entrypoint value participate in the complete deterministic bundle SHA-256 while legacy v1 package identities remain unchanged.",
+  "evidence_level": "Structurally valid immutable Strategy Package registration without execution; Candidate assessment remains structural only and no behavioral, formal, or qualification evidence is created.",
+  "fail_closed_behavior": "Reject non-Strategy candidates, non-valid assessments, dangling or mistyped closed references, tampered publications or artifacts, ambiguous mappings, unsafe or colliding paths, undeclared content, package revision conflicts, absent durable grants, idempotency conflicts, and unreconciled recovery before registration or publication.",
+  "claims": [],
+  "lifecycle_states": []
+}

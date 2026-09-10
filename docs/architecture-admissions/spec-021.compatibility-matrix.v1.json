@@ -1,0 +1,202 @@
+{
+  "schema": "quant-research.finsaber-compatibility-matrix.v1",
+  "baseline": {
+    "repository": "https://github.com/waylonli/FINSABER",
+    "release_tag": "v2.0.1",
+    "commit": "4d3be1e0168224d678151eb7aee72bee3c7930d1",
+    "wheel_sha256": "ed2d1dcad2785daa1a89ab4bfc089f71d685e7fa7148466d3fdbba6f6fe96140"
+  },
+  "classification_vocabulary": [
+    "exact",
+    "transformable",
+    "auxiliary_only",
+    "incompatible"
+  ],
+  "dimensions": {
+    "data": {
+      "raw_share_volume": {
+        "classification": "exact",
+        "evidence": ["transcript#data_probe.classifications.raw_volume"]
+      },
+      "instrument_and_calendar_identity": {
+        "classification": "transformable",
+        "evidence": [
+          "transcript#data_probe.classifications.instrument_identifier",
+          "transcript#data_probe.classifications.calendar_sessions"
+        ]
+      },
+      "daily_frequency_and_adjustment": {
+        "classification": "transformable",
+        "evidence": [
+          "fixture#spec-021/equity-daily-v1",
+          "transcript#data_probe.daily.adjusted_rows"
+        ]
+      },
+      "as_of_pit_and_provider_provenance": {
+        "classification": "auxiliary_only",
+        "evidence": [
+          "transcript#data_probe.quantresearch_frozen_facts",
+          "source#backtest/data_util/trading_data.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
+        ]
+      },
+      "missing_bar_and_intraday_semantics": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#data_probe.unsupported_intraday",
+          "transcript#data_probe.classifications.missing_bar_semantics"
+        ]
+      }
+    },
+    "strategy": {
+      "first_bar_signal": {
+        "classification": "exact",
+        "evidence": ["transcript#strategy_probe.classifications.signal_behavior"]
+      },
+      "strategy_interface": {
+        "classification": "transformable",
+        "evidence": [
+          "transcript#strategy_probe.candidate",
+          "source#backtest/strategy/timing_llm/base_strategy_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
+        ]
+      },
+      "date_level_decision_time": {
+        "classification": "transformable",
+        "evidence": ["transcript#strategy_probe.classifications.decision_time"]
+      },
+      "warm_up_and_terminal_policy": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#strategy_probe.classifications.warm_up",
+          "transcript#strategy_probe.classifications.forced_terminal_exit"
+        ]
+      }
+    },
+    "timing_order_fill": {
+      "next_open_fill_for_simple_market_buy": {
+        "classification": "exact",
+        "evidence": [
+          "fixture#spec-021/equity-daily-v1",
+          "transcript#strategy_probe.trades[0]"
+        ]
+      },
+      "fixed_share_sizing": {
+        "classification": "exact",
+        "evidence": ["transcript#strategy_probe.classifications.fixed_share_sizing"]
+      },
+      "market_order_intent": {
+        "classification": "transformable",
+        "evidence": ["transcript#strategy_probe.classifications.market_order_action"]
+      },
+      "typed_order_state_and_time_in_force": {
+        "classification": "incompatible",
+        "evidence": [
+          "source#backtest/toolkit/backtest_framework_iso.py@4d3be1e0168224d678151eb7aee72bee3c7930d1",
+          "transcript#execution_probe.classifications.rejections"
+        ]
+      },
+      "forced_terminal_fill": {
+        "classification": "incompatible",
+        "evidence": ["transcript#strategy_probe.trades[1]"]
+      }
+    },
+    "cost_slippage_liquidity_margin_rounding": {
+      "simple_adverse_slippage": {
+        "classification": "transformable",
+        "evidence": ["transcript#execution_probe.cost_liquidity.worked_formula"]
+      },
+      "volume_participation_cap": {
+        "classification": "auxiliary_only",
+        "evidence": ["transcript#execution_probe.cost_liquidity.entry"]
+      },
+      "commission_and_tax": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#execution_probe.classifications.commission",
+          "source#quant-runtime/china_market_rules.py@c97428c51e8f7265b006872c15999800e5ae1fc9"
+        ]
+      },
+      "margin_and_shorting": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#execution_probe.incompatible_margin_rounding_edge.margin",
+          "transcript#execution_probe.classifications.shorting"
+        ]
+      },
+      "lot_tick_and_rounding": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#execution_probe.incompatible_margin_rounding_edge.board_lot",
+          "transcript#execution_probe.incompatible_margin_rounding_edge.tick_size",
+          "source#quant-runtime/china_market_rules.py@c97428c51e8f7265b006872c15999800e5ae1fc9"
+        ]
+      },
+      "rejection_taxonomy": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#execution_probe.insufficient_history",
+          "transcript#execution_probe.classifications.rejections"
+        ]
+      }
+    },
+    "artifact_metric": {
+      "normalized_semantic_replay": {
+        "classification": "exact",
+        "evidence": ["transcript#artifact_metric_probe.semantic_sha256"]
+      },
+      "artifact_parse_shape": {
+        "classification": "transformable",
+        "evidence": ["transcript#artifact_metric_probe.artifact_files"]
+      },
+      "headline_metric_bundle": {
+        "classification": "auxiliary_only",
+        "evidence": [
+          "transcript#artifact_metric_probe.metric_units",
+          "source#backtest/toolkit/evaluation.py@4d3be1e0168224d678151eb7aee72bee3c7930d1"
+        ]
+      },
+      "artifact_identity_and_determinism": {
+        "classification": "incompatible",
+        "evidence": [
+          "transcript#artifact_metric_probe.artifact_manifest_sha256",
+          "transcript#artifact_metric_probe.generated_at_utc"
+        ]
+      }
+    },
+    "environment_license_security_operations": {
+      "python_312_import": {
+        "classification": "exact",
+        "evidence": ["upstream-manifest#isolated_observation.public_import_observation"]
+      },
+      "wheel_install_and_uninstall": {
+        "classification": "exact",
+        "evidence": [
+          "upstream-manifest#isolated_observation.removed_import_names",
+          "transcript#artifact_metric_probe.uninstall_residuals"
+        ]
+      },
+      "apache_2_license": {
+        "classification": "transformable",
+        "evidence": ["upstream-manifest#license"]
+      },
+      "import_side_effects": {
+        "classification": "exact",
+        "evidence": ["upstream-manifest#isolated_observation.public_import_observation"]
+      },
+      "dependency_resolution": {
+        "classification": "incompatible",
+        "evidence": ["upstream-manifest#dependency_reproducibility"]
+      },
+      "configured_output_root": {
+        "classification": "incompatible",
+        "evidence": ["transcript#artifact_metric_probe.custom_log_base"]
+      },
+      "formal_truth_boundary": {
+        "classification": "auxiliary_only",
+        "evidence": [
+          "constitution#evidence.formal_truth_namespace",
+          "transcript#purpose"
+        ]
+      }
+    }
+  }
+}

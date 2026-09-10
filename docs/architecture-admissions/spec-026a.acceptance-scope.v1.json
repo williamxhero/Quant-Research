@@ -1,0 +1,267 @@
+{
+  "schema": "quant-research.acceptance-scope.v1",
+  "spec": "SPEC-026A",
+  "baseline_heads": {
+    "apex-research": "30d88ebbc4ff8fb2ebafea5aa343b1fb4d25419d",
+    "quant-research": "aa7a501db61ada154d1fda35a14f894ce5436662",
+    "quant-runtime": "72a1dfec6ebdbe132e7359afc61ed9ca07dd15e4",
+    "strategy-reporting": "087ae2be9a0e0b7c04eef5e4dee4c735e5a6a082",
+    "strategy-workspace": "1e9c58251efcf48dd8e4d8bc66007dbe105affba"
+  },
+  "product_changed_paths": [
+    "apex-research/src/apex_research/__init__.py",
+    "apex-research/src/apex_research/campaign_report_source.py",
+    "apex-research/tests/test_campaign_report_source.py",
+    "docs/architecture-admissions/spec-026a.v1.json"
+  ],
+  "selection_maintenance_paths": [
+    "docs/architecture-admissions/spec-026a.acceptance-scope.v1.json",
+    "tools/spec026a_installed_wheel_tracer.py",
+    "tools/test_spec026a_acceptance.py",
+    "tools/verify_public_seam_architecture.py"
+  ],
+  "required_installed_tracers": [
+    "SPEC-026A"
+  ],
+  "deferred_release_tracers": [
+    "SPEC-014",
+    "SPEC-015",
+    "SPEC-016",
+    "SPEC-017",
+    "SPEC-018",
+    "SPEC-019",
+    "SPEC-020",
+    "SPEC-023",
+    "SPEC-024",
+    "SPEC-025",
+    "SPEC-030",
+    "SPEC-031",
+    "SPEC-032"
+  ],
+  "current_spec_heavy_test_exclusions": [
+    "apex-research/tests/test_campaign_report_source.py"
+  ],
+  "current_spec_heavy_exclusion_reason": "already selected by current-spec installed acceptance: the SPEC-026A tracer runs the public campaign source contract, deterministic graph assembly, current Evidence and qualification selection, budget and archive interpretation, immutable publication and backfill twice from built non-editable wheels with source roots excluded.",
+  "test_protocol": {
+    "levels": {
+      "L0": {
+        "budget_seconds": 60,
+        "commands": [
+          {
+            "argv": [
+              "python",
+              "-m",
+              "ruff",
+              "format",
+              "--check",
+              "tools/spec026a_installed_wheel_tracer.py",
+              "tools/test_spec026a_acceptance.py",
+              "tools/verify_public_seam_architecture.py"
+            ],
+            "repository": "quant-research"
+          },
+          {
+            "argv": [
+              "python",
+              "-m",
+              "ruff",
+              "check",
+              "tools/spec026a_installed_wheel_tracer.py",
+              "tools/test_spec026a_acceptance.py",
+              "tools/verify_public_seam_architecture.py"
+            ],
+            "repository": "quant-research"
+          },
+          {
+            "argv": [
+              "python",
+              "-m",
+              "unittest",
+              "tools.test_spec026a_acceptance",
+              "-v"
+            ],
+            "repository": "quant-research"
+          },
+          {
+            "argv": [
+              "python",
+              "-m",
+              "ruff",
+              "format",
+              "--check",
+              "src/apex_research/__init__.py",
+              "src/apex_research/campaign_report_source.py",
+              "tests/test_campaign_report_source.py"
+            ],
+            "repository": "apex-research"
+          },
+          {
+            "argv": [
+              "python",
+              "-m",
+              "ruff",
+              "check",
+              "src/apex_research/__init__.py",
+              "src/apex_research/campaign_report_source.py",
+              "tests/test_campaign_report_source.py"
+            ],
+            "repository": "apex-research"
+          },
+          {
+            "argv": [
+              "python",
+              "-m",
+              "mypy",
+              "--strict",
+              "src/apex_research/campaign_report_source.py"
+            ],
+            "repository": "apex-research"
+          }
+        ],
+        "direct_tests": [
+          "tools/test_spec026a_acceptance.py",
+          "tools/test_verify_public_seam_architecture.py"
+        ],
+        "marker": "spec026a:l0:changed-static",
+        "purpose": "format, lint, type, admission, and static acceptance checks",
+        "sources": [
+          "apex-research/src/apex_research/__init__.py",
+          "apex-research/src/apex_research/campaign_report_source.py",
+          "docs/architecture-admissions/spec-026a.acceptance-scope.v1.json",
+          "docs/architecture-admissions/spec-026a.v1.json",
+          "tools/spec026a_installed_wheel_tracer.py",
+          "tools/test_spec026a_acceptance.py",
+          "tools/verify_public_seam_architecture.py"
+        ]
+      },
+      "L1": {
+        "budget_seconds": 180,
+        "commands": [
+          {
+            "argv": [
+              "python",
+              "-m",
+              "pytest",
+              "-vv",
+              "--durations=0",
+              "--junitxml=<artifact>/spec026a-l1.xml",
+              "tests/test_campaign_report_source.py"
+            ],
+            "repository": "apex-research"
+          }
+        ],
+        "direct_tests": [
+          "apex-research/tests/test_campaign_report_source.py"
+        ],
+        "marker": "spec026a:l1:campaign-report-source",
+        "purpose": "current Apex campaign report source module",
+        "sources": [
+          "apex-research/src/apex_research/__init__.py",
+          "apex-research/src/apex_research/campaign_report_source.py"
+        ]
+      },
+      "L2": {
+        "budget_seconds": 600,
+        "commands": [
+          {
+            "argv": [
+              "python",
+              "-m",
+              "pytest",
+              "-vv",
+              "--durations=0",
+              "--junitxml=<artifact>/spec026a-l2.xml",
+              "<direct_tests>"
+            ],
+            "repository": "apex-research"
+          }
+        ],
+        "direct_tests": [
+          "apex-research/tests/test_campaign_records.py",
+          "apex-research/tests/test_campaign_report_source.py",
+          "apex-research/tests/test_factor_candidates.py",
+          "apex-research/tests/test_governance_ledger.py",
+          "apex-research/tests/test_governance_settlement.py",
+          "apex-research/tests/test_model_candidates.py",
+          "apex-research/tests/test_quality_diversity_archives.py",
+          "apex-research/tests/test_report_source.py",
+          "apex-research/tests/test_revalidation.py",
+          "apex-research/tests/test_strategy_candidates.py"
+        ],
+        "marker": "spec026a:l2:apex-owner-impact",
+        "purpose": "Apex owner impact and direct public dependency contracts",
+        "sources": [
+          "apex-research/src/apex_research/__init__.py",
+          "apex-research/src/apex_research/campaign_report_source.py"
+        ]
+      },
+      "L3": {
+        "budget_seconds": 600,
+        "commands": [
+          {
+            "argv": [
+              "python",
+              "tools/spec026a_installed_wheel_tracer.py",
+              "--repository-root",
+              "<validation-root>"
+            ],
+            "repository": "quant-research"
+          }
+        ],
+        "direct_tests": [
+          "apex-research/tests/test_campaign_report_source.py",
+          "tools/spec026a_installed_wheel_tracer.py"
+        ],
+        "marker": "spec026a:l3:installed-wheel-no-source",
+        "purpose": "one wheel build and install followed by two whole-selection deterministic replays in one isolated environment",
+        "sources": [
+          "apex-research/src/apex_research/campaign_report_source.py",
+          "tools/spec026a_installed_wheel_tracer.py"
+        ]
+      }
+    },
+    "performance_observability": {
+      "deferred_requirement": "TEST-001",
+      "junit": "enabled",
+      "live_current_test": "deferred",
+      "slow_file_threshold_seconds": 60,
+      "slow_test_threshold_seconds": 2
+    },
+    "source_to_direct_tests": {
+      "apex-research/src/apex_research/__init__.py": [
+        "apex-research/tests/test_campaign_report_source.py"
+      ],
+      "apex-research/src/apex_research/campaign_report_source.py": [
+        "apex-research/tests/test_campaign_records.py",
+        "apex-research/tests/test_campaign_report_source.py",
+        "apex-research/tests/test_factor_candidates.py",
+        "apex-research/tests/test_governance_ledger.py",
+        "apex-research/tests/test_governance_settlement.py",
+        "apex-research/tests/test_model_candidates.py",
+        "apex-research/tests/test_quality_diversity_archives.py",
+        "apex-research/tests/test_report_source.py",
+        "apex-research/tests/test_revalidation.py",
+        "apex-research/tests/test_strategy_candidates.py"
+      ],
+      "apex-research/tests/test_campaign_report_source.py": [
+        "apex-research/tests/test_campaign_report_source.py"
+      ],
+      "docs/architecture-admissions/spec-026a.acceptance-scope.v1.json": [
+        "tools/test_spec026a_acceptance.py"
+      ],
+      "docs/architecture-admissions/spec-026a.v1.json": [
+        "tools/test_spec026a_acceptance.py"
+      ],
+      "tools/spec026a_installed_wheel_tracer.py": [
+        "tools/test_spec026a_acceptance.py"
+      ],
+      "tools/test_spec026a_acceptance.py": [
+        "tools/test_spec026a_acceptance.py"
+      ],
+      "tools/verify_public_seam_architecture.py": [
+        "tools/test_spec026a_acceptance.py",
+        "tools/test_verify_public_seam_architecture.py"
+      ]
+    }
+  }
+}

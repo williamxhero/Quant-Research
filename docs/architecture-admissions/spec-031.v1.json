@@ -1,0 +1,19 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-031",
+  "canonical_owner": "apex_research",
+  "public_seam": "ReplicationCasePublisher and Replication Research Orchestrator policy / SPEC-028 typed Candidate records and canonical package-gate-preflight-Runtime-Evidence path / EmpiricalResearchPort / WorkspaceClient immutable publication, artifact, run and lineage readback / Strategy Reporting strict replication read model",
+  "identity_impact": "Replication identity freezes the exact source content and extraction provenance, extracted typed specification, separated research assumptions, closed ambiguity ledger, original-versus-available SPEC-004 data mapping, immutable Strategy Package binding, replication protocol and comparison policy while excluding observation timestamps, local paths, storage metadata and presentation metadata.",
+  "evidence_level": "Apex-owned replication research design, comparison evidence and closed exact, directional, failed or not_reproducible decision over source or legacy evidence and Runtime-owned formal facts; source and legacy values never become Runtime or Evidence v2 formal results, and empirical observations remain auxiliary research evidence.",
+  "fail_closed_behavior": "Publish research_design and not_reproducible with zero package, gate, preflight, Runtime, formal, Evidence v2 or empirical side effects when decisive semantics are blocking, unsupported, unavailable, ambiguous or not uniquely executable; otherwise require typed SPEC-028 semantics and every canonical package, static, behavioral, MarketHub preflight, Nautilus, Evidence v2 and Reporting seam without fallback, private owner access, alternate formal truth or metric namespace confusion.",
+  "compatibility": [
+    "spec-003-package-intake",
+    "spec-004-frozen-data-preflight",
+    "spec-009-candidate-gates",
+    "spec-014-evidence-v2",
+    "spec-019-empirical-research-port",
+    "spec-028-candidate-ir"
+  ],
+  "claims": [],
+  "lifecycle_states": []
+}

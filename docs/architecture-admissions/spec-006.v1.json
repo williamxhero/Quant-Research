@@ -1,0 +1,11 @@
+{
+  "schema": "quant-research.future-spec-admission.v1",
+  "spec": "SPEC-006",
+  "canonical_owner": "apex_research",
+  "public_seam": "WorkspaceClient publication/query",
+  "identity_impact": "Immutable policy, action, reservation, control, and settlement semantics receive canonical SHA-256 identities; every grant requires a confirmed canonical reservation before its external-side-effect linearization point.",
+  "evidence_level": "Campaign authorization, budget, consumption, and control audit records only; never single-run formal metrics, Runtime policy, or research qualification.",
+  "fail_closed_behavior": "Reject absent or wildcard authority, unknown or invalid integer budget units, unconfirmed reservations or settlements, idempotency conflicts, concurrent oversell, unreconciled outbox state, expired leases without explicit recovery, and any attempt to launch before canonical reservation confirmation.",
+  "claims": [],
+  "lifecycle_states": []
+}
