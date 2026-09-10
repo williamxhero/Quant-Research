@@ -18,25 +18,27 @@
 
 ## Git 提交约束
 
-本目录下的 `MarketHub`、`QuoteMux`、`QuoteMux_Packages` 三个 Git 仓库都遵守以下规则：
+以下规则适用于 QuantResearch 根仓库及工作区内所有项目自有 Git 仓库；更具体的仓库规则可以继续收紧：
 
-- 默认不得暂存或提交仓库根目录下这些路径中的任何文件：`vendor/`、`ops/`、`docs/`、`AGENTS.md`、`tests/`、`services/`、`runtime/`、`scripts/`、`.runtime/`。
-- 提交时不得使用可能把这些目录一起暂存的 `git add .`、`git add -A`、`git commit -a`；必须逐个明确列出允许提交的文件路径。
-- 提交前必须运行 `git diff --cached --name-only` 检查暂存清单。如果上述目录中的文件被误暂存，先取消暂存，再继续提交。
-- 只有能够明确证明某个具体文件对公开环境的构建、运行、部署、迁移、验证或使用确有必要时，才允许提交；提交前必须说明必要性，并使用精确路径单独 `git add`，不得因此暂存同目录中的其他文件。
-- 文件已经被 Git 跟踪不构成继续公开提交的理由。新 thread 应主动遵守本约束，无需用户重复提醒。
+- 本地专用目录为 `runtime/`、`tests/`、`tools/`、`artifacts/`、`dist/`、`docs/`。默认将其中内容保留在本地并排除出 Git 索引。
+- 本地专用文件只有两类提交例外：用户明确要求提交；或能够证明该具体文件是全新环境安装、编译或发布不可缺少的输入。便利脚本、诊断材料、历史证据和“已经被跟踪”均不构成例外。
+- 采用例外前必须说明具体必要性，并使用精确路径单独暂存；不得因此暂存同目录的其他文件。
+- `vendor/`、`ops/`、`AGENTS.md`、`services/`、`scripts/`、`.runtime/` 同样默认不提交，只有用户明确要求或公开环境的安装、编译、发布确实必需时才可按精确路径暂存。
+- 提交时使用逐个明确路径；不使用 `git add .`、`git add -A` 或 `git commit -a`。
+- 提交前必须运行 `git diff --cached --name-only`，逐项核对暂存清单。误暂存的本地专用文件先取消暂存。发现这类文件已被跟踪时，使用 `git rm --cached` 从索引移除并保留本地文件。
+- 新 thread 必须主动执行这些规则，无需用户重复提醒。
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues for the workspace shell are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+Issues for the workspace shell are tracked in GitHub Issues. When the local file exists, see `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the default five canonical triage labels. See `docs/agents/triage-labels.md`.
+Use the default five canonical triage labels. When the local file exists, see `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-This workspace uses a single-context domain-doc layout. See `docs/agents/domain.md`.
+This workspace uses a single-context domain-doc layout. When the local file exists, see `docs/agents/domain.md`.
 

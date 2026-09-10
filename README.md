@@ -1,6 +1,6 @@
 # QuantResearch 工作区
 
-本仓库是 QuantResearch 工作区的轻量级外壳，保存共享导航、Agent 配置、机器可读的架构宪章与准入记录，以及验证各项目公共接口合同的跨仓验收工具，但不拥有各项目的具体实现。
+本仓库是 QuantResearch 工作区的轻量级外壳，提交共享导航、Agent 配置和跨仓验收包源码，但不拥有各项目的具体实现。`docs/`、`tools/`、`tests/`、`runtime/`、`artifacts/` 和 `dist/` 默认只保留在本地，不属于 Git 发布内容；只有用户明确要求或全新安装、编译、发布必需的具体文件才例外提交。
 
 每个项目目录都是独立 Git 仓库，拥有自己的 GitHub remote、历史、版本和提交。本仓库既不跟踪这些项目目录，也不把它们固定为 submodule。
 
@@ -54,7 +54,7 @@ flowchart LR
 - [SPEC-021](https://github.com/williamxhero/Quant-Research/issues/40) 完成了 FINSABER 兼容性研究，结论为 `no_go / rejected-dependency`。
 - [SPEC-022](https://github.com/williamxhero/Quant-Research/issues/41) 及 022A/022B 因上述前置决策关闭为 `not planned`；系统**没有**实现 FINSABER auxiliary validation lane，这不是遗漏开发。
 
-完整的逐 SPEC 功能、owner 边界和未实现事项记录在本地 `docs/reports/SPEC-001-032功能交付总结-2026-09-10.md`。
+完整的逐 SPEC 功能、owner 边界和未实现事项作为本地研究材料保留，不属于发布制品。
 
 ## 推荐工作流
 
@@ -120,7 +120,7 @@ quantresearch-acceptance diff --scope scope.json --repository-root . --owner-roo
 quantresearch-acceptance select --scope scope.json --diff fixed-diff.json --phase spec
 quantresearch-acceptance execute --scope scope.json --diff fixed-diff.json --phase spec --repository-root . --owner-root apex-research=../ApexResearch
 quantresearch-acceptance audit --history durations.json
-quantresearch-acceptance migrate --scope docs/architecture-admissions/spec-026a.acceptance-scope.v1.json
+quantresearch-acceptance migrate --scope <scope-v1.json>
 ```
 
 普通 pytest 命令默认排除 `slow`、`oci`、`connected` 和 `release`。单项超过 2 秒或单文件超过 60 秒的测试必须标记为 `slow` 并提供非空解释。每个 SPEC 都运行 L0～L2；只有公共合同变化才选择 L3，并且选定 wheel 集只构建、安装一次，然后在同一个 no-source 环境中完成两次 pytest 重放。L4 只在 5～8 个 SPEC 的检查点或最终发布时运行；L5 作为独立、真实、无 fallback 的状态报告。
