@@ -1,13 +1,8 @@
-# Quant Research workspace
+# QuantResearch 工作区
 
-This repository is the lightweight shell for the QuantResearch workspace.
-It contains shared navigation, agent configuration, the machine-readable architecture
-constitution and admissions, and public-seam acceptance tools that verify contracts across
-the independently versioned project repositories without owning their implementation.
+本仓库是 QuantResearch 工作区的轻量级外壳，保存共享导航、Agent 配置、机器可读的架构宪章与准入记录，以及验证各项目公共接口合同的跨仓验收工具，但不拥有各项目的具体实现。
 
-Each project directory is an independent Git repository with its own GitHub
-remote, history, releases, and commits. This repository neither tracks those
-directories nor pins them as submodules.
+每个项目目录都是独立 Git 仓库，拥有自己的 GitHub remote、历史、版本和提交。本仓库既不跟踪这些项目目录，也不把它们固定为 submodule。
 
 ## QuantResearch 策略研究架构
 
@@ -33,21 +28,45 @@ flowchart LR
 | 层 | 负责 | 使用者应放进去的内容 |
 | --- | --- | --- |
 | `QuoteMux_Packages` / `QuoteMux` / `MarketHub` | provider 接入、聚合缓存、数据版本、覆盖与健康度 | 行情能力与数据修复；正式研究固定使用小电脑 `http://yosef-server:8803` |
-| `strategy-workspace` | Strategy Package、参数合同、canonical request、run/attempt、不可变制品和谱系 | 策略实现、参数 Schema、测试、请求样例；不要把策略写进 Runtime |
-| `quant-runtime` | MarketHub 数据读取、执行拓扑、Qlib discovery、Nautilus 正式执行 | 运行请求；Qlib 结果只能是候选证据，正式订单、成交、账户、持仓和指标只认 Nautilus |
-| `apex-research` | protocol、trial、gate、evidence、decision | “什么证据算通过”的研究设计，以及跨运行比较；不重算引擎指标 |
-| `strategy-reporting` | 严格 read-model、中文 HTML、验证、重建和离线 Portal | 面向人的交付；只展示已发布证据，不补算或猜测缺失结论 |
+| `strategy-workspace` | Strategy Package、参数合同、canonical request、run/attempt、不可变 record/artifact 和谱系 | 策略实现、参数 Schema、测试、请求样例；不要把研究判断或策略执行写进 Workspace |
+| `quant-runtime` | generated-code sandbox、MarketHub preflight、Qlib discovery、Nautilus 正式执行、benchmark transport、candidate discovery 和 data-change observation | 运行请求；Qlib 结果只能是候选证据，正式订单、成交、账户、持仓和指标只认 Nautilus |
+| `apex-research` | Campaign/Orchestrator、Candidate IR、权限预算、quality gates、外部研究接口、统计、Evidence v2、qualification、archives、benchmark、replication 和 revalidation | “为什么研究、下一步做什么、什么证据算通过”的研究设计与跨运行判断；不重算引擎指标 |
+| `strategy-reporting` | 严格 read-model、campaign/replication/revalidation 中文报告、验证、重建和离线 Portal | 面向人的交付；只展示已发布 owner facts，不补算或猜测缺失结论 |
+
+## 已交付研究能力（SPEC-001～SPEC-032）
+
+| 能力组 | 当前能力 | 对应 SPEC |
+| --- | --- | --- |
+| 不可变研究对象 | 版本化 Research Campaign、Hypothesis，以及严格、确定性身份的 Factor/Model/Strategy Candidate IR；合格 Candidate 可转换为不可变 canonical Strategy Package。 | SPEC-001、003、028 |
+| 可恢复研究编排 | 七态 Research Orchestrator、幂等推进、并发 claim、lease、崩溃恢复、失败记忆和 bounded context；所有昂贵动作受 campaign 权限、预算和审计约束。 | SPEC-002、006、011 |
+| 安全接纳与执行 | 人工和 AI Candidate 统一经过静态门、Package intake、沙箱 behavioral conformance 和 MarketHub PIT preflight；generated code 受进程、能力、依赖和资源隔离。 | SPEC-004、005、009 |
+| 外部研究扩展 | 通过 `ResearchEnginePort`、`EmpiricalResearchPort` 和受治理 External Research Runner 接入外部研究引擎或工具；RD-Agent 和 QRAFTI 只能在已证明的窄能力范围内工作。 | SPEC-007、008、019、020、029 |
+| 有界研究策略 | 支持 focused refinement、冻结 validation matrix、多重检验控制、行为/niche 描述、探索/正式双档案、island evolution 和 Factor-Model co-evolution。 | SPEC-010、012、013、016、017、018、030 |
+| 证据与研究资格 | Evidence v2 统一组合 Candidate、gate、Runtime、统计和负面证据；资格状态从 `idea` 逐级推进到 `research_qualified`，并保留 append-only history。 | SPEC-014、015 |
+| Benchmark 与回归门 | 提供 AlphaForge-style 因子研究 benchmark、QuantCode-style 自然语言策略 benchmark，以及只读 canonical benchmark publication 的 CI regression gate。 | SPEC-023、024、025 |
+| 报告与端到端证明 | 从公共 Workspace records 确定性生成 campaign JSON/HTML 和离线 Portal；golden campaign 已贯通 Candidate、Package、数据门、discovery、formal、Evidence、qualification 和报告。 | SPEC-026、027 |
+| 复现与持续再验证 | 可冻结论文/文章来源、规则、假设和比较政策，产出 `exact`、`directional`、`failed` 或 `not_reproducible`；也可检测证据陈旧与因子衰减并启动有界 revalidation。 | SPEC-031、032 |
+
+这些能力遵循一条固定边界：Apex 决定研究政策和证据含义，Runtime 产生受控的单次执行事实，Workspace 不可变保存与回读，Reporting 诚实展示。任何缺失、漂移、不可比较、依赖不可用或语义不唯一都必须显式 fail closed，不能静默换源、缩范围或 fallback。
+
+有两项需要特别区分：
+
+- [SPEC-021](https://github.com/williamxhero/Quant-Research/issues/40) 完成了 FINSABER 兼容性研究，结论为 `no_go / rejected-dependency`。
+- [SPEC-022](https://github.com/williamxhero/Quant-Research/issues/41) 及 022A/022B 因上述前置决策关闭为 `not planned`；系统**没有**实现 FINSABER auxiliary validation lane，这不是遗漏开发。
+
+完整的逐 SPEC 功能、owner 边界和未实现事项记录在本地 `docs/reports/SPEC-001-032功能交付总结-2026-09-10.md`。
 
 ## 推荐工作流
 
-1. **冻结问题。** 保存来源资料，并把规则写成唯一可执行规格：标的池、频率、复权、信号时点、仓位、退出、资金、成本、滑点、日历和区间。区分来源事实、旧系统证据和研究假设。
-2. **先查再建。** 用 Workspace 查询已有 package、run、study 和 report；身份相同就复用。策略逻辑或包内辅助文件变化时升级 package revision。
-3. **先过数据门。** 用目标请求检查 MarketHub health、数据版本、coverage、catalog/calendar、排序、重复和时间语义。数据不完整就暂停正式研究并修复 MarketHub，不缩短范围、不换源、不用 fixture 顶替。
-4. **选对拓扑。** 冻结 Strategy Package、参数、数据 snapshot 和执行配置后，再提交 canonical request。
-5. **执行与判定。** 由 Apex Research 驱动 Runtime；已有 completed run 时用 `study attach` 接入研究，避免重跑。失败 run 保留原 attempt，修复后显式 retry。
-6. **从证据生成报告。** 用 Strategy Reporting 渲染 run 或 study，随后 `verify` / `rebuild`；最终交付以 report/portal 为入口，以 Workspace 谱系为审计依据。
+1. **冻结问题和政策。** 保存来源资料，把规则写成唯一可执行规格，并冻结数据、成本、验证矩阵、预算、统计和比较政策。区分来源事实、旧系统证据和研究假设。
+2. **先查再建。** 用 Workspace 查询已有 Candidate、package、run、study、evidence 和 report；身份相同就复用。meaning-bearing 内容变化时创建新 revision/request，不覆盖旧对象。
+3. **接纳 Candidate。** 使用 typed Factor/Model/Strategy IR；依次通过静态门、canonical Package intake 和沙箱 behavioral conformance。任何一门失败都不启动后续昂贵动作。
+4. **先过数据门。** 用目标请求检查 MarketHub health、数据版本、coverage、catalog/calendar、PIT/as-of、调整、排序、重复和时间语义。数据不完整就暂停正式研究并修复 MarketHub，不缩短范围、不换源、不用 fixture 顶替。
+5. **选择研究策略和执行拓扑。** 按目标选择 formal-only、discovery-formal、focused research、island/co-evolution、replication 或 revalidation；外部引擎和工具必须经过治理端口与 runner。
+6. **执行、统计和判定。** 由 Apex 驱动 Runtime；已有 completed、identity-equivalent run 时优先 attach。正式结果形成 Evidence v2 后再执行统计控制、qualification 和 archive 更新。
+7. **从证据生成报告并持续复验。** 用 Strategy Reporting 渲染、`verify` / `rebuild`；由 currency/decay policy 判断证据是否仍然 current，需要时创建新 revalidation，历史记录保持不可变。
 
-`completed` 与 `rejected` 都是可审计的正常终态；前者完成执行，后者表示研究门拒绝。`failed` 才是执行故障。
+`completed`、`rejected`、`blocked`、`not_evaluated` 和 `not_reproducible` 都是可审计的领域终态；`failed` 表示执行或基础设施故障，必须与研究拒绝区分。
 
 ## 如何选研究拓扑
 
@@ -90,17 +109,11 @@ strategy-reporting --workspace <workspace> verify --report-id <report-id>
 strategy-reporting --workspace <workspace> portal build --output <portal-dir>
 ```
 
-判断研究是否真正完成，只看一条证据链：**冻结来源与规格 → 可执行 Strategy Package → 通过 MarketHub 数据门 → terminal Runtime run → Apex evidence/decision → 可验证、可重建的报告。** 任一环缺失，都应明确停在哪一层，而不是把部分完成描述成正式结论。
+对于要求正式执行的研究，完成证据链是：**冻结来源与规格 → typed Candidate 与质量门 → 可执行 Strategy Package → MarketHub 数据门 → terminal Runtime run → Evidence v2 与研究判定 → 可验证、可重建的报告。** 任一环缺失，都应明确停在哪一层。复现研究若无法形成唯一可执行语义，则应在正式 run 之前以 `not_reproducible` 闭合，不能把零执行描述成正式回测成功。
 
-## Layered acceptance
+## 分层验收
 
-The `quantresearch-acceptance` package is the single planning and L0-L3 execution seam.
-It accepts a strict acceptance-scope v2 document, a fixed-base diff, and `spec` or
-`release` phase. The immutable plan records owners, argv tokens, L0-L5 selection,
-per-command p95-derived timeouts, markers, source-to-direct-test mappings, source
-fingerprints, JUnit/event destinations, and one canonical identity. Unknown fields,
-duplicate JSON keys, path traversal, shell strings, ambiguous ownership, unmapped
-meaning-bearing paths, and base/fingerprint drift fail closed.
+`quantresearch-acceptance` 包是统一的测试规划与 L0～L3 执行入口。它接收严格的 acceptance-scope v2 文档、fixed-base diff，以及 `spec` 或 `release` 阶段。不可变计划会记录 owner、argv token、L0～L5 选择、基于每条命令 p95 推导的超时、marker、源文件到直接测试的映射、source fingerprint、JUnit/event 输出位置和唯一 canonical identity。未知字段、重复 JSON key、路径穿越、shell string、owner 不明确、未映射的 meaning-bearing 路径，以及基线或 fingerprint 漂移都会 fail closed。
 
 ```console
 quantresearch-acceptance diff --scope scope.json --repository-root . --owner-root apex-research=../ApexResearch --output fixed-diff.json
@@ -110,16 +123,6 @@ quantresearch-acceptance audit --history durations.json
 quantresearch-acceptance migrate --scope docs/architecture-admissions/spec-026a.acceptance-scope.v1.json
 ```
 
-Ordinary pytest commands exclude `slow`, `oci`, `connected`, and `release`. Tests over
-2 seconds and files over 60 seconds must carry `slow` plus a non-empty explanation.
-L0-L2 run for every SPEC; L3 is selected only for a public-contract change and builds
-and installs the selected wheel set once before two complete pytest replays in the
-same no-source environment. L4 runs only at 5-8-SPEC checkpoints or final release;
-L5 remains an independent truthful status with no fallback.
+普通 pytest 命令默认排除 `slow`、`oci`、`connected` 和 `release`。单项超过 2 秒或单文件超过 60 秒的测试必须标记为 `slow` 并提供非空解释。每个 SPEC 都运行 L0～L2；只有公共合同变化才选择 L3，并且选定 wheel 集只构建、安装一次，然后在同一个 no-source 环境中完成两次 pytest 重放。L4 只在 5～8 个 SPEC 的检查点或最终发布时运行；L5 作为独立、真实、无 fallback 的状态报告。
 
-The release ledger accepts exactly 32 ordered SPEC evidence references, defaults to
-six-SPEC checkpoints, is resumable and idempotent, and rejects replacement evidence.
-Review repairs create a fresh fixed-base diff containing only repair-touched paths, so
-the same selector reruns only the new impact set. The v1 SPEC-026A scope is retained as
-prior machine-readable evidence and can be migrated without dropping its recorded
-levels or installed tracers.
+Release ledger 只接受按顺序排列的 32 个 SPEC evidence reference，默认每 6 个 SPEC 设置一次检查点，支持恢复和幂等执行，并拒绝替换既有证据。审查修复会创建只包含修复触及路径的新 fixed-base diff，因此同一个 selector 只重跑新的影响集。SPEC-026A 的 v1 scope 作为历史机器可读证据保留，迁移时不会丢失已记录的测试层级或 installed tracer。
