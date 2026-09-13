@@ -1,6 +1,17 @@
 """Impact-selected acceptance planning and execution for QuantResearch."""
 
 from .architecture import validate_test001_admission
+from .batch import (
+    A0BatchConfig,
+    A0BatchSelector,
+    A0EvidenceLedger,
+    A0Selection,
+    BatchEvidenceLedger,
+    BatchSelector,
+    BatchStatus,
+    EvidenceRecord,
+    batch_identity,
+)
 from .cache import ArtifactCache
 from .core import (
     AcceptanceFailure,
@@ -31,12 +42,20 @@ from .runner import (
 from .train import EnvironmentOutcome, GateRequest, ReleaseTrain
 
 __all__ = [
+    "A0BatchConfig",
+    "A0BatchSelector",
+    "A0EvidenceLedger",
+    "A0Selection",
     "AcceptanceFailure",
     "AcceptancePlan",
     "AcceptanceSelector",
     "AcceptanceSession",
     "ArtifactCache",
+    "BatchEvidenceLedger",
+    "BatchSelector",
+    "BatchStatus",
     "EnvironmentOutcome",
+    "EvidenceRecord",
     "FixedBaseProver",
     "GateRequest",
     "InstalledEnvironment",
@@ -53,6 +72,7 @@ __all__ = [
     "SQLiteSession",
     "SubprocessProcess",
     "audit_performance",
+    "batch_identity",
     "build_fixed_base_diff",
     "git_source_fingerprint",
     "historical_timeout",

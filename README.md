@@ -118,6 +118,7 @@ strategy-reporting --workspace <workspace> portal build --output <portal-dir>
 ```console
 quantresearch-acceptance diff --scope scope.json --repository-root . --owner-root apex-research=../ApexResearch --output fixed-diff.json
 quantresearch-acceptance select --scope scope.json --diff fixed-diff.json --phase spec
+quantresearch-acceptance batch-select --batch a0-batch.json --scope scope.json --diff fixed-diff.json --phase spec
 quantresearch-acceptance execute --scope scope.json --diff fixed-diff.json --phase spec --repository-root . --owner-root apex-research=../ApexResearch
 quantresearch-acceptance audit --history durations.json
 quantresearch-acceptance migrate --scope <scope-v1.json>
@@ -126,3 +127,9 @@ quantresearch-acceptance migrate --scope <scope-v1.json>
 普通 pytest 命令默认排除 `slow`、`oci`、`connected` 和 `release`。单项超过 2 秒或单文件超过 60 秒的测试必须标记为 `slow` 并提供非空解释。每个 SPEC 都运行 L0～L2；只有公共合同变化才选择 L3，并且选定 wheel 集只构建、安装一次，然后在同一个 no-source 环境中完成两次 pytest 重放。L4 只在 5～8 个 SPEC 的检查点或最终发布时运行；L5 作为独立、真实、无 fallback 的状态报告。
 
 Release ledger 只接受按顺序排列的 32 个 SPEC evidence reference，默认每 6 个 SPEC 设置一次检查点，支持恢复和幂等执行，并拒绝替换既有证据。审查修复会创建只包含修复触及路径的新 fixed-base diff，因此同一个 selector 只重跑新的影响集。SPEC-026A 的 v1 scope 作为历史机器可读证据保留，迁移时不会丢失已记录的测试层级或 installed tracer。
+
+研究批次使用独立的 `quant-research.acceptance-batch.v1` wrapper。它复用严格的
+acceptance-scope v2 与既有 selector，但以自己的 revision、fixture digest 和
+scenario-to-direct-test 映射绑定证据；不会把新批次追加进旧 32-SPEC ledger。批次
+ledger 只接受 `pass`、`fail`、`expected-deny`、`blocked`、`not_run`，其中只有
+`pass` 计入通过数，缺失或非 pass 不会被静默转绿。

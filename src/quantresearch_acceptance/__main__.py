@@ -9,6 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .batch import A0BatchSelector
 from .cache import ArtifactCache
 from .core import AcceptanceFailure, AcceptanceSelector
 from .local import (
@@ -45,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     select.add_argument("--scope", type=Path, required=True)
     select.add_argument("--diff", type=Path, required=True)
     select.add_argument("--phase", choices=("spec", "release"), required=True)
+    batch_select = commands.add_parser("batch-select")
+    batch_select.add_argument("--batch", type=Path, required=True)
+    batch_select.add_argument("--scope", type=Path, required=True)
+    batch_select.add_argument("--diff", type=Path, required=True)
+    batch_select.add_argument("--phase", choices=("spec", "release"), required=True)
     audit = commands.add_parser("audit")
     audit.add_argument("--history", type=Path, required=True)
     migrate = commands.add_parser("migrate")
@@ -74,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
             if not isinstance(scope, dict) or not isinstance(diff, dict):
                 raise AcceptanceFailure("scope and diff must be JSON objects")
             result = AcceptanceSelector().select(scope, diff, phase=arguments.phase).as_dict()
+        elif arguments.command == "batch-select":
+            batch = _read_json(arguments.batch)
+            scope = _read_json(arguments.scope)
+            diff = _read_json(arguments.diff)
+            if not all(isinstance(value, dict) for value in (batch, scope, diff)):
+                raise AcceptanceFailure("batch, scope and diff must be JSON objects")
+            result = A0BatchSelector().select(batch, scope, diff, phase=arguments.phase).as_dict()
         elif arguments.command == "audit":
             history = _read_json(arguments.history)
             if not isinstance(history, list):
