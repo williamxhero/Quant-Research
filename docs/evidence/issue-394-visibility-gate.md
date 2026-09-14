@@ -21,6 +21,9 @@ payload loader is invoked.
 - Strict incomplete metadata is `restricted`; audit-only incomplete metadata is
   `unknown` and never deliverable. Current authorization and frozen research policy
   remain separate sanitized decision dimensions.
+- The required protection-closure fields `derived_from`, `allowed_purposes`, and
+  `required_capabilities` distinguish missing metadata from an explicitly empty
+  value; omission cannot silently open a material.
 - `guard_visibility_delivery` invokes the material loader only after an `allowed`
   decision. Revoked current authorization therefore cannot replay an old context.
 
@@ -30,7 +33,7 @@ Commands run from the QuantResearch worktree:
 
 ```text
 python -m pytest -q src/quantresearch_acceptance/_research_visibility_test.py
-16 passed
+18 passed
 
 ruff check src/quantresearch_acceptance
 All checks passed!
@@ -43,13 +46,17 @@ success
 
 uv build --wheel --out-dir dist/issue-394
 success
+
+uv build --wheel --no-sources --offline --out-dir dist/issue-394-revised-offline
+success
 ```
 
 The no-source wheel replay installed the wheel into an isolated temporary
-`site-packages` directory and ran the 16 visibility tests plus the existing
-installed acceptance tests: `16 passed` and `5 passed`. The import path resolved to
+`site-packages` directory and ran the 18 visibility tests plus the existing
+installed acceptance tests: `23 passed`. The import path resolved to
 the installed wheel and the source checkout was absent from the replay working
-directory.
+directory. The final offline-built wheel SHA-256 was
+`E3D30C2049009B63334FE1A3A1B5BD1AE7DEDC5167C2CD74804BD6D7FCE50102`.
 
 The ordinary full repository pytest command was attempted. Collection stops at the
 pre-existing SPEC-027 installed tracer because this machine does not have the four

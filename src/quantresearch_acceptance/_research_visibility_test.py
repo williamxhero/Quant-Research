@@ -166,6 +166,44 @@ def test_missing_metadata_is_restricted_in_strict_and_unknown_in_audit() -> None
     assert audit_decision.research_policy["status"] == "unknown"
 
 
+def test_missing_protection_closure_fields_never_mean_an_empty_closure() -> None:
+    strict = _request()
+    audit = _request(mode="audit")
+    for request in (strict, audit):
+        material = request["materials"][0]  # type: ignore[index]
+        assert isinstance(material, dict)
+        material.pop("derived_from")
+        material.pop("allowed_purposes")
+        material.pop("required_capabilities")
+
+    strict_decision = evaluate_visibility_request(strict)
+    audit_decision = evaluate_visibility_request(audit)
+
+    assert strict_decision.status == "restricted"
+    assert audit_decision.status == "unknown"
+    assert audit_decision.deliverable is False
+
+
+def test_current_purpose_and_capability_denials_are_not_presented_as_allowed_access() -> None:
+    purpose_denied = _request()
+    purpose_consumer = purpose_denied["consumer"]
+    assert isinstance(purpose_consumer, dict)
+    purpose_consumer["purpose"] = "summary"
+
+    capability_denied = _request()
+    capability_consumer = capability_denied["consumer"]
+    assert isinstance(capability_consumer, dict)
+    capability_consumer["capabilities"] = []
+
+    purpose_decision = evaluate_visibility_request(purpose_denied)
+    capability_decision = evaluate_visibility_request(capability_denied)
+
+    assert purpose_decision.status == "restricted"
+    assert purpose_decision.current_access["status"] == "restricted"
+    assert capability_decision.status == "restricted"
+    assert capability_decision.current_access["status"] == "restricted"
+
+
 def test_revoked_current_access_blocks_historical_redelivery_without_rewriting_context() -> None:
     historical_context = {
         "context_id": "context-a0",

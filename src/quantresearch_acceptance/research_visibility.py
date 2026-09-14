@@ -166,6 +166,7 @@ class ResearchMaterial:
     record_type: str
     scope: LogicalScope | None
     missing_scope_fields: tuple[str, ...]
+    missing_metadata_fields: tuple[str, ...]
     derived_from: tuple[LineageScope, ...]
     allowed_purposes: tuple[str, ...]
     required_capabilities: tuple[str, ...]
@@ -180,6 +181,32 @@ class ResearchMaterial:
         item = _mapping(value, label)
         _fields_subset(item, _MATERIAL_FIELDS, label)
         scope, missing = LogicalScope.parse(item, label)
+        missing_metadata: list[str] = []
+        raw_lineage = item.get("derived_from")
+        if raw_lineage is None:
+            missing_metadata.append(f"{label}.derived_from")
+            derived_from: tuple[LineageScope, ...] = ()
+        else:
+            derived_from = tuple(
+                LineageScope.parse(raw, lineage_index)
+                for lineage_index, raw in enumerate(_list(raw_lineage, f"{label}.derived_from"))
+            )
+        raw_purposes = item.get("allowed_purposes")
+        if raw_purposes is None:
+            missing_metadata.append(f"{label}.allowed_purposes")
+            allowed_purposes: tuple[str, ...] = ()
+        else:
+            allowed_purposes = _tokens(raw_purposes, f"{label}.allowed_purposes")
+        raw_capabilities = item.get("required_capabilities")
+        if raw_capabilities is None:
+            missing_metadata.append(f"{label}.required_capabilities")
+            required_capabilities: tuple[str, ...] = ()
+        else:
+            required_capabilities = _tokens(
+                raw_capabilities,
+                f"{label}.required_capabilities",
+                empty=True,
+            )
         digest = item.get("content_digest")
         if digest is not None and (
             not isinstance(digest, str) or _SAFE_DIGEST.fullmatch(digest) is None
@@ -190,18 +217,10 @@ class ResearchMaterial:
             record_type=_token(item.get("record_type"), f"{label}.record_type"),
             scope=scope,
             missing_scope_fields=missing,
-            derived_from=tuple(
-                LineageScope.parse(raw, lineage_index)
-                for lineage_index, raw in enumerate(
-                    _list(item.get("derived_from", []), f"{label}.derived_from")
-                )
-            ),
-            allowed_purposes=_tokens(item.get("allowed_purposes"), f"{label}.allowed_purposes"),
-            required_capabilities=_tokens(
-                item.get("required_capabilities", []),
-                f"{label}.required_capabilities",
-                empty=True,
-            ),
+            missing_metadata_fields=tuple(missing_metadata),
+            derived_from=derived_from,
+            allowed_purposes=allowed_purposes,
+            required_capabilities=required_capabilities,
             content_digest=digest,
             display_name=_optional_label(item.get("display_name"), f"{label}.display_name"),
             campaign_id=_optional_label(item.get("campaign_id"), f"{label}.campaign_id"),
@@ -528,8 +547,12 @@ class VisibilityRequest:
                     "material_id": material.material_id,
                     "record_type": material.record_type,
                     "scope_digests": list(material.protected_scope_digests()),
+                    "scope_missing_fields": list(material.missing_scope_fields),
+                    "metadata_missing_fields": list(material.missing_metadata_fields),
+                    "lineage_digests": [lineage.digest() for lineage in material.derived_from],
                     "allowed_purposes": list(material.allowed_purposes),
                     "required_capabilities": list(material.required_capabilities),
+                    "content_digest": material.content_digest,
                 }
                 for material in self.materials
             ],
@@ -619,6 +642,8 @@ class VisibilityGate:
             denied_codes={
                 "current_authorization_denied",
                 "lineage_current_authorization_denied",
+                "capability_denied",
+                "purpose_denied",
             },
         )
         policy_status = _dimension_status(
@@ -644,14 +669,21 @@ class VisibilityGate:
         material: ResearchMaterial,
     ) -> MaterialVisibilityDecision:
         codes: set[str] = set()
-        if material.missing_scope_fields:
+        if material.missing_scope_fields or material.missing_metadata_fields:
             codes.add("metadata_incomplete")
         for lineage in material.derived_from:
             if lineage.missing_fields:
                 codes.add("lineage_metadata_incomplete")
-        if request.consumer.purpose not in material.allowed_purposes:
+        if (
+            not any(
+                field.endswith(".allowed_purposes") for field in material.missing_metadata_fields
+            )
+            and request.consumer.purpose not in material.allowed_purposes
+        ):
             codes.add("purpose_denied")
-        if not set(material.required_capabilities) <= set(request.consumer.capabilities):
+        if not any(
+            field.endswith(".required_capabilities") for field in material.missing_metadata_fields
+        ) and not set(material.required_capabilities) <= set(request.consumer.capabilities):
             codes.add("capability_denied")
         if material.scope is not None:
             _check_scope(request, material.scope, codes, lineage=False)
