@@ -82,16 +82,24 @@ class A0BatchConfig:
             raise AcceptanceFailure("required cases and scenario mapping differ")
 
         raw_binding = _mapping(value.get("fixture_binding"), "fixture binding")
-        if set(raw_binding) != {"fixture_revision", "fixture_digest", "role"}:
+        if set(raw_binding) != {
+            "fixture_revision",
+            "fixture_digest",
+            "fixture_commit",
+            "role",
+        }:
             raise AcceptanceFailure("fixture binding fields are invalid")
         fixture_revision = raw_binding.get("fixture_revision")
         fixture_digest = raw_binding.get("fixture_digest")
+        fixture_commit = raw_binding.get("fixture_commit")
         role = raw_binding.get("role")
         if (
             not isinstance(fixture_revision, str)
             or not fixture_revision
             or not isinstance(fixture_digest, str)
             or _DIGEST.fullmatch(fixture_digest) is None
+            or not isinstance(fixture_commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}", fixture_commit) is None
             or role != "synthetic-test-only"
         ):
             raise AcceptanceFailure("fixture binding is invalid")
