@@ -33,6 +33,8 @@ from .local import (
 from .migration import LegacyScopeMigration, migrate_legacy_scope
 from .observability import audit_performance
 from .research_visibility import (
+    DEFAULT_PROTECTION_CLOSURE_BUDGET,
+    MAX_PROTECTION_CLOSURE_BUDGET,
     VISIBILITY_DECISION_SCHEMA,
     VISIBILITY_REQUEST_SCHEMA,
     AccessGrant,
@@ -61,6 +63,8 @@ from .runner import (
 from .train import EnvironmentOutcome, GateRequest, ReleaseTrain
 
 __all__ = [
+    "DEFAULT_PROTECTION_CLOSURE_BUDGET",
+    "MAX_PROTECTION_CLOSURE_BUDGET",
     "VISIBILITY_DECISION_SCHEMA",
     "VISIBILITY_REQUEST_SCHEMA",
     "A0BatchConfig",
