@@ -19,9 +19,14 @@ from .core import AcceptanceFailure
 
 VisibilityMode = Literal["strict", "audit"]
 VisibilityStatus = Literal["allowed", "restricted", "unknown"]
+DeliveryStatus = Literal["delivered", "restricted", "unavailable"]
+SafetyAuditStatus = Literal["not_applicable", "clear", "unknown", "blocked"]
 
 VISIBILITY_REQUEST_SCHEMA = "quant-research.memory-visibility-request.v1"
 VISIBILITY_DECISION_SCHEMA = "quant-research.memory-visibility-decision.v1"
+
+DEFAULT_PROTECTION_CLOSURE_BUDGET = 64
+MAX_PROTECTION_CLOSURE_BUDGET = 4096
 
 _STAGES = frozenset(
     {
@@ -34,6 +39,18 @@ _STAGES = frozenset(
         "final_envelope",
         "tool_return",
         "historical_redelivery",
+    }
+)
+_ADDITION_STAGES = frozenset({"final_envelope", "tool_return"})
+# Codes that mean "the declared protection closure is not provably complete".
+# They are never deliverable; audit mode may report them as ``unknown`` but that
+# is a reporting state, not research eligibility.
+_INCOMPLETE_CODES = frozenset(
+    {
+        "metadata_incomplete",
+        "lineage_metadata_incomplete",
+        "closure_incomplete",
+        "closure_budget_exhausted",
     }
 )
 _SAFE_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}")
@@ -476,6 +493,7 @@ class VisibilityRequest:
     materials: tuple[ResearchMaterial, ...]
     context_material_ids: tuple[str, ...]
     historical_context: HistoricalContextRef | None
+    closure_budget: int
 
     @classmethod
     def parse(cls, value: Mapping[str, object]) -> VisibilityRequest:
@@ -490,6 +508,7 @@ class VisibilityRequest:
                 "materials",
                 "context_material_ids",
                 "historical_context",
+                "closure_budget",
             },
             "visibility request",
         )
@@ -522,6 +541,17 @@ class VisibilityRequest:
                 empty=True,
             ),
             historical_context=HistoricalContextRef.parse(value.get("historical_context")),
+            closure_budget=_closure_budget(value.get("closure_budget")),
+        )
+
+    def added_material_ids(self) -> tuple[str, ...]:
+        """Material ids in this request that the declared Context does not carry."""
+
+        context = set(self.context_material_ids)
+        return tuple(
+            material.material_id
+            for material in self.materials
+            if material.material_id not in context
         )
 
     def safe_identity_material(self) -> dict[str, object]:
@@ -560,6 +590,7 @@ class VisibilityRequest:
             "historical_context_digest": (
                 None if self.historical_context is None else self.historical_context.digest()
             ),
+            "closure_budget": self.closure_budget,
         }
 
 
@@ -571,6 +602,7 @@ class MaterialVisibilityDecision:
     safe_codes: tuple[str, ...]
     scope_digests: tuple[str, ...]
     lineage_digests: tuple[str, ...]
+    closure_digest: str
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -580,6 +612,7 @@ class MaterialVisibilityDecision:
             "safe_codes": list(self.safe_codes),
             "scope_digests": list(self.scope_digests),
             "lineage_digests": list(self.lineage_digests),
+            "closure_digest": self.closure_digest,
         }
 
 
@@ -593,13 +626,14 @@ class GateDecision:
     research_policy: dict[str, object]
     materials: tuple[MaterialVisibilityDecision, ...]
     historical_context_digest: str | None
+    safety_audit: dict[str, object]
 
     @property
     def deliverable(self) -> bool:
         return self.status == "allowed"
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        value: dict[str, object] = {
             "schema": VISIBILITY_DECISION_SCHEMA,
             "status": self.status,
             "deliverable": self.deliverable,
@@ -609,21 +643,34 @@ class GateDecision:
             "current_access": self.current_access,
             "research_policy": self.research_policy,
             "historical_context_digest": self.historical_context_digest,
-            "materials": [material.as_dict() for material in self.materials],
+            "safety_audit": self.safety_audit,
         }
+        # A denied response is observable by an untrusted consumer.  Do not turn
+        # the decision itself into a reference, count, lineage, or reason oracle.
+        # The detailed per-material facts remain available only on the in-process
+        # decision object for the trusted policy/audit boundary.
+        if self.deliverable:
+            value["materials"] = [material.as_dict() for material in self.materials]
+        else:
+            value["delivery"] = "blocked"
+        return value
 
 
 @dataclass(frozen=True, slots=True)
 class GuardedDelivery:
     decision: GateDecision
     payloads: tuple[tuple[str, object], ...]
+    delivery_status: DeliveryStatus
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        value: dict[str, object] = {
             "decision": self.decision.as_dict(),
-            "payload_count": len(self.payloads),
-            "material_ids": [material_id for material_id, _payload in self.payloads],
+            "delivery_status": self.delivery_status,
         }
+        if self.delivery_status == "delivered":
+            value["payload_count"] = len(self.payloads)
+            value["material_ids"] = [material_id for material_id, _payload in self.payloads]
+        return value
 
 
 class VisibilityGate:
@@ -661,6 +708,7 @@ class VisibilityGate:
             historical_context_digest=(
                 None if parsed.historical_context is None else parsed.historical_context.digest()
             ),
+            safety_audit=_safety_audit(parsed, material_decisions),
         )
 
     def _evaluate_material(
@@ -671,9 +719,8 @@ class VisibilityGate:
         codes: set[str] = set()
         if material.missing_scope_fields or material.missing_metadata_fields:
             codes.add("metadata_incomplete")
-        for lineage in material.derived_from:
-            if lineage.missing_fields:
-                codes.add("lineage_metadata_incomplete")
+        closure_scopes, closure_codes, closure_digest = _protection_closure(request, material)
+        codes.update(closure_codes)
         if (
             not any(
                 field.endswith(".allowed_purposes") for field in material.missing_metadata_fields
@@ -687,9 +734,8 @@ class VisibilityGate:
             codes.add("capability_denied")
         if material.scope is not None:
             _check_scope(request, material.scope, codes, lineage=False)
-        for lineage in material.derived_from:
-            if lineage.scope is not None:
-                _check_scope(request, lineage.scope, codes, lineage=True)
+        for scope in closure_scopes:
+            _check_scope(request, scope, codes, lineage=True)
         safe_codes = tuple(sorted(codes))
         return MaterialVisibilityDecision(
             material_id=material.material_id,
@@ -698,6 +744,7 @@ class VisibilityGate:
             safe_codes=safe_codes,
             scope_digests=material.protected_scope_digests(),
             lineage_digests=tuple(lineage.digest() for lineage in material.derived_from),
+            closure_digest=closure_digest,
         )
 
 
@@ -712,11 +759,126 @@ def guard_visibility_delivery(
     parsed = request if isinstance(request, VisibilityRequest) else VisibilityRequest.parse(request)
     decision = VisibilityGate().evaluate(parsed)
     if not decision.deliverable:
-        return GuardedDelivery(decision, ())
-    payloads = tuple(
-        (material.material_id, load_material(material.material_id)) for material in parsed.materials
+        return GuardedDelivery(decision, (), "restricted")
+    try:
+        payloads = tuple(
+            (material.material_id, load_material(material.material_id))
+            for material in parsed.materials
+        )
+    except Exception:
+        # Loader diagnostics can contain protected source text, identifiers, or
+        # provider debug state.  The public delivery boundary reports only that
+        # delivery is unavailable; the trusted loader owns detailed diagnostics.
+        return GuardedDelivery(decision, (), "unavailable")
+    return GuardedDelivery(decision, payloads, "delivered")
+
+
+def _canonical_edges(edges: tuple[LineageScope, ...]) -> tuple[LineageScope, ...]:
+    """Deduplicate and order derivation edges so repeats cannot change a decision."""
+
+    unique: dict[str, LineageScope] = {}
+    for edge in edges:
+        unique.setdefault(edge.digest(), edge)
+    return tuple(edge for _digest, edge in sorted(unique.items()))
+
+
+def _protection_closure(
+    request: VisibilityRequest,
+    material: ResearchMaterial,
+) -> tuple[tuple[LogicalScope, ...], tuple[str, ...], str]:
+    """Walk the declared derivation closure of one material, fail closed.
+
+    Protection propagates along every hop that the request declares, so a
+    multi-hop chain cannot be laundered by re-publishing a derived record.  The
+    walk is bounded by the request's frozen traversal budget: an exhausted
+    budget, an unresolvable hop, or a non-acyclic lineage yields a defect code
+    rather than an empty closure.  Reachability alone never grants eligibility.
+    """
+
+    declared = {item.material_id: item for item in request.materials}
+    codes: set[str] = set()
+    scopes: dict[str, LogicalScope] = {}
+    members: set[str] = {material.material_id}
+    on_path: set[str] = {material.material_id}
+    visits = 0
+    # Explicit-stack DFS; each frame is [node_id, depth, edges, next_index].
+    frames: list[list[Any]] = [
+        [material.material_id, 0, _canonical_edges(material.derived_from), 0]
+    ]
+    while frames:
+        frame = frames[-1]
+        node_id, depth, edges, index = frame
+        if index >= len(edges):
+            frames.pop()
+            on_path.discard(node_id)
+            continue
+        frame[3] = index + 1
+        edge = edges[index]
+        visits += 1
+        if visits > request.closure_budget:
+            codes.add("closure_budget_exhausted")
+            break
+        members.add(edge.digest())
+        if edge.scope is None:
+            codes.add("lineage_metadata_incomplete" if depth == 0 else "closure_incomplete")
+        else:
+            scopes[edge.scope.digest()] = edge.scope
+        if edge.material_id in on_path:
+            codes.add("closure_not_acyclic")
+            continue
+        child = declared.get(edge.material_id)
+        if child is None:
+            continue
+        if child.missing_scope_fields or child.missing_metadata_fields:
+            codes.add("closure_incomplete")
+        if child.scope is not None:
+            scopes[child.scope.digest()] = child.scope
+        on_path.add(child.material_id)
+        frames.append([child.material_id, depth + 1, _canonical_edges(child.derived_from), 0])
+    return (
+        tuple(scopes[key] for key in sorted(scopes)),
+        tuple(sorted(codes)),
+        _digest(sorted(members)),
     )
-    return GuardedDelivery(decision, payloads)
+
+
+def _safety_audit(
+    request: VisibilityRequest,
+    decisions: tuple[MaterialVisibilityDecision, ...],
+) -> dict[str, object]:
+    """Report how post-assembly additions were handled, without result detail.
+
+    A Context draft passing the gate does not carry the final envelope or a tool
+    return: material the Context does not declare is re-checked here and gets an
+    explicit status, so a blocked addition is neither silently dropped nor
+    silently delivered.
+    """
+
+    if request.stage not in _ADDITION_STAGES:
+        return {"stage": request.stage, "scope": "context_only", "status": "not_applicable"}
+    added = set(request.added_material_ids())
+    if not added:
+        return {"stage": request.stage, "scope": "context_only", "status": "clear"}
+    statuses = {item.status for item in decisions if item.material_id in added}
+    if "restricted" in statuses:
+        status: SafetyAuditStatus = "blocked"
+    elif "unknown" in statuses:
+        status = "unknown"
+    else:
+        status = "clear"
+    return {"stage": request.stage, "scope": "envelope_addition", "status": status}
+
+
+def _closure_budget(value: object) -> int:
+    if value is None:
+        return DEFAULT_PROTECTION_CLOSURE_BUDGET
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not 1 <= value <= MAX_PROTECTION_CLOSURE_BUDGET
+    ):
+        raise AcceptanceFailure("visibility request closure_budget is invalid")
+    return value
 
 
 def _check_scope(
@@ -737,7 +899,7 @@ def _check_scope(
 def _material_status(codes: tuple[str, ...], mode: VisibilityMode) -> VisibilityStatus:
     if not codes:
         return "allowed"
-    if mode == "audit" and set(codes) <= {"metadata_incomplete", "lineage_metadata_incomplete"}:
+    if mode == "audit" and set(codes) <= _INCOMPLETE_CODES:
         return "unknown"
     return "restricted"
 
@@ -749,11 +911,7 @@ def _dimension_status(
 ) -> VisibilityStatus:
     if any(denied_codes & set(item.safe_codes) for item in decisions):
         return "restricted"
-    if any(
-        code in {"metadata_incomplete", "lineage_metadata_incomplete"}
-        for item in decisions
-        for code in item.safe_codes
-    ):
+    if any(code in _INCOMPLETE_CODES for item in decisions for code in item.safe_codes):
         return "unknown"
     return "allowed"
 
