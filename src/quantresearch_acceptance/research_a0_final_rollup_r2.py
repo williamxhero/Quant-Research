@@ -24,13 +24,12 @@ conclusions:
    This module names that correction explicitly rather than quietly using the
    corrected facts.
 
-3. A0-X01 and A0-X02 remain unpassed, but for a narrower reason than before:
-   the rule/oracle/strategy artifacts are real now (see (2)), so the blocking
-   gap is no longer "nothing exists to test against" -- it is "no session has
-   yet run the T04-independent oracle replay against the real strategy to
-   confirm the two scenarios' specific claims." Manufacturing a pass here
-   without doing that replay would be exactly the laundering this rollup
-   family exists to prevent, so it is not done.
+3. **A0-X01 and A0-X02 also moved to executed/passed**, once the T04
+   independent oracle (which had only ever been statically reviewed, per its
+   own ``review_record.json``) was actually run against the real, current
+   strategy for the first time (williamxhero/Quant-Research#471). The
+   oracle's own exact volume-boundary operands and append sequence were
+   replayed verbatim, not self-chosen values.
 
 Standard library only. No dependency, no client, no service, no product
 logic -- the real work already happened elsewhere and left real files; this
@@ -166,41 +165,50 @@ _E03_R2 = ScenarioRecord(
 
 _X01_R2 = replace(
     _r1.scenario("A0-X01"),
+    status="executed",
+    satisfied_evidence_types=("independent_golden",),
+    evidence_class="proven_in_this_repo",
+    evidence=_r1._refs(
+        _EV, "test_a0_x01_x02_independent_oracle_replay_passed_for_real"
+    ),
     limitations=(
         G438_CORRECTION_NOTE,
-        "the real strategy (strategy-workspace/strategies/equity/a0-ema-crossback/) "
-        "and the real T04 oracle fixtures (tests/fixtures/a0-ema-crossback/) both "
-        "exist now -- the original blocker (nothing to test against) is resolved. "
-        "What remains is that no session has run the T04-independent oracle replay "
-        "against the real (post-#469/#470) strategy implementation and confirmed "
-        "this scenario's specific claim; the existing strategy-workspace domain "
-        "tests were written alongside the implementation, not verified as an "
-        "independently-authored replay, so they are not offered as a substitute.",
+        "the replay covers the T04 oracle's FX-X01 input_sequence and its explicit "
+        "fixture_operands volume-boundary values (74/75/76 against a five-prior-bar "
+        "mean of 100); it does not separately re-derive every one of X01's twelve "
+        "named subprobes as an individually cited assertion.",
     ),
     note=(
-        "Corrected from #443's baseline: the strategy and oracle are real (see "
-        "G438_CORRECTION_NOTE), so this is no longer 'nothing exists.' It remains "
-        "unpassed because the specific independent-oracle replay this scenario "
-        "requires has not been run and verified in this rollup."
+        "Corrected from #443's baseline and from this rollup's own earlier R2 draft: "
+        "the T04 oracle (fixture_inputs.json / expected_traces.json) was actually "
+        "executed against the real, current core.py for the first time "
+        "(williamxhero/Quant-Research#471), not just statically reviewed. The "
+        "oracle's own volume-boundary values (74/75/76) are exactly the boundary "
+        "#470's off-by-one fix corrects; the real replay is the independent "
+        "confirmation that the fix is right, not an internal self-check."
     ),
 )
 
 _X02_R2 = replace(
     _r1.scenario("A0-X02"),
+    status="executed",
+    satisfied_evidence_types=("trace_prefix_property",),
+    evidence_class="proven_in_this_repo",
+    evidence=_r1._refs(
+        _EV, "test_a0_x01_x02_independent_oracle_replay_passed_for_real"
+    ),
     limitations=(
         G438_CORRECTION_NOTE,
-        "strategy-workspace's own domain test "
-        "test_confirmation_is_prefix_stable_and_early_pivot_mutation_is_detectable "
-        "asserts exactly this prefix/no-rewrite property and an early-pivot mutation "
-        "sensitivity check, and passed after #469/#470 (10/10, then 10/10 again after "
-        "the volume-baseline fix). It was written alongside the implementation, not "
-        "independently authored against the T04 oracle, so it is cited here rather "
-        "than counted as this scenario's required independent-golden evidence.",
+        "the replay uses the oracle's own append_sequence (close=102 then "
+        "close=98) verbatim rather than an arbitrary future bar.",
     ),
     note=(
-        "Same correction as A0-X01: the strategy now exists and its own prefix-"
-        "stability test passes, but the independent T04-oracle replay this scenario "
-        "specifically requires has not been run in this rollup."
+        "Corrected: the T04 oracle's FX-X02 append_sequence was replayed for real. "
+        "The original entry decision's trace and record are unchanged after the "
+        "future bars are appended; a genuine new, later-dated exit decision is "
+        "correctly produced (close 98 < slow EMA), confirmed as a legitimate new "
+        "event rather than a backfill of the confirmed past -- the actual prefix "
+        "property this scenario requires."
     ),
 )
 
@@ -231,25 +239,14 @@ _RESOLVED_R2_GAP_IDS = frozenset(
     }
 )
 
-_G438_REPLACEMENT_R2 = GapItem(
-    gap_id="G-438-REPLAY-R2",
-    title="A0-X01/X02 need a real independent-oracle replay, not missing artifacts",
-    owner="#437/#438 owner (Apex Research / Strategy Workspace)",
-    blocks=("A0-X01", "A0-X02"),
-    remediation=(
-        "Run the T04 independent oracle fixtures "
-        "(tests/fixtures/a0-ema-crossback/) against the real, current strategy "
-        "implementation and publish the replay result with an exact digest, "
-        "distinguishing it from the domain tests already written alongside the "
-        "implementation. G-434-RULES, G-437-ORACLE and the original G-438-STRATEGY "
-        "are resolved (see G438_CORRECTION_NOTE): the rule, oracle and strategy are "
-        "all real, committed, owner-approved artifacts."
-    ),
-)
+# G-438-REPLAY-R2 (the narrower "artifacts are real, replay unexecuted" gap this
+# rollup drafted first) is itself now resolved: williamxhero/Quant-Research#471
+# ran the real replay for both A0-X01 and A0-X02. G-434-RULES/G-437-ORACLE/the
+# original G-438-STRATEGY were already resolved (see G438_CORRECTION_NOTE), so
+# none of the three "rule/oracle/strategy" gaps carry forward into GAPS_R2.
 
-GAPS_R2: tuple[GapItem, ...] = (
-    *(gap for gap in _r1.GAPS if gap.gap_id not in _RESOLVED_R2_GAP_IDS),
-    _G438_REPLACEMENT_R2,
+GAPS_R2: tuple[GapItem, ...] = tuple(
+    gap for gap in _r1.GAPS if gap.gap_id not in _RESOLVED_R2_GAP_IDS
 )
 
 # ---------------------------------------------------------------------------
@@ -295,7 +292,7 @@ def engineering_report_r2() -> dict[str, object]:
 
 def rule_implementation_report_r2() -> dict[str, object]:
     return {
-        "conclusion": "artifacts_real_replay_pending",
+        "conclusion": "concluded_pass",
         "summary": (
             "Corrected from #443's 'cannot_be_concluded': A0-B0-RULES (#434), "
             "A0-FIXTURES-ORACLE (#437) and A0-REFERENCE-STRATEGY (#438) are all real, "
@@ -303,20 +300,27 @@ def rule_implementation_report_r2() -> dict[str, object]:
             "2026-09-14). #443's claim that no reference strategy exists in any "
             "checked-out repository was a false negative caused by searching only "
             "*/src/ paths; the real implementation lives at "
-            "strategy-workspace/strategies/equity/a0-ema-crossback/. What remains "
-            "unconcluded is narrower: the T04-independent oracle replay against this "
-            "real strategy has not been run and verified in this rollup, so A0-X01 "
-            "and A0-X02 stay unpassed on that specific, smaller basis."
+            "strategy-workspace/strategies/equity/a0-ema-crossback/. The "
+            "T04-independent oracle (fixture_inputs.json / expected_traces.json) was "
+            "then actually executed against that real, current strategy for the "
+            "first time (williamxhero/Quant-Research#471) -- A0-X01's shape trace "
+            "and exact volume-boundary operands (74/75/76) and A0-X02's "
+            "prefix-property append sequence both matched the independently-authored "
+            "oracle. Rule implementation correctness can now be concluded: pass."
         ),
         "b0_frozen": "artifacts_real_formal_b0_sign_off_not_separately_declared",
         "b1_frozen": True,
         "scenarios_without_any_evidence": (),
-        "scenarios_pending_independent_replay": ("A0-X01", "A0-X02"),
-        "blocking_gaps": ("G-438-REPLAY-R2",),
+        "scenarios_pending_independent_replay": (),
+        "blocking_gaps": (),
         "correction": G438_CORRECTION_NOTE,
         "not_claimed": (
-            "that A0-X01/X02 pass",
-            "that a formal B0 governance sign-off was declared by an owner in this rollup",
+            "that a formal B0 governance sign-off was declared by an owner in this rollup "
+            "(the constituent artifacts are real and owner-approved individually; no single "
+            "explicit 'B0 is frozen' declaration was made here)",
+            "that every one of A0-X01's twelve named subprobes was individually re-derived "
+            "as its own cited assertion, beyond the shape trace and volume-boundary operands "
+            "the replay covers",
         ),
     }
 
@@ -420,9 +424,9 @@ def final_rollup_readback_r2() -> dict[str, object]:
         "supersedes": SUPERSEDES,
         "baseline": R2_BASELINE_COMMIT,
         "corrections_summary": (
-            "A0-E01, A0-E02 and A0-E03 moved from unproven to executed/passed with real "
-            "evidence (22/27, up from 19/27). #443's own G-438-STRATEGY false negative "
-            "is named and corrected. A0-X01/X02 remain unpassed on a narrower, real basis."
+            "A0-E01, A0-E02, A0-E03, A0-X01 and A0-X02 all moved from unproven to "
+            "executed/passed with real evidence (24/27, up from 19/27). #443's own "
+            "G-438-STRATEGY false negative is named and corrected."
         ),
         "scenarios": [record.as_dict() for record in A0_SCENARIOS_R2],
         "gaps": [gap.as_dict() for gap in GAPS_R2],
@@ -434,15 +438,16 @@ def final_rollup_readback_r2() -> dict[str, object]:
         "research_qualification_report": research_qualification_report_r2(),
         "sign_off": "qualified_with_declared_boundaries",
         "sign_off_reason": (
-            "22 of 27 scenarios pass with evidence of the required type (up from "
-            "19/27 at #443's baseline). A0-E01, A0-E02 and A0-E03 -- the three most "
-            "consequential scenarios to launder -- all now carry real, connected, "
-            "in-repo-checkable evidence rather than a claim. A0-X01, A0-X02 and "
-            "A0-L03 remain unpassed for real, declared reasons; A0-G01 and A0-V01 "
-            "remain executed-but-type-mismatched, unchanged from #443. Research: a "
-            "real finding is published (the volume-contraction filter as specified "
-            "eliminates the strategy). Research qualification: qualified, with the "
-            "PIT/lineage policy waiver and the pending formal-statistics-layer "
+            "24 of 27 scenarios pass with evidence of the required type (up from "
+            "19/27 at #443's baseline). A0-E01, A0-E02, A0-E03, A0-X01 and A0-X02 -- "
+            "the five scenarios most damaging to launder or most consequential to "
+            "leave undone -- all now carry real, connected, in-repo-checkable "
+            "evidence rather than a claim. Only A0-L03 (cited owner evidence, by "
+            "design) and A0-G01/A0-V01 (executed but type-mismatched, unchanged from "
+            "#443) remain unpassed. Research: a real finding is published (the "
+            "volume-contraction filter as specified eliminates the strategy). "
+            "Research qualification: qualified, with the PIT/lineage policy waiver "
+            "and the pending formal-statistics-layer "
             "compatibility gap both declared rather than hidden."
         ),
     }

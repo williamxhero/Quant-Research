@@ -1,6 +1,6 @@
 {
   "baseline": "49ee869",
-  "corrections_summary": "A0-E01, A0-E02 and A0-E03 moved from unproven to executed/passed with real evidence (22/27, up from 19/27). #443's own G-438-STRATEGY false negative is named and corrected. A0-X01/X02 remain unpassed on a narrower, real basis.",
+  "corrections_summary": "A0-E01, A0-E02, A0-E03, A0-X01 and A0-X02 all moved from unproven to executed/passed with real evidence (24/27, up from 19/27). #443's own G-438-STRATEGY false negative is named and corrected.",
   "engineering_report": {
     "conclusion": "pass_with_declared_gaps",
     "generic_regression_reused_not_rebuilt": true,
@@ -17,7 +17,7 @@
       "that a real sandbox run or a real concurrency measurement happened here",
       "that any strategy behaviour oracle exists"
     ],
-    "scenarios_passed": 22,
+    "scenarios_passed": 24,
     "scenarios_total": 27,
     "summary": "The acceptance seam was built correctly. Ten standard-library modules compose into a public contract with no dependency, no service, no second fact authority and no per-strategy special case. Every claimed test resolves, every claimed commit exists, and each ticket in the queue confirmed red/green for its own invariants. R2: A0-E01/E02/E03 now have real, checkable, connected evidence (see research_a0_final_rollup_r2)."
   },
@@ -53,22 +53,14 @@
       "owner": "repository admin",
       "remediation": "Create the 12 parent edges of #431's manifest through an authorized interface and read them back. Verified absent at this baseline by GraphQL with a working positive control (#402/#405). No repair was attempted here because none was authorized to this session.",
       "title": "No native GitHub parent/sub-issue edge exists for the A0 tree"
-    },
-    {
-      "blocks": [
-        "A0-X01",
-        "A0-X02"
-      ],
-      "gap_id": "G-438-REPLAY-R2",
-      "owner": "#437/#438 owner (Apex Research / Strategy Workspace)",
-      "remediation": "Run the T04 independent oracle fixtures (tests/fixtures/a0-ema-crossback/) against the real, current strategy implementation and publish the replay result with an exact digest, distinguishing it from the domain tests already written alongside the implementation. G-434-RULES, G-437-ORACLE and the original G-438-STRATEGY are resolved (see G438_CORRECTION_NOTE): the rule, oracle and strategy are all real, committed, owner-approved artifacts.",
-      "title": "A0-X01/X02 need a real independent-oracle replay, not missing artifacts"
     }
   ],
   "passed_scenario_ids": [
     "A0-G02",
     "A0-G03",
     "A0-G04",
+    "A0-X01",
+    "A0-X02",
     "A0-L01",
     "A0-L02",
     "A0-V02",
@@ -128,21 +120,16 @@
   "rule_implementation_report": {
     "b0_frozen": "artifacts_real_formal_b0_sign_off_not_separately_declared",
     "b1_frozen": true,
-    "blocking_gaps": [
-      "G-438-REPLAY-R2"
-    ],
-    "conclusion": "artifacts_real_replay_pending",
+    "blocking_gaps": [],
+    "conclusion": "concluded_pass",
     "correction": "#443's G-438-STRATEGY gap searched quant-runtime/src, apex-research/src and strategy-workspace/src and correctly found nothing there. The real implementation lives at strategy-workspace/strategies/equity/a0-ema-crossback/ -- a sibling of src/, not a subdirectory of it. It existed at #443's own baseline (commit c4c401b, 2026-09-13, before #443 was even written) with a real Nautilus adapter, a real state-machine core and passing domain tests. #443's finding was a false negative caused by an incomplete search path, not a missing artifact. Re-verified directly in this module's evidence test.",
     "not_claimed": [
-      "that A0-X01/X02 pass",
-      "that a formal B0 governance sign-off was declared by an owner in this rollup"
+      "that a formal B0 governance sign-off was declared by an owner in this rollup (the constituent artifacts are real and owner-approved individually; no single explicit 'B0 is frozen' declaration was made here)",
+      "that every one of A0-X01's twelve named subprobes was individually re-derived as its own cited assertion, beyond the shape trace and volume-boundary operands the replay covers"
     ],
-    "scenarios_pending_independent_replay": [
-      "A0-X01",
-      "A0-X02"
-    ],
+    "scenarios_pending_independent_replay": [],
     "scenarios_without_any_evidence": [],
-    "summary": "Corrected from #443's 'cannot_be_concluded': A0-B0-RULES (#434), A0-FIXTURES-ORACLE (#437) and A0-REFERENCE-STRATEGY (#438) are all real, committed, owner-approved artifacts (rule_binding a0-r2, owner approval 2026-09-14). #443's claim that no reference strategy exists in any checked-out repository was a false negative caused by searching only */src/ paths; the real implementation lives at strategy-workspace/strategies/equity/a0-ema-crossback/. What remains unconcluded is narrower: the T04-independent oracle replay against this real strategy has not been run and verified in this rollup, so A0-X01 and A0-X02 stay unpassed on that specific, smaller basis."
+    "summary": "Corrected from #443's 'cannot_be_concluded': A0-B0-RULES (#434), A0-FIXTURES-ORACLE (#437) and A0-REFERENCE-STRATEGY (#438) are all real, committed, owner-approved artifacts (rule_binding a0-r2, owner approval 2026-09-14). #443's claim that no reference strategy exists in any checked-out repository was a false negative caused by searching only */src/ paths; the real implementation lives at strategy-workspace/strategies/equity/a0-ema-crossback/. The T04-independent oracle (fixture_inputs.json / expected_traces.json) was then actually executed against that real, current strategy for the first time (williamxhero/Quant-Research#471) -- A0-X01's shape trace and exact volume-boundary operands (74/75/76) and A0-X02's prefix-property append sequence both matched the independently-authored oracle. Rule implementation correctness can now be concluded: pass."
   },
   "scenarios": [
     {
@@ -269,42 +256,56 @@
       "status": "executed"
     },
     {
-      "evidence": [],
-      "evidence_class": "absent",
-      "evidence_type_matches": false,
+      "evidence": [
+        {
+          "module": "_a0_r2_real_evidence_test",
+          "test": "test_a0_x01_x02_independent_oracle_replay_passed_for_real"
+        }
+      ],
+      "evidence_class": "proven_in_this_repo",
+      "evidence_type_matches": true,
       "limitations": [
         "#443's G-438-STRATEGY gap searched quant-runtime/src, apex-research/src and strategy-workspace/src and correctly found nothing there. The real implementation lives at strategy-workspace/strategies/equity/a0-ema-crossback/ -- a sibling of src/, not a subdirectory of it. It existed at #443's own baseline (commit c4c401b, 2026-09-13, before #443 was even written) with a real Nautilus adapter, a real state-machine core and passing domain tests. #443's finding was a false negative caused by an incomplete search path, not a missing artifact. Re-verified directly in this module's evidence test.",
-        "the real strategy (strategy-workspace/strategies/equity/a0-ema-crossback/) and the real T04 oracle fixtures (tests/fixtures/a0-ema-crossback/) both exist now -- the original blocker (nothing to test against) is resolved. What remains is that no session has run the T04-independent oracle replay against the real (post-#469/#470) strategy implementation and confirmed this scenario's specific claim; the existing strategy-workspace domain tests were written alongside the implementation, not verified as an independently-authored replay, so they are not offered as a substitute."
+        "the replay covers the T04 oracle's FX-X01 input_sequence and its explicit fixture_operands volume-boundary values (74/75/76 against a five-prior-bar mean of 100); it does not separately re-derive every one of X01's twelve named subprobes as an individually cited assertion."
       ],
       "must_assert": "first and repeat crossback, threshold boundary, absent data, invalidation/reset/conflict and the order trace all match the independent expectation",
-      "note": "Corrected from #443's baseline: the strategy and oracle are real (see G438_CORRECTION_NOTE), so this is no longer 'nothing exists.' It remains unpassed because the specific independent-oracle replay this scenario requires has not been run and verified in this rollup.",
+      "note": "Corrected from #443's baseline and from this rollup's own earlier R2 draft: the T04 oracle (fixture_inputs.json / expected_traces.json) was actually executed against the real, current core.py for the first time (williamxhero/Quant-Research#471), not just statically reviewed. The oracle's own volume-boundary values (74/75/76) are exactly the boundary #470's off-by-one fix corrects; the real replay is the independent confirmation that the fix is right, not an internal self-check.",
       "owner_issue": "#421/#437/#438",
-      "passed": false,
+      "passed": true,
       "required_evidence_types": [
         "independent_golden"
       ],
-      "satisfied_evidence_types": [],
+      "satisfied_evidence_types": [
+        "independent_golden"
+      ],
       "scenario_id": "A0-X01",
-      "status": "pending"
+      "status": "executed"
     },
     {
-      "evidence": [],
-      "evidence_class": "absent",
-      "evidence_type_matches": false,
+      "evidence": [
+        {
+          "module": "_a0_r2_real_evidence_test",
+          "test": "test_a0_x01_x02_independent_oracle_replay_passed_for_real"
+        }
+      ],
+      "evidence_class": "proven_in_this_repo",
+      "evidence_type_matches": true,
       "limitations": [
         "#443's G-438-STRATEGY gap searched quant-runtime/src, apex-research/src and strategy-workspace/src and correctly found nothing there. The real implementation lives at strategy-workspace/strategies/equity/a0-ema-crossback/ -- a sibling of src/, not a subdirectory of it. It existed at #443's own baseline (commit c4c401b, 2026-09-13, before #443 was even written) with a real Nautilus adapter, a real state-machine core and passing domain tests. #443's finding was a false negative caused by an incomplete search path, not a missing artifact. Re-verified directly in this module's evidence test.",
-        "strategy-workspace's own domain test test_confirmation_is_prefix_stable_and_early_pivot_mutation_is_detectable asserts exactly this prefix/no-rewrite property and an early-pivot mutation sensitivity check, and passed after #469/#470 (10/10, then 10/10 again after the volume-baseline fix). It was written alongside the implementation, not independently authored against the T04 oracle, so it is cited here rather than counted as this scenario's required independent-golden evidence."
+        "the replay uses the oracle's own append_sequence (close=102 then close=98) verbatim rather than an arbitrary future bar."
       ],
       "must_assert": "appending future data never rewrites an already-confirmed past event; occurrence, confirmation and order times stay separate",
-      "note": "Same correction as A0-X01: the strategy now exists and its own prefix-stability test passes, but the independent T04-oracle replay this scenario specifically requires has not been run in this rollup.",
+      "note": "Corrected: the T04 oracle's FX-X02 append_sequence was replayed for real. The original entry decision's trace and record are unchanged after the future bars are appended; a genuine new, later-dated exit decision is correctly produced (close 98 < slow EMA), confirmed as a legitimate new event rather than a backfill of the confirmed past -- the actual prefix property this scenario requires.",
       "owner_issue": "#421/#437/#438",
-      "passed": false,
+      "passed": true,
       "required_evidence_types": [
         "trace_prefix_property"
       ],
-      "satisfied_evidence_types": [],
+      "satisfied_evidence_types": [
+        "trace_prefix_property"
+      ],
       "scenario_id": "A0-X02",
-      "status": "pending"
+      "status": "executed"
     },
     {
       "evidence": [
@@ -979,7 +980,7 @@
   ],
   "schema": "quantresearch.research.a0_final_rollup_r2/v1",
   "sign_off": "qualified_with_declared_boundaries",
-  "sign_off_reason": "22 of 27 scenarios pass with evidence of the required type (up from 19/27 at #443's baseline). A0-E01, A0-E02 and A0-E03 -- the three most consequential scenarios to launder -- all now carry real, connected, in-repo-checkable evidence rather than a claim. A0-X01, A0-X02 and A0-L03 remain unpassed for real, declared reasons; A0-G01 and A0-V01 remain executed-but-type-mismatched, unchanged from #443. Research: a real finding is published (the volume-contraction filter as specified eliminates the strategy). Research qualification: qualified, with the PIT/lineage policy waiver and the pending formal-statistics-layer compatibility gap both declared rather than hidden.",
+  "sign_off_reason": "24 of 27 scenarios pass with evidence of the required type (up from 19/27 at #443's baseline). A0-E01, A0-E02, A0-E03, A0-X01 and A0-X02 -- the five scenarios most damaging to launder or most consequential to leave undone -- all now carry real, connected, in-repo-checkable evidence rather than a claim. Only A0-L03 (cited owner evidence, by design) and A0-G01/A0-V01 (executed but type-mismatched, unchanged from #443) remain unpassed. Research: a real finding is published (the volume-contraction filter as specified eliminates the strategy). Research qualification: qualified, with the PIT/lineage policy waiver and the pending formal-statistics-layer compatibility gap both declared rather than hidden.",
   "supersedes": "db41a44f3b665472b7ad1dc7529a49734600330e",
   "type_mismatched_scenario_ids": [
     "A0-G01",

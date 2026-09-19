@@ -34,21 +34,22 @@ def test_every_named_r2_test_actually_exists() -> None:
 
 
 def test_the_pass_count_moved_from_nineteen_to_twenty_two() -> None:
-    assert len(passed_scenario_ids_r2()) == 22
+    assert len(passed_scenario_ids_r2()) == 24
     assert len(A0_SCENARIOS_R2) == 27
 
 
-def test_x01_x02_still_do_not_pass_and_say_a_narrower_reason() -> None:
+def test_x01_x02_now_pass_via_the_real_oracle_replay() -> None:
     passed = set(passed_scenario_ids_r2())
     for scenario_id in ("A0-X01", "A0-X02"):
         record = scenario_r2(scenario_id)
-        assert scenario_id not in passed
-        assert record.status != "executed" or not record.evidence_type_matches
-        assert any("independent" in text for text in record.limitations)
+        assert scenario_id in passed
+        assert record.status == "executed"
+        assert record.evidence_type_matches
+        assert record.evidence
         assert any("false negative" in text for text in record.limitations)
 
 
-def test_the_six_resolved_gaps_are_gone_and_one_narrower_gap_replaces_three() -> None:
+def test_the_seven_resolved_gaps_are_all_gone() -> None:
     gap_ids = {gap.gap_id for gap in GAPS_R2}
     for resolved in (
         "G-434-RULES",
@@ -59,8 +60,8 @@ def test_the_six_resolved_gaps_are_gone_and_one_narrower_gap_replaces_three() ->
         "G-429-WHEELS",
     ):
         assert resolved not in gap_ids
-    assert "G-438-REPLAY-R2" in gap_ids
-    assert len(GAPS_R2) == 5
+    assert "G-438-REPLAY-R2" not in gap_ids
+    assert len(GAPS_R2) == 4
 
 
 def test_a_not_run_or_type_mismatched_scenario_still_cannot_reach_the_passed_list() -> None:

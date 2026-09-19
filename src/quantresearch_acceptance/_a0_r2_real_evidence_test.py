@@ -71,6 +71,17 @@ def test_a0_e03_real_installed_environment_run_passed_all_twelve() -> None:
     }
 
 
+def test_a0_x01_x02_independent_oracle_replay_passed_for_real() -> None:
+    replay = _load("a0_x01_x02_independent_oracle_replay.json")
+    assert replay["status"] == "executed"
+    assert replay["result"]["outcome"] == "5 passed, 0 failed"
+    assert replay["result"]["a0_x01"]["shape_trace_matches_oracle"] is True
+    assert replay["result"]["a0_x02"]["prefix_property_confirmed"] is True
+    volume_note = replay["result"]["a0_x01"]["volume_boundary_matches_oracle"]
+    assert "current=74" in volume_note and "eligible" in volume_note
+    assert "current=75" in volume_note and "rejected" in volume_note
+
+
 def test_g434_g437_g438_rule_oracle_strategy_artifacts_are_real() -> None:
     """The three tickets #443 found undelivered actually have real content now."""
 
