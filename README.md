@@ -28,9 +28,9 @@ flowchart LR
 |                          |                                                              |                                                              |                                                              |
 | --- | --- | --- | --- |
 | `QuoteMux` / `MarketHub` | provider 接入、聚合缓存、数据版本、覆盖与健康度 | 行情能力与数据修复；正式研究固定使用小电脑 `http://yosef-server:8803` | https://github.com/williamxhero/MarketHub<br />https://github.com/williamxhero/QuoteMux |
-| `strategy-workspace` | Strategy Package、参数合同、canonical request、run/attempt、不可变 record/artifact 和谱系。<br />包含 Strategy Genome、Research Memory 子系统 | 策略实现、参数 Schema、测试、请求样例；不要把研究判断或策略执行写进 Workspace | https://github.com/williamxhero/StrategyWorkspace |
+| `strategy-workspace` | Strategy Package、参数合同、canonical request、run/attempt、不可变 record/artifact 和谱系。 | 策略实现、参数 Schema、测试、请求样例；不要把研究判断或策略执行写进 Workspace | https://github.com/williamxhero/StrategyWorkspace |
 | `quant-runtime` | generated-code sandbox、MarketHub preflight、Qlib discovery、Nautilus 正式执行、benchmark transport、candidate discovery 和 data-change observation | 运行请求；Qlib 结果只能是候选证据，正式订单、成交、账户、持仓和指标只认 Nautilus | https://github.com/williamxhero/QuantRuntime |
-| `apex-research` | Campaign/Orchestrator、Candidate IR、权限预算、quality gates、外部研究接口、统计、Evidence v2、qualification、archives、benchmark、replication 和 revalidation | “为什么研究、下一步做什么、什么证据算通过”的研究设计与跨运行判断；不重算引擎指标 | https://github.com/williamxhero/ApexReseach |
+| `apex-research` | Campaign/Orchestrator、Candidate IR、权限预算、quality gates、外部研究接口、统计、Evidence v2、qualification、archives、benchmark、replication 和 revalidation。包含 Strategy Genome、Research Memory 子系统 | “为什么研究、下一步做什么、什么证据算通过”的研究设计与跨运行判断；不重算引擎指标 | https://github.com/williamxhero/ApexReseach |
 | `strategy-reporting` | 严格 read-model、campaign/replication/revalidation 中文报告、验证、重建和离线 Portal | 面向人的交付；只展示已发布 owner facts，不补算或猜测缺失结论 | https://github.com/williamxhero/StrategyReporting |
 |  |  |  |  |
 |  |  |  |  |
