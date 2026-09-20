@@ -19,7 +19,15 @@ from .core import AcceptanceFailure, AcceptancePlan, AcceptanceSelector
 
 BatchStatus = Literal["pass", "fail", "expected-deny", "blocked", "not_run"]
 _BATCH_ID = re.compile(r"[A-Z][A-Z0-9-]{0,31}")
-_CASE_ID = re.compile(r"A0-[A-Z][0-9]{2}")
+# One family pattern per known batch.  A0 keeps exactly the pattern it has
+# always had, so an A0 batch cannot borrow another family's case ids; G0 adds
+# its own `G0-Tnn` task ids.  An unknown batch id still accepts any known
+# family, which is what the original single pattern did.
+_CASE_ID_FAMILIES = {
+    "A0": re.compile(r"A0-[A-Z][0-9]{2}"),
+    "G0": re.compile(r"G0-T[0-9]{2}"),
+}
+_CASE_ID = re.compile(r"A0-[A-Z][0-9]{2}|G0-T[0-9]{2}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 _STATUSES = ("pass", "fail", "expected-deny", "blocked", "not_run")
@@ -70,12 +78,13 @@ class A0BatchConfig:
         ):
             raise AcceptanceFailure("acceptance batch identity is invalid")
 
+        case_id_pattern = _case_id_pattern(batch_id)
         raw_cases = _list(value.get("required_cases"), "required cases")
-        required_cases = _canonical_case_ids(raw_cases, "required cases")
+        required_cases = _canonical_case_ids(raw_cases, "required cases", case_id_pattern)
         raw_mapping = _mapping(value.get("scenario_to_direct_tests"), "scenario mapping")
         mapping: list[tuple[str, tuple[str, ...]]] = []
         for case_id, raw_tests in sorted(raw_mapping.items()):
-            if _CASE_ID.fullmatch(case_id) is None:
+            if case_id_pattern.fullmatch(case_id) is None:
                 raise AcceptanceFailure(f"scenario id is invalid: {case_id}")
             mapping.append((case_id, _canonical_paths(raw_tests, f"tests for {case_id}")))
         if tuple(case_id for case_id, _tests in mapping) != required_cases:
@@ -355,9 +364,15 @@ def _list(value: object, label: str) -> list[object]:
     return value
 
 
-def _canonical_case_ids(value: list[object], label: str) -> tuple[str, ...]:
+def _case_id_pattern(batch_id: str) -> re.Pattern[str]:
+    return _CASE_ID_FAMILIES.get(batch_id, _CASE_ID)
+
+
+def _canonical_case_ids(
+    value: list[object], label: str, pattern: re.Pattern[str] = _CASE_ID
+) -> tuple[str, ...]:
     if not value or any(
-        not isinstance(item, str) or _CASE_ID.fullmatch(item) is None for item in value
+        not isinstance(item, str) or pattern.fullmatch(item) is None for item in value
     ):
         raise AcceptanceFailure(f"{label} is invalid")
     if value != sorted(set(value)):

@@ -135,3 +135,13 @@ acceptance-scope v2 与既有 selector，但以自己的 revision、fixture dige
 scenario-to-direct-test 映射绑定证据；不会把新批次追加进旧 32-SPEC ledger。批次
 ledger 只接受 `pass`、`fail`、`expected-deny`、`blocked`、`not_run`，其中只有
 `pass` 计入通过数，缺失或非 pass 不会被静默转绿。
+
+case id 按批次分族校验：`A0` 批次仍然只接受 `A0-Xnn`，`G0` 批次只接受 `G0-Tnn`，
+两族不能互借。SPEC #476 的 `G0-v0` 固定流程评估任务集以 batch id `G0`、revision 1
+接入，配置见 `docs/research/g0/g0_acceptance_batch.json`（由
+`research_g0_batch.py` 生成，不手工编辑），fixture binding 绑定 apex-research
+`docs/research/g0/G0-v0.json` 与 `G0-v0-expectations.json` 两份文档的 sha256
+manifest。15 个任务各自指向真实存在的直接测试：复用 A0 场景的任务指向已有的 A0
+oracle 测试，其余指向 `_g0_batch_test.py`。没有直接测试的场景根本无法进入配置，
+因此永远不会被记成 `pass`；在 S4 真正运行之前，全部 15 个任务的上报状态都是
+`not_run`，批次通过数为 0。

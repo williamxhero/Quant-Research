@@ -1,0 +1,79 @@
+{
+  "batch_id": "G0",
+  "fixture_binding": {
+    "fixture_commit": "3f29bf521694d0ab5fc2474bbfc1ca648e74a9d0",
+    "fixture_digest": "sha256:1b763c32aff0f8e962c1f20a58b74fbe0e5c25e91b8c69813a8587d8eb4fc084",
+    "fixture_revision": "G0-v0",
+    "role": "synthetic-test-only"
+  },
+  "required_cases": [
+    "G0-T01",
+    "G0-T02",
+    "G0-T03",
+    "G0-T04",
+    "G0-T05",
+    "G0-T06",
+    "G0-T07",
+    "G0-T08",
+    "G0-T09",
+    "G0-T10",
+    "G0-T11",
+    "G0-T12",
+    "G0-T13",
+    "G0-T14",
+    "G0-T15"
+  ],
+  "revision": 1,
+  "scenario_to_direct_tests": {
+    "G0-T01": [
+      "quantresearch_acceptance/_a0_r2_real_evidence_test.py"
+    ],
+    "G0-T02": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T03": [
+      "quantresearch_acceptance/_a0_r2_real_evidence_test.py"
+    ],
+    "G0-T04": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T05": [
+      "quantresearch_acceptance/_a0_r2_real_evidence_test.py"
+    ],
+    "G0-T06": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T07": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T08": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T09": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T10": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T11": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T12": [
+      "quantresearch_acceptance/_g0_batch_test.py"
+    ],
+    "G0-T13": [
+      "quantresearch_acceptance/_a0_r2_real_evidence_test.py"
+    ],
+    "G0-T14": [
+      "quantresearch_acceptance/_research_decision_test.py",
+      "quantresearch_acceptance/_research_genome_flow_test.py"
+    ],
+    "G0-T15": [
+      "quantresearch_acceptance/_research_decision_test.py",
+      "quantresearch_acceptance/_research_genome_flow_test.py"
+    ]
+  },
+  "schema": "quant-research.acceptance-batch.v1",
+  "scope_revision": "acceptance-scope.v2",
+  "scope_schema": "quant-research.acceptance-scope.v2"
+}
