@@ -16,15 +16,68 @@ quantresearch-acceptance = "quantresearch_acceptance.__main__:main"
 [dependency-groups]
 dev = ["hypothesis>=6.100"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/quantresearch_acceptance"]
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "/README.md",
-  "/pyproject.toml",
-  "/src/quantresearch_acceptance",
+[tool.hatch.build]
+# Shared, exact-file release manifest. Never replace entries with a directory or
+# wildcard: generated Python/JSON may live beside intentional package sources.
+# Keep all public package files, including the shipped acceptance test nodes.
+# Add new intentional package files here; the regression checks against Git's
+# independently tracked package inventory, not this manifest.
+only-include = [
+  "src/quantresearch_acceptance/__init__.py",
+  "src/quantresearch_acceptance/__main__.py",
+  "src/quantresearch_acceptance/_a0_installed_test.py",
+  "src/quantresearch_acceptance/_a0_r2_real_evidence_test.py",
+  "src/quantresearch_acceptance/_a0_round2_real_driver.py",
+  "src/quantresearch_acceptance/_g0_batch_test.py",
+  "src/quantresearch_acceptance/_g0_execution_failure_test.py",
+  "src/quantresearch_acceptance/_installed_test.py",
+  "src/quantresearch_acceptance/_research_a0_final_rollup_r2_test.py",
+  "src/quantresearch_acceptance/_research_a0_final_rollup_test.py",
+  "src/quantresearch_acceptance/_research_a0_round2_test.py",
+  "src/quantresearch_acceptance/_research_ac_matrix_test.py",
+  "src/quantresearch_acceptance/_research_context_test.py",
+  "src/quantresearch_acceptance/_research_currency_test.py",
+  "src/quantresearch_acceptance/_research_decision_test.py",
+  "src/quantresearch_acceptance/_research_exposure_test.py",
+  "src/quantresearch_acceptance/_research_genome_flow_test.py",
+  "src/quantresearch_acceptance/_research_pagination_test.py",
+  "src/quantresearch_acceptance/_research_recovery_test.py",
+  "src/quantresearch_acceptance/_research_visibility_test.py",
+  "src/quantresearch_acceptance/_spec027_installed_test.py",
+  "src/quantresearch_acceptance/architecture.py",
+  "src/quantresearch_acceptance/batch.py",
+  "src/quantresearch_acceptance/cache.py",
+  "src/quantresearch_acceptance/core.py",
+  "src/quantresearch_acceptance/fixtures.py",
+  "src/quantresearch_acceptance/local.py",
+  "src/quantresearch_acceptance/migration.py",
+  "src/quantresearch_acceptance/observability.py",
+  "src/quantresearch_acceptance/research_a0_final_rollup.py",
+  "src/quantresearch_acceptance/research_a0_final_rollup_r2.py",
+  "src/quantresearch_acceptance/research_a0_round2.py",
+  "src/quantresearch_acceptance/research_ac_matrix.py",
+  "src/quantresearch_acceptance/research_context.py",
+  "src/quantresearch_acceptance/research_currency.py",
+  "src/quantresearch_acceptance/research_decision.py",
+  "src/quantresearch_acceptance/research_exposure.py",
+  "src/quantresearch_acceptance/research_g0_batch.py",
+  "src/quantresearch_acceptance/research_genome_flow.py",
+  "src/quantresearch_acceptance/research_pagination.py",
+  "src/quantresearch_acceptance/research_recovery.py",
+  "src/quantresearch_acceptance/research_visibility.py",
+  "src/quantresearch_acceptance/runner.py",
+  "src/quantresearch_acceptance/train.py",
 ]
+
+[tool.hatch.build.targets.wheel]
+sources = ["src"]
+
+[tool.hatch.build.targets.sdist.force-include]
+# Packaging decision: README is the public release documentation. Historical
+# docs/evidence and docs/research remain checkout-only, as before S0-R1; they are
+# not package resources. Preserve README and the build input, not the docs tree.
+"README.md" = "README.md"
+"pyproject.toml" = "pyproject.toml"
 
 [tool.pytest.ini_options]
 addopts = '-m "not slow and not oci and not connected and not release"'
