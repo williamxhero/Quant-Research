@@ -68,6 +68,9 @@ _A0_IDENTITY_TESTS = (
     "quantresearch_acceptance/_research_genome_flow_test.py",
 )
 _G0_CONTRACT_TESTS = ("quantresearch_acceptance/_g0_batch_test.py",)
+_G0_EXECUTION_FAILURE_TESTS = (
+    "quantresearch_acceptance/_g0_execution_failure_test.py",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,7 +230,7 @@ G0_TASKS: tuple[G0Task, ...] = (
         object_reference="Reference-Strategy-v0",
         expected_batch_status="pass",
         a0_scenarios=("A0-E03",),
-        direct_tests=_A0_ORACLE_TESTS,
+        direct_tests=_G0_EXECUTION_FAILURE_TESTS,
         reported_status="not_run",
     ),
     G0Task(

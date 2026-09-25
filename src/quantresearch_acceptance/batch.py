@@ -13,21 +13,20 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from .core import AcceptanceFailure, AcceptancePlan, AcceptanceSelector
 
 BatchStatus = Literal["pass", "fail", "expected-deny", "blocked", "not_run"]
 _BATCH_ID = re.compile(r"[A-Z][A-Z0-9-]{0,31}")
-# One family pattern per known batch.  A0 keeps exactly the pattern it has
-# always had, so an A0 batch cannot borrow another family's case ids; G0 adds
-# its own `G0-Tnn` task ids.  An unknown batch id still accepts any known
-# family, which is what the original single pattern did.
+# Each registered batch owns exactly one case-id family.  Unknown batches are
+# refused rather than inheriting the union of known families.
 _CASE_ID_FAMILIES = {
     "A0": re.compile(r"A0-[A-Z][0-9]{2}"),
     "G0": re.compile(r"G0-T[0-9]{2}"),
 }
-_CASE_ID = re.compile(r"A0-[A-Z][0-9]{2}|G0-T[0-9]{2}")
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 _STATUSES = ("pass", "fail", "expected-deny", "blocked", "not_run")
@@ -191,6 +190,8 @@ class A0BatchSelector:
         batch_tests = {
             test for _case_id, tests in parsed.scenario_to_direct_tests for test in tests
         }
+        if any(not _is_package_test_path(test) for test in batch_tests):
+            raise AcceptanceFailure("A0 scenario mapping names a missing package test")
         if not batch_tests <= scope_tests:
             raise AcceptanceFailure("A0 scenario mapping uses tests outside the scope")
         selected_tests = {test for step in plan.steps for test in step.direct_tests}
@@ -365,11 +366,23 @@ def _list(value: object, label: str) -> list[object]:
 
 
 def _case_id_pattern(batch_id: str) -> re.Pattern[str]:
-    return _CASE_ID_FAMILIES.get(batch_id, _CASE_ID)
+    pattern = _CASE_ID_FAMILIES.get(batch_id)
+    if pattern is None:
+        raise AcceptanceFailure("acceptance batch family is not registered")
+    return pattern
+
+
+def _is_package_test_path(path: str) -> bool:
+    candidate = _PACKAGE_ROOT / path
+    return (
+        path.startswith("quantresearch_acceptance/")
+        and path.endswith("_test.py")
+        and candidate.is_file()
+    )
 
 
 def _canonical_case_ids(
-    value: list[object], label: str, pattern: re.Pattern[str] = _CASE_ID
+    value: list[object], label: str, pattern: re.Pattern[str]
 ) -> tuple[str, ...]:
     if not value or any(
         not isinstance(item, str) or pattern.fullmatch(item) is None for item in value
