@@ -19,6 +19,13 @@ dev = ["hypothesis>=6.100"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/quantresearch_acceptance"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+  "/README.md",
+  "/pyproject.toml",
+  "/src/quantresearch_acceptance",
+]
+
 [tool.pytest.ini_options]
 addopts = '-m "not slow and not oci and not connected and not release"'
 markers = [
