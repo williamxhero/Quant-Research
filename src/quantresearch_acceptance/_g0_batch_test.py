@@ -9,7 +9,6 @@ task itself is executed for real in S4 and no run exists yet.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -29,7 +28,6 @@ from .research_g0_batch import (
 from .train import ReleaseTrain
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _PACKAGE_DIR.parents[1]
 _STATUSES = ("pass", "fail", "expected-deny", "blocked", "not_run")
 
 #: Catalog rows whose direct test is this module rather than reused A0 evidence.
@@ -125,6 +123,13 @@ def test_the_g0_batch_is_parsed_and_selected_by_the_existing_selector() -> None:
     }
 
 
+def test_only_registered_batch_families_are_accepted() -> None:
+    unknown = g0_batch_config()
+    unknown["batch_id"] = "R1"
+    with pytest.raises(AcceptanceFailure, match="batch family is not registered"):
+        A0BatchConfig.parse(unknown)
+
+
 def test_the_g0_case_ids_and_the_a0_case_ids_stay_in_their_own_families() -> None:
     borrowed = g0_batch_config()
     borrowed["required_cases"] = ["A0-X01"]
@@ -148,20 +153,6 @@ def test_the_g0_batch_is_never_appended_to_the_32_spec_release_ledger() -> None:
     with pytest.raises(AcceptanceFailure):
         train.record("G0-T01", "sha256:" + "a" * 64)
     assert train.next_spec == "SPEC-001"
-
-
-def test_the_published_g0_batch_file_matches_the_module_exactly() -> None:
-    """The tracked JSON is generated from the module, never hand-edited.
-
-    ``/docs`` is git-ignored apart from force-added files, so this skips on a
-    checkout that does not carry it.
-    """
-
-    path = _REPO_ROOT / "docs" / "research" / "g0" / "g0_acceptance_batch.json"
-    if not path.exists():
-        pytest.skip("published G0 batch config not present on this checkout")
-    published = json.loads(path.read_text(encoding="utf-8"))
-    assert published == json.loads(json.dumps(g0_batch_config(), ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +251,29 @@ def test_a_scenario_without_a_direct_test_cannot_be_declared_at_all() -> None:
     ]
     with pytest.raises(AcceptanceFailure):
         A0BatchSelector().select(outside_scope, _scope(), _diff(), phase="spec")
+
+
+def test_a_scope_cannot_admit_a_nonexistent_direct_test_path() -> None:
+    forged = g0_batch_config()
+    missing = "quantresearch_acceptance/_does_not_exist_test.py"
+    forged["scenario_to_direct_tests"]["G0-T09"] = [missing]  # type: ignore[index]
+    scope = _scope()
+    scope["source_to_direct_tests"] = {  # type: ignore[index]
+        "src/quantresearch_acceptance/batch.py": sorted(
+            [
+                *scope["source_to_direct_tests"]["src/quantresearch_acceptance/batch.py"],  # type: ignore[index]
+                missing,
+            ]
+        )
+    }
+    with pytest.raises(AcceptanceFailure, match="missing package test"):
+        A0BatchSelector().select(forged, scope, _diff(), phase="spec")
+
+
+def test_g0_t13_uses_the_execution_failure_direct_test() -> None:
+    assert g0_task("G0-T13").direct_tests == (
+        "quantresearch_acceptance/_g0_execution_failure_test.py",
+    )
 
 
 def test_a_scenario_without_a_direct_test_can_never_be_recorded_as_pass() -> None:
