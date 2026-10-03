@@ -7,6 +7,16 @@ envelope or provider boundary from S1-T1.
 
 from .app import ManagerGUIApp, WebRequestState
 from .atlas import ATLAS_INTEGRATION_HOOK, render_atlas_view
+from .comparison import (
+    COMPARISON_INTEGRATION_HOOK,
+    COMPARISON_ROUTE,
+    render_genome_comparison_view,
+)
+from .conditions import (
+    CONDITIONS_INTEGRATION_HOOK,
+    CONDITIONS_ROUTE,
+    render_genome_conditions_view,
+)
 from .documents import (
     ApprovedDirectoryBoundary,
     DocumentIndexState,
@@ -15,6 +25,7 @@ from .documents import (
     SourceDocumentsViewModel,
     render_source_documents_view,
 )
+from .genome import GENOME_INTEGRATION_HOOK, GENOME_ROUTE, render_genome_view
 from .history import (
     HISTORY_SCOPES,
     HistoryEvent,
@@ -49,7 +60,13 @@ from .status import (
 
 __all__ = [
     "ATLAS_INTEGRATION_HOOK",
+    "COMPARISON_INTEGRATION_HOOK",
+    "COMPARISON_ROUTE",
+    "CONDITIONS_INTEGRATION_HOOK",
+    "CONDITIONS_ROUTE",
     "DISPLAY_STATE_LABELS",
+    "GENOME_INTEGRATION_HOOK",
+    "GENOME_ROUTE",
     "HISTORY_SCOPES",
     "METHODOLOGY_INTEGRATION_HOOK",
     "NAVIGATION",
@@ -79,6 +96,9 @@ __all__ = [
     "display_state_for",
     "query_values",
     "render_atlas_view",
+    "render_genome_comparison_view",
+    "render_genome_conditions_view",
+    "render_genome_view",
     "render_history_view",
     "render_methodology_view",
     "render_operational_state",

@@ -364,3 +364,133 @@ def test_s1_page_hooks_reuse_the_shell_read_without_a_second_provider_call() -> 
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_s2_integrated_genome_condition_and_comparison_routes_preserve_context() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    context = (
+        "fixture=complete&panel=events&q=signal&snapshot_token=s2-snapshot"
+        "&genome_id=genome-fixture-1&right_genome_id=genome-right"
+    )
+    genome = app.render(f"/?view=strategies&{context}")
+    assert 'data-integration-hook="strategy-genome-view"' in genome
+    assert 'data-status="known"' in genome
+    assert 'class="read-only-badge"' in genome
+    assert 'id="inspector"' in genome
+    assert 'id="event-drawer"' in genome
+    assert "s2-snapshot" in genome
+    assert "fixture://manager-gui/genomes" in genome
+
+    genome_links = re.findall(
+        r'class="genome-(?:conditions|comparison)-link" href="([^"]+)"', genome
+    )
+    assert len(genome_links) == 2
+    for link in genome_links:
+        query = urlsplit(unescape(link)).query
+        assert "fixture=complete" in query
+        assert "genome_id=genome-fixture-1" in query
+        assert "panel=events" in query
+        assert "q=signal" in query
+        assert "snapshot_token=s2-snapshot" in query
+
+    conditions = app.render(
+        "/?view=strategy-conditions&fixture=complete&genome_id=genome-fixture-1"
+        "&panel=events&q=signal&snapshot_token=s2-snapshot"
+    )
+    assert 'data-integration-hook="strategy-genome-conditions-view"' in conditions
+    assert 'data-condition-group="applicability"' in conditions
+    assert 'data-condition-group="invalidation"' in conditions
+    assert 'data-condition-group="descriptor"' in conditions
+    assert "fixture://manager-gui/genome-conditions" in conditions
+    assert 'class="condition-genome-link"' in conditions
+    assert 'class="condition-comparison-link"' in conditions
+    assert 'class="read-only-badge"' in conditions
+
+    comparison = app.render(
+        "/?view=strategy-genome-comparison&fixture=incomparable"
+        "&left_genome_id=genome-left&right_genome_id=genome-right"
+        "&panel=events&q=signal&snapshot_token=s2-snapshot"
+    )
+    assert 'data-integration-hook="strategy-genome-comparison-view"' in comparison
+    assert 'data-comparison-result="incomparable"' in comparison
+    assert "data_requirements.version" in comparison
+    assert 'class="comparison-left-genome-link"' in comparison
+    assert 'class="comparison-left-conditions-link"' in comparison
+    assert 'class="comparison-right-genome-link"' in comparison
+    assert "s2-snapshot" in comparison
+    assert 'id="inspector"' in comparison
+    assert 'id="event-drawer"' in comparison
+
+
+def test_s2_integrated_fixture_states_keep_empty_partial_and_failures_distinct() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    expected_status = {
+        FixtureState.EMPTY: "missing",
+        FixtureState.COMPLETE: "known",
+        FixtureState.PARTIAL: "known",
+        FixtureState.BLOCKED: "blocked",
+        FixtureState.STALE: "stale",
+        FixtureState.INCOMPARABLE: "incomparable",
+        FixtureState.INTEGRITY_FAILURE: "integrity_failure",
+        FixtureState.API_UNAVAILABLE: "api_unavailable",
+    }
+    for fixture, status in expected_status.items():
+        genome = app.render(f"/?view=strategies&fixture={fixture.value}")
+        conditions = app.render(f"/?view=strategy-conditions&fixture={fixture.value}")
+        assert f'data-status="{status}"' in genome
+        assert f'data-status="{status}"' in conditions
+        assert 'class="read-only-badge"' in genome
+        assert 'id="event-drawer"' in conditions
+        if fixture is FixtureState.EMPTY:
+            assert 'data-display-state="empty"' in genome
+            assert "No Genome records are present in this scope." in genome
+        elif fixture is FixtureState.PARTIAL:
+            assert 'data-display-state="partial"' in genome
+            assert 'data-display-state="partial"' in conditions
+        elif fixture in {
+            FixtureState.BLOCKED,
+            FixtureState.STALE,
+            FixtureState.INCOMPARABLE,
+            FixtureState.INTEGRITY_FAILURE,
+            FixtureState.API_UNAVAILABLE,
+        }:
+            assert 'data-display-state="error"' in genome
+            assert 'data-display-state="error"' in conditions
+
+    comparison = app.render("/?view=strategy-genome-comparison&fixture=incomparable")
+    assert 'data-comparison-result="incomparable"' in comparison
+    assert "Incompatible axes" in comparison
+
+
+def test_s2_integrated_provider_reads_each_route_once_and_exposes_no_mutations() -> None:
+    from manager_gui.web.comparison import build_genome_comparison_fixture
+    from manager_gui.web.conditions import build_conditions_fixture
+    from manager_gui.web.genome import build_genome_fixture
+
+    class CountingProvider:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            self.calls.append((resource, snapshot_token))
+            if resource == "genomes":
+                return build_genome_fixture("complete")
+            if resource == "genome_conditions":
+                return build_conditions_fixture("complete")
+            if resource == "genome_comparison":
+                return build_genome_comparison_fixture("different")
+            return fixture_provider("complete").read(resource, snapshot_token=snapshot_token)
+
+    provider = CountingProvider()
+    app = ManagerGUIApp(provider)
+    app.render("/?view=strategies&fixture=complete&snapshot_token=genome-snapshot")
+    app.render("/?view=strategy-conditions&fixture=complete&snapshot_token=condition-snapshot")
+    app.render("/?view=strategy-genome-comparison&fixture=complete&snapshot_token=comparison-snapshot")
+
+    assert provider.calls == [
+        ("genomes", "genome-snapshot"),
+        ("genome_conditions", "condition-snapshot"),
+        ("genome_comparison", "comparison-snapshot"),
+    ]
+    assert public_provider_methods(provider) == ("read",)
+    assert not FORBIDDEN_PROVIDER_METHODS.intersection(public_provider_methods(provider))

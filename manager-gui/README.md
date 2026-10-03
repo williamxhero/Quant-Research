@@ -36,10 +36,13 @@ uv run --directory manager-gui python -m manager_gui.web --fixture complete --po
 ```
 
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
-Methodology, History, and Source Documents:
+Genome, Genome Conditions, Genome Comparison, Methodology, History, and Source Documents:
 
 - `/?view=atlas&fixture=complete` renders the Atlas hook;
 - `/?view=stories&fixture=complete&mode=evidence` renders the Story hook;
+- `/?view=strategies&fixture=complete&genome_id=genome-fixture-1` renders the Genome hook;
+- `/?view=strategy-conditions&fixture=complete&genome_id=genome-fixture-1` renders condition evidence;
+- `/?view=strategy-genome-comparison&fixture=complete&left_genome_id=genome-left&right_genome_id=genome-right` renders comparison;
 - `/?view=methodology&fixture=complete&scope=A0` renders the versioned method archive;
 - `/?view=history&fixture=complete&scope=S3` renders source-recorded history;
 - `/?view=source-documents&fixture=complete&scope=CPA` renders the approved document index.
@@ -96,6 +99,8 @@ The stable URL query keys are:
 - `mode`: `narrative`, `evidence`, or `timeline` on the Stories route;
 - `page` and `page_size`: bounded presentation pagination for already-read entries;
 - `record_type`, `state`, `date`, `source`, and `availability` on Atlas;
+- `genome_id` on Genome and condition evidence; `left_genome_id` and
+  `right_genome_id` on Genome comparison;
 - `record_id`, `document_id`, `campaign`, `study`, and `strategy_family` are opaque
   object/root context retained by detail and mode links.
 
@@ -114,6 +119,47 @@ owner read. The current public hook contract is:
   mounts `data-integration-hook="history-view"`;
 - `manager_gui.web.documents.render_source_documents_view(provider_or_model, scope=..., boundary=..., base_path=..., query=..., snapshot_token=...)`
   mounts `data-integration-hook="source-documents-view"`.
+
+### S2 Genome route integration / exit evidence for #626
+
+The S2-T3 shell mounts the existing read-only page hooks without replacing the
+shared document chrome or introducing a second envelope:
+
+- `/?view=strategies&fixture=complete&genome_id=genome-fixture-1` mounts
+  `manager_gui.web.genome.render_genome_view` at
+  `data-integration-hook="strategy-genome-view"`;
+- `/?view=strategy-conditions&fixture=complete&genome_id=genome-fixture-1`
+  mounts `manager_gui.web.conditions.render_genome_conditions_view` at
+  `data-integration-hook="strategy-genome-conditions-view"`;
+- `/?view=strategy-genome-comparison&fixture=complete&left_genome_id=genome-left&right_genome_id=genome-right`
+  mounts `manager_gui.web.comparison.render_genome_comparison_view` at
+  `data-integration-hook="strategy-genome-comparison-view"`.
+
+The stable Genome query key is `genome_id`; comparison uses
+`left_genome_id` and `right_genome_id`. Genome detail links retain fixture,
+panel, query, snapshot token, and comparison context when linking to condition
+evidence and comparison. Condition evidence links back to Genome and comparison;
+comparison links back to both Genome identities and left-side condition evidence.
+Published source and lineage locators remain explicit source links, and the
+shared Inspector/raw JSON drawer retains the complete `ManagerReadModel v0`
+envelope including source refs, as-of, snapshot, derivation, availability, and
+errors. No page hook reads private storage or exposes a mutation operation.
+
+S2 integrated fixtures cover complete, empty, partial, blocked, stale,
+incomparable, integrity-failure, and API-unavailable routes. Empty Genome and
+condition scopes render missing/not-recorded semantics; partial records remain
+partial; blocked, stale, incomparable, integrity-failure, and API-unavailable
+states remain distinct. The provider audit verifies one `read` call per mounted
+resource and no publish/propose/retry/delete/retire/revalidate/create/update/
+write method. These checks are the S2 exit evidence for #626; the issue remains
+open until the release owner closes it.
+
+S3's Memory and failure modules remain foundation/read-model consumers and are
+not mounted or changed by S2-T3. S4 can consume the stable Genome source,
+lineage, condition, and comparison hooks through the same v0 read seam; S2-T3
+does not implement an S4 evidence portal. S6 can compose these hooks for future
+search, portal, and accessibility work without changing the route keys or
+introducing page-specific envelopes.
 
 Methodology is the canonical methodology-record surface: usage, results, validity
 evidence, limitations, failure cases, versions, and superseded state are separate
