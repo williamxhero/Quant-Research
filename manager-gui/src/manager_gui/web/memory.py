@@ -1435,6 +1435,27 @@ def _render_subject(subject: MemorySubject) -> str:
     return f'<section class="memory-subject"><h3>Subject identity</h3><dl>{rows}</dl></section>'
 
 
+def _render_entry_cross_layer_links(entry: MemoryEntry, *, context: QueryContext) -> str:
+    """Expose only owner-published failure/pattern identities on the Memory path."""
+
+    failure_id = _first_text(entry.raw, "failure_id", "failure_ref")
+    pattern_id = _first_text(entry.raw, "pattern_id", "pattern_ref")
+    links: list[str] = []
+    if failure_id or pattern_id:
+        # Local import avoids a module cycle: failure_patterns consumes Memory's parser.
+        from .failure_patterns import failure_link
+
+    if failure_id:
+        links.append(
+            f'<a class="memory-failure-link" href="{escape(failure_link(failure_id, query_context=context, view="memory-failures"), quote=True)}">Open Memory failure / lineage</a>'
+        )
+    if pattern_id:
+        links.append(
+            f'<a class="memory-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context), quote=True)}">Open derived pattern</a>'
+        )
+    return f'<p class="memory-cross-layer-links">{" · ".join(links)}</p>' if links else ""
+
+
 def _render_entry_detail(entry: MemoryEntry, *, context: QueryContext) -> str:
     relation_sections = "".join(
         (
@@ -1464,6 +1485,7 @@ def _render_entry_detail(entry: MemoryEntry, *, context: QueryContext) -> str:
         f"</dl>"
         f"{_render_subject(entry.subject)}"
         f"{relation_sections}"
+        f"{_render_entry_cross_layer_links(entry, context=context)}"
         f"{_render_decisions(entry.decisions)}"
         f"{_render_policy(entry.policy)}"
         f'<p><a class="memory-back-link" href="{escape(memory_link(query_context=context), quote=True)}">Back to Memory catalog</a></p>'
