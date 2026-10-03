@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 
 from .models import (
     Availability,
     Derivation,
+    JSONValue,
     ManagerReadModel,
     ReadModelError,
     ReadModelStatus,
@@ -21,6 +23,7 @@ from .models import (
 
 class FixtureState(StrEnum):
     EMPTY = "empty"
+    COMPLETE = "complete"
     PARTIAL = "partial"
     BLOCKED = "blocked"
     STALE = "stale"
@@ -75,6 +78,155 @@ def build_fixture(state: FixtureState | str, *, resource: str = "atlas") -> Mana
             ),
         )
 
+    if selected is FixtureState.COMPLETE:
+        source = _source(
+            "fixture-workspace-campaigns",
+            owner="strategy-workspace",
+            kind="public-record",
+            locator=f"fixture://strategy-workspace/{resource}/campaigns",
+        )
+        if resource == "stories":
+            return ManagerReadModel(
+                data={
+                    "campaign": {"id": "campaign-fixture-1", "title": "Fixture campaign"},
+                    "study": {"id": "study-fixture-1", "title": "Fixture study"},
+                    "strategy_family": {
+                        "id": "family-fixture-1",
+                        "title": "Fixture strategy family",
+                    },
+                    "chapters": {
+                        "intent": [
+                            {
+                                "record_id": "intent-fixture-1",
+                                "title": "Why test the fixture strategy?",
+                                "summary": "Validate the complete fixture-backed research path.",
+                                "source_ref": source.source_id,
+                                "known_at": "2026-10-03T08:00:00Z",
+                            }
+                        ],
+                        "initial_hypothesis": [
+                            {
+                                "record_id": "hypothesis-fixture-1",
+                                "summary": "The fixture path is traceable end to end.",
+                                "outcome": "success",
+                                "source_ref": source.source_id,
+                            }
+                        ],
+                        "research_design": [
+                            {
+                                "record_id": "design-fixture-1",
+                                "title": "Frozen fixture design",
+                                "summary": "Use only the declared public read seam.",
+                            }
+                        ],
+                        "attempts": [
+                            {
+                                "record_id": "run-fixture-1",
+                                "title": "Fixture run",
+                                "summary": "The fixture run completed with explicit provenance.",
+                                "outcome": "success",
+                                "source_ref": source.source_id,
+                                "source_event_time": "2026-10-03T08:30:00Z",
+                                "system_known_at": "2026-10-03T08:31:00Z",
+                            }
+                        ],
+                        "evidence": [
+                            {
+                                "record_id": "evidence-fixture-1",
+                                "title": "Fixture evidence",
+                                "summary": "The source reference is available for inspection.",
+                                "source_ref": source.source_id,
+                            }
+                        ],
+                        "conclusions": [
+                            {
+                                "record_id": "decision-fixture-1",
+                                "title": "Fixture decision",
+                                "summary": "Keep the read-only path as the integration contract.",
+                                "outcome": "success",
+                                "source_ref": source.source_id,
+                            }
+                        ],
+                        "failures": [],
+                        "follow_up": [],
+                    },
+                },
+                source_refs=(source,),
+                as_of="2026-10-03T09:00:00Z",
+                snapshot_token="fixture-complete-v0",
+                derivation=Derivation(kind="direct", inputs=(source.source_id,), version="v0"),
+                availability=Availability(
+                    status=ReadModelStatus.KNOWN,
+                    complete=True,
+                    reason="The complete fixture contains the declared integration path.",
+                ),
+            )
+        return ManagerReadModel(
+            data={
+                "records": [
+                    {
+                        "id": "campaign-fixture-1",
+                        "record_type": "campaign",
+                        "title": "Fixture campaign",
+                        "state": "active",
+                        "changed_at": "2026-10-03T08:00:00Z",
+                        "source": source.source_id,
+                    },
+                    {
+                        "id": "hypothesis-fixture-1",
+                        "record_type": "hypothesis",
+                        "title": "Fixture hypothesis",
+                        "state": "open",
+                        "changed_at": "2026-10-03T08:05:00Z",
+                        "source": source.source_id,
+                        "conclusion_state": "unresolved",
+                    },
+                    {
+                        "id": "candidate-fixture-1",
+                        "record_type": "candidate",
+                        "title": "Fixture candidate",
+                        "state": "ready",
+                        "changed_at": "2026-10-03T08:10:00Z",
+                        "source": source.source_id,
+                        "frontier": True,
+                    },
+                    {
+                        "id": "run-fixture-1",
+                        "record_type": "run",
+                        "title": "Fixture run",
+                        "state": "completed",
+                        "changed_at": "2026-10-03T08:30:00Z",
+                        "source": source.source_id,
+                    },
+                    {"id": "evidence-fixture-1", "record_type": "evidence", "state": "recorded"},
+                    {
+                        "id": "qualification-fixture-1",
+                        "record_type": "qualification",
+                        "state": "pending",
+                    },
+                    {
+                        "id": "replication-fixture-1",
+                        "record_type": "replication",
+                        "state": "planned",
+                    },
+                    {
+                        "id": "revalidation-fixture-1",
+                        "record_type": "revalidation",
+                        "state": "planned",
+                    },
+                ]
+            },
+            source_refs=(source,),
+            as_of="2026-10-03T09:00:00Z",
+            snapshot_token="fixture-complete-v0",
+            derivation=Derivation(kind="direct", inputs=(source.source_id,), version="v0"),
+            availability=Availability(
+                status=ReadModelStatus.KNOWN,
+                complete=True,
+                reason="The complete fixture contains the declared lifecycle records.",
+            ),
+        )
+
     if selected is FixtureState.PARTIAL:
         source = _source(
             "fixture-workspace-campaigns",
@@ -82,11 +234,37 @@ def build_fixture(state: FixtureState | str, *, resource: str = "atlas") -> Mana
             kind="public-record",
             locator=f"fixture://strategy-workspace/{resource}/campaigns",
         )
-        return ManagerReadModel(
-            data={
-                "campaigns": [{"id": "campaign-fixture-1", "title": "Fixture campaign"}],
+        partial_data: dict[str, object]
+        if resource == "stories":
+            partial_data = {
+                "campaign": {"id": "campaign-fixture-1", "title": "Fixture campaign"},
+                "chapters": {
+                    "intent": [
+                        {
+                            "record_id": "intent-fixture-1",
+                            "title": "Partial fixture story",
+                            "summary": (
+                                "The campaign is available, but other story "
+                                "chapters are not in scope."
+                            ),
+                            "source_ref": source.source_id,
+                        }
+                    ]
+                },
+            }
+        else:
+            partial_data = {
+                "campaigns": [
+                    {
+                        "id": "campaign-fixture-1",
+                        "title": "Fixture campaign",
+                        "source": source.source_id,
+                    }
+                ],
                 "runs": [],
-            },
+            }
+        return ManagerReadModel(
+            data=cast(JSONValue, partial_data),
             source_refs=(source,),
             as_of="2026-10-03T00:00:00Z",
             snapshot_token="fixture-partial-v0",

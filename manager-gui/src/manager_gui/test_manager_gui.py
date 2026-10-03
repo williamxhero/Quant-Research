@@ -45,6 +45,7 @@ def test_read_model_serializes_round_trips_and_preserves_provenance() -> None:
 def test_fixtures_cover_every_first_slice_availability_state() -> None:
     expected = {
         "empty": ReadModelStatus.MISSING,
+        "complete": ReadModelStatus.KNOWN,
         "partial": ReadModelStatus.KNOWN,
         "blocked": ReadModelStatus.BLOCKED,
         "stale": ReadModelStatus.STALE,

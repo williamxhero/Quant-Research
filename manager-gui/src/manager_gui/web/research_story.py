@@ -716,7 +716,7 @@ class ResearchStoryViewModel:
             f'<section class="research-story" data-integration-hook="research-story-view" '
             f'data-story-mode="{self.mode.value}" data-story-root="{escape(root_label, quote=True)}">'
             f'<header class="research-story-header"><p class="eyebrow">Research Story</p>'
-            f"<h1>{escape(root_label)}</h1>{_render_root_context(self.root)}"
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(root_label)}</h1>{_render_root_context(self.root)}'
             f'<nav class="story-mode-nav" aria-label="Research Story reading mode">{mode_links}</nav></header>'
             f"{render_status_block(self.model)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'

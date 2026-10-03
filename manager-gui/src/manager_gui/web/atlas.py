@@ -61,6 +61,10 @@ _CONTEXT_ORDER: tuple[str, ...] = (
     "date",
     "source",
     "availability",
+    "campaign",
+    "study",
+    "strategy_family",
+    "mode",
     "record_id",
 )
 
@@ -514,6 +518,22 @@ def _record_link(record: AtlasRecord, query_context: QueryContext) -> str:
     return atlas_link(record.record_id, query_context=query_context)
 
 
+def _story_link(record: AtlasRecord, query_context: QueryContext) -> str:
+    """Link an Atlas object into the shared Research Story route."""
+
+    pairs = [
+        (key, value)
+        for key, value in _query_pairs(query_context)
+        if key not in {"view", "record_id", "mode"}
+    ]
+    pairs.append(("view", "stories"))
+    pairs.append(("record_id", record.record_id))
+    if record.record_type in {"campaign", "study", "strategy_family"}:
+        pairs.append((record.record_type, record.record_id))
+    query = _stable_query(pairs)
+    return "/?" + query if query else "/?view=stories"
+
+
 def _render_record(record: AtlasRecord, *, query_context: QueryContext) -> str:
     state = (
         f'<span class="atlas-record-state">{escape(record.state)}</span>' if record.state else ""
@@ -532,6 +552,8 @@ def _render_record(record: AtlasRecord, *, query_context: QueryContext) -> str:
         f'<li class="atlas-record" data-record-id="{escape(record.record_id, quote=True)}" '
         f'data-record-type="{escape(record.record_type, quote=True)}">'
         f'<a href="{escape(_record_link(record, query_context), quote=True)}">{escape(record.title)}</a>'
+        f'<a class="atlas-story-link" data-record-story="{escape(record.record_id, quote=True)}" '
+        f'href="{escape(_story_link(record, query_context), quote=True)}">Open Research Story</a>'
         f"{meta_markup}</li>"
     )
 
@@ -655,7 +677,7 @@ def render_atlas(
     pieces = [
         '<div class="atlas-page" data-integration-hook="atlas-view">',
         '<p class="eyebrow">Atlas overview · read-only</p>',
-        '<h1 class="page-title">Atlas</h1>',
+        '<h1 class="page-title" data-page-title tabindex="-1">Atlas</h1>',
         '<p class="page-intro">Navigate the research lifecycle from Campaign through Revalidation. '
         "Counts describe recorded objects only; they do not establish success, ranking, or advice.</p>",
         f'<p class="context-line atlas-context"><span><strong>Observed</strong> {escape(observed)}</span>'

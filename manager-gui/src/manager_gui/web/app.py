@@ -14,7 +14,9 @@ from ..fixtures import FixtureState, fixture_provider
 from ..models import ManagerReadModel
 from ..provider import ManagerDataProvider
 from .assets import CSS, JS
+from .atlas import render_atlas_view
 from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item
+from .research_story import StoryMode, render_research_story
 from .status import render_status_block
 
 
@@ -26,6 +28,8 @@ class WebRequestState:
     fixture: FixtureState
     query: str
     panel: str | None
+    mode: StoryMode = StoryMode.NARRATIVE
+    context: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_url(cls, url: str, *, default_fixture: FixtureState) -> WebRequestState:
@@ -34,6 +38,7 @@ class WebRequestState:
         raw_view = values.get("view", [ViewId.ATLAS.value])[0]
         raw_fixture = values.get("fixture", [default_fixture.value])[0]
         raw_panel = values.get("panel", [""])[0]
+        raw_mode = values.get("mode", [StoryMode.NARRATIVE.value])[0]
         try:
             view = ViewId(raw_view)
         except ValueError:
@@ -43,12 +48,54 @@ class WebRequestState:
         except ValueError:
             fixture = default_fixture
         panel = raw_panel if raw_panel in {"inspector", "events"} else None
+        try:
+            mode = StoryMode(raw_mode)
+        except ValueError:
+            mode = StoryMode.NARRATIVE
         return cls(
             view=view,
             fixture=fixture,
             query=values.get("q", [""])[0].strip(),
             panel=panel,
+            mode=mode,
+            context=tuple(sorted(
+                (key, entries[0]) for key, entries in values.items()
+                if key not in {"view", "fixture", "panel", "q", "mode"}
+            )),
         )
+
+    def query_pairs(self, *, view: ViewId | None = None) -> tuple[tuple[str, str], ...]:
+        """Canonical shared links/forms retain page-local opaque context."""
+
+        values = dict(self.context)
+        values.update(view=(view or self.view).value, fixture=self.fixture.value)
+        if self.query:
+            values["q"] = self.query
+        if self.panel:
+            values["panel"] = self.panel
+        destination = view or self.view
+        if destination is ViewId.STORIES:
+            values["mode"] = self.mode.value
+        return tuple(sorted(values.items()))
+
+    def url(self, *, view: ViewId | None = None) -> str:
+        return "/?" + urlencode(self.query_pairs(view=view))
+
+
+@dataclass(frozen=True, slots=True)
+class _CachedReadProvider:
+    """Adapt the already-read envelope to a page hook without a second read."""
+
+    model: ManagerReadModel
+
+    def read(
+        self,
+        resource: str = "atlas",
+        *,
+        snapshot_token: str | None = None,
+    ) -> ManagerReadModel:
+        del resource, snapshot_token
+        return self.model
 
 
 class ManagerGUIApp:
@@ -77,8 +124,8 @@ class ManagerGUIApp:
     def read_model(self, state: WebRequestState) -> ManagerReadModel:
         """Read through the T1 seam; this method intentionally has no writes."""
 
-        provider = self._provider or fixture_provider(state.fixture)
-        return provider.read(state.view.value)
+        provider = self._provider if self._provider is not None else fixture_provider(state.fixture)
+        return provider.read(state.view.value, snapshot_token=dict(state.context).get("snapshot_token"))
 
     def render(self, url: str = "/") -> str:
         """Render a complete HTML document for the shell route."""
@@ -86,13 +133,33 @@ class ManagerGUIApp:
         state = self.request_state(url)
         model = self.read_model(state)
         item = navigation_item(state.view)
-        return self._render_document(state, model, item)
+        page = self._render_page(state, model, url)
+        return self._render_document(state, model, item, page)
 
     def render_json(self, url: str = "/") -> str:
         """Return the current envelope for a future client-side integration."""
 
         state = self.request_state(url)
         return self.read_model(state).to_json(indent=2)
+
+    @staticmethod
+    def _render_page(state: WebRequestState, model: ManagerReadModel, url: str) -> str | None:
+        """Mount an S1 page hook while leaving all shell chrome in this app."""
+
+        if state.view is ViewId.ATLAS:
+            return render_atlas_view(
+                _CachedReadProvider(model),
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+            )
+        if state.view is ViewId.STORIES:
+            return render_research_story(
+                model,
+                mode=state.mode,
+                base_path=url,
+                query=url,
+            )
+        return None
 
     @staticmethod
     def _render_source_refs(model: ManagerReadModel) -> str:
@@ -111,6 +178,7 @@ class ManagerGUIApp:
         state: WebRequestState,
         model: ManagerReadModel,
         item: NavigationItem,
+        page: str | None,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
         inspector_hidden = " hidden" if state.panel == "events" else ""
@@ -120,6 +188,24 @@ class ManagerGUIApp:
         query_value = escape(state.query, quote=True)
         state_value = escape(state.fixture.value, quote=True)
         panel_text = "Events & raw JSON"
+        if page is None:
+            page_markup = f"""
+      <p class="eyebrow">Shared shell · fixture-backed</p>
+      <h1 class="page-title" data-page-title tabindex="-1">{escape(item.label)}</h1>
+      <p class="page-intro">{escape(item.description)} This slice provides orientation and provenance only;
+        domain pages attach through the public read-model hook.</p>
+      <p class="context-line"><span><strong>View</strong> {escape(state.view.value)}</span>
+        <span><strong>Fixture</strong> {escape(state.fixture.value)}</span>
+        <span><strong>Observed</strong> {escape(as_of)}</span></p>
+      {render_status_block(model)}
+      <section class="hook-surface" data-integration-hook="{escape(item.integration_hook)}">
+        <h2>Integration point ready</h2>
+        <p>This placeholder deliberately does not infer owner facts. A future view can consume the
+          same <code>ManagerReadModel v0</code> envelope and keep this shell, inspector, and event drawer.</p>
+        <span class="hook-label">hook: {escape(item.integration_hook)}</span>
+      </section>"""
+        else:
+            page_markup = page
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -151,20 +237,7 @@ class ManagerGUIApp:
   <nav class="nav-strip" aria-label="Manager GUI sections">{ManagerGUIApp._render_navigation_static(state)}</nav>
   <div class="workspace">
     <main id="main-content" class="main-column" tabindex="-1">
-      <p class="eyebrow">Shared shell · fixture-backed</p>
-      <h1 class="page-title" data-page-title tabindex="-1">{escape(item.label)}</h1>
-      <p class="page-intro">{escape(item.description)} This slice provides orientation and provenance only;
-        domain pages attach through the public read-model hook.</p>
-      <p class="context-line"><span><strong>View</strong> {escape(state.view.value)}</span>
-        <span><strong>Fixture</strong> {escape(state.fixture.value)}</span>
-        <span><strong>Observed</strong> {escape(as_of)}</span></p>
-      {render_status_block(model)}
-      <section class="hook-surface" data-integration-hook="{escape(item.integration_hook)}">
-        <h2>Integration point ready</h2>
-        <p>This placeholder deliberately does not infer owner facts. A future view can consume the
-          same <code>ManagerReadModel v0</code> envelope and keep this shell, inspector, and event drawer.</p>
-        <span class="hook-label">hook: {escape(item.integration_hook)}</span>
-      </section>
+      {page_markup}
       <div class="panel-actions" aria-label="Shared panels">
         <button class="panel-button" type="button" data-panel-target="inspector">Open inspector</button>
         <button class="panel-button" type="button" data-panel-target="events">Open {panel_text.lower()}</button>
@@ -193,16 +266,19 @@ class ManagerGUIApp:
 
     @staticmethod
     def _static_link(state: WebRequestState) -> str:
-        return "/?" + urlencode({"view": ViewId.ATLAS.value, "fixture": state.fixture.value})
+        return state.url(view=ViewId.ATLAS)
 
     @staticmethod
     def _render_navigation_static(state: WebRequestState) -> str:
+        context = [
+            (key, value)
+            for key, value in state.query_pairs()
+            if key not in {"view", "fixture"}
+        ]
         links = []
         for item in NAVIGATION:
             current = item.view_id is state.view
-            href_values = {"view": item.view_id.value, "fixture": state.fixture.value}
-            if state.query:
-                href_values["q"] = state.query
+            href_values = [("view", item.view_id.value), ("fixture", state.fixture.value), *context]
             href = "/?" + urlencode(href_values)
             links.append(
                 f'<a class="nav-link" data-nav-link href="{escape(href, quote=True)}" '
