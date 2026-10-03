@@ -494,3 +494,170 @@ def test_s2_integrated_provider_reads_each_route_once_and_exposes_no_mutations()
     ]
     assert public_provider_methods(provider) == ("read",)
     assert not FORBIDDEN_PROVIDER_METHODS.intersection(public_provider_methods(provider))
+
+
+def test_s3_integrated_memory_and_failure_routes_preserve_context_and_lineage() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    context = (
+        "fixture=complete&panel=events&q=data-gate&snapshot_token=s3-snapshot"
+        "&family=memory-family-fixture-1&failure_category=data_blocker"
+    )
+    memory = app.render(f"/?view=memory&{context}&memory_id=memory-fixture-1")
+    assert 'data-integration-hook="memory-view"' in memory
+    assert 'data-memory-authority="formal_research_memory"' in memory
+    assert 'data-status="known"' in memory
+    assert 'class="read-only-badge"' in memory
+    assert 'id="inspector"' in memory and 'id="event-drawer"' in memory
+    assert "Formal data-gate failure memory" in memory
+    assert "Open Memory failure / lineage" in memory
+    assert "Open derived pattern" in memory
+    assert "fixture=complete" in unescape(memory)
+    assert "snapshot_token=s3-snapshot" in unescape(memory)
+
+    failures = app.render(
+        f"/?view=memory-failures&{context}&failure_id=memory-fixture-1"
+    )
+    assert 'data-integration-hook="failure-patterns-view"' in failures
+    assert 'data-memory-layer="formal-research-memory"' in failures
+    assert 'data-lineage-coverage="complete"' in failures
+    for target in (
+        "fixture://manager-gui/campaign/campaign-fixture-1",
+        "fixture://manager-gui/run/run-fixture-1",
+        "fixture://manager-gui/evidence/evidence-fixture-1",
+        "fixture://manager-gui/source-document/document-fixture-1",
+    ):
+        assert target in failures
+    assert "snapshot_token=s3-snapshot" in unescape(failures)
+
+    patterns = app.render(f"/?view=failure-patterns&{context}&pattern_id=pattern-fixture-1")
+    assert 'data-integration-hook="failure-patterns-view"' in patterns
+    assert 'data-pattern-status="derived"' in patterns
+    assert "Formal Research Memory" in patterns
+    assert "Ordinary failure records" in patterns
+    assert "Open Memory" in patterns
+    assert "pattern_id=pattern-fixture-1" in unescape(patterns)
+    assert "failure_id=failure-fixture-1" in unescape(patterns)
+
+
+def test_s3_integrated_fixture_states_keep_empty_partial_and_source_failures_distinct() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    expected = {
+        FixtureState.EMPTY: "missing",
+        FixtureState.COMPLETE: "known",
+        FixtureState.PARTIAL: "known",
+        FixtureState.BLOCKED: "blocked",
+        FixtureState.STALE: "stale",
+        FixtureState.INCOMPARABLE: "incomparable",
+        FixtureState.INTEGRITY_FAILURE: "integrity_failure",
+        FixtureState.API_UNAVAILABLE: "api_unavailable",
+    }
+    for fixture, status in expected.items():
+        memory = app.render(f"/?view=memory&fixture={fixture.value}")
+        failures = app.render(f"/?view=failure-patterns&fixture={fixture.value}")
+        assert f'data-status="{status}"' in memory
+        assert f'data-status="{status}"' in failures
+        assert 'class="read-only-badge"' in memory
+        assert 'id="event-drawer"' in failures
+        if fixture is FixtureState.EMPTY:
+            assert 'data-display-state="empty"' in memory
+            assert "No formal Research Memory entries are recorded" in memory
+        elif fixture is FixtureState.PARTIAL:
+            assert "Partial Memory scope" in memory
+            assert 'data-memory-state="not-determined"' not in memory
+        elif fixture in {
+            FixtureState.BLOCKED,
+            FixtureState.STALE,
+            FixtureState.INCOMPARABLE,
+            FixtureState.INTEGRITY_FAILURE,
+            FixtureState.API_UNAVAILABLE,
+        }:
+            assert 'data-memory-empty-state="not-determined"' in memory
+            assert 'data-memory-state="not-determined"' in failures
+
+
+def test_s3_zero_entry_and_missing_lineage_states_are_honest() -> None:
+    from dataclasses import replace
+
+    complete = fixture_provider(FixtureState.COMPLETE).read("memory")
+    zero_entry = replace(
+        complete,
+        data={"memory_entries": [], "failures": [], "derived_patterns": []},
+    )
+
+    class Provider:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            self.calls.append((resource, snapshot_token))
+            return zero_entry
+
+    provider = Provider()
+    app = ManagerGUIApp(provider)
+    memory = app.render("/?view=memory&fixture=complete&panel=events&q=zero")
+    failures = app.render("/?view=memory-failures&fixture=complete&panel=events&q=zero")
+    assert 'data-memory-empty="true"' in memory
+    assert "No Research Memory entries are recorded" in memory
+    assert "not evidence that Memory is empty" not in memory
+    assert 'data-memory-state="empty"' in failures
+    assert "No formal Research Memory entries are recorded" in failures
+    assert provider.calls == [("memory", None), ("memory", None)]
+
+    missing_lineage = replace(
+        complete,
+        data={
+            "memory_entries": [
+                {
+                    "memory_id": "memory-missing-lineage",
+                    "title": "Unlinked memory",
+                    "safe_summary": "Only the explicit safe summary is known.",
+                    "references": ["not-published"],
+                    "lineage": ["not-published"],
+                }
+            ],
+            "failures": [
+                {
+                    "failure_id": "failure-missing-lineage",
+                    "title": "Unlinked failure",
+                    "outcome": "rejected",
+                }
+            ],
+            "derived_patterns": [],
+        },
+    )
+
+    class MissingLineageProvider:
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            del resource, snapshot_token
+            return missing_lineage
+
+    document = ManagerGUIApp(MissingLineageProvider()).render(
+        "/?view=memory-failures&fixture=complete&failure_id=failure-missing-lineage"
+    )
+    assert "Missing / Unconfirmed link" in document
+    assert "https://not-published" not in document
+    for label in ("Campaign", "Candidate", "Run", "Evidence", "Artifact", "Source Document"):
+        assert label in document
+
+
+def test_s3_provider_audit_reads_memory_resources_once_and_exposes_no_mutations() -> None:
+    class CountingProvider:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            self.calls.append((resource, snapshot_token))
+            return fixture_provider("complete").read(resource, snapshot_token=snapshot_token)
+
+    provider = CountingProvider()
+    app = ManagerGUIApp(provider)
+    app.render("/?view=memory&fixture=complete&snapshot_token=memory-snapshot")
+    app.render("/?view=memory-failures&fixture=complete&snapshot_token=failure-snapshot")
+    app.render("/?view=failure-patterns&fixture=complete&snapshot_token=pattern-snapshot")
+    assert provider.calls == [
+        ("memory", "memory-snapshot"),
+        ("memory", "failure-snapshot"),
+        ("failure_patterns", "pattern-snapshot"),
+    ]
+    assert public_provider_methods(provider) == ("read",)
+    assert not FORBIDDEN_PROVIDER_METHODS.intersection(public_provider_methods(provider))

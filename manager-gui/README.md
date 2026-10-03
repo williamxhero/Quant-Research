@@ -36,7 +36,8 @@ uv run --directory manager-gui python -m manager_gui.web --fixture complete --po
 ```
 
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
-Genome, Genome Conditions, Genome Comparison, Methodology, History, and Source Documents:
+Genome, Genome Conditions, Genome Comparison, Memory, Memory Failures,
+Failure Patterns, Methodology, History, and Source Documents:
 
 - `/?view=atlas&fixture=complete` renders the Atlas hook;
 - `/?view=stories&fixture=complete&mode=evidence` renders the Story hook;
@@ -45,11 +46,14 @@ Genome, Genome Conditions, Genome Comparison, Methodology, History, and Source D
 - `/?view=strategy-genome-comparison&fixture=complete&left_genome_id=genome-left&right_genome_id=genome-right` renders comparison;
 - `/?view=methodology&fixture=complete&scope=A0` renders the versioned method archive;
 - `/?view=history&fixture=complete&scope=S3` renders source-recorded history;
-- `/?view=source-documents&fixture=complete&scope=CPA` renders the approved document index.
+- `/?view=source-documents&fixture=complete&scope=CPA` renders the approved document index;
+- `/?view=memory&fixture=complete&memory_id=memory-fixture-1` mounts the S3-T1 Memory catalog/detail hook;
+- `/?view=memory-failures&fixture=complete&failure_id=memory-fixture-1` mounts the Memory failure/lineage projection;
+- `/?view=failure-patterns&fixture=complete&pattern_id=pattern-fixture-1` mounts ordinary failures and explicitly Derived patterns.
 
 The fixture-backed path is read-only and preserves `fixture`, `scope`, `panel`, `q`,
-`snapshot_token`, Atlas filters, story root identifiers, `record_id`, `document_id`,
-and `mode` in stable links. The shared top bar, navigation, read-only badge, status
+`snapshot_token`, Atlas/Memory/failure filters, story root identifiers, `record_id`,
+`document_id`, and `mode` in stable links. The shared top bar, navigation, read-only badge, status
 block, Inspector, and raw JSON drawer remain owned by the shell. Methodology links
 its explicit document and record references to Source Documents and History; History
 links source artifacts, records, and documents; Source Documents links record
@@ -90,8 +94,8 @@ renders the shell around the unchanged v0 envelope.
 
 The stable URL query keys are:
 
-- `view`: `atlas`, `stories`, `strategies`, `memory`, `evidence`, `methodology`,
-  `history`, `source-documents`, or `search`;
+- `view`: `atlas`, `stories`, `strategies`, `memory`, `memory-failures`,
+  `failure-patterns`, `evidence`, `methodology`, `history`, `source-documents`, or `search`;
 - `fixture`: one of the deterministic shell fixture states;
 - `scope`: `A0`, `S3`, `CPA`, or `V1.x` on History and Source Documents;
 - `panel`: `inspector` or `events` (optional);
@@ -101,6 +105,8 @@ The stable URL query keys are:
 - `record_type`, `state`, `date`, `source`, and `availability` on Atlas;
 - `genome_id` on Genome and condition evidence; `left_genome_id` and
   `right_genome_id` on Genome comparison;
+- `family`, `stage`, `outcome`, `failure_category`, `subject`, and `campaign` on
+  Memory/failure filters; `memory_id`, `failure_id`, and `pattern_id` on detail views;
 - `record_id`, `document_id`, `campaign`, `study`, and `strategy_family` are opaque
   object/root context retained by detail and mode links.
 
@@ -118,7 +124,34 @@ owner read. The current public hook contract is:
 - `manager_gui.web.history.render_history_view(provider_or_model, scope=..., base_path=..., query=..., snapshot_token=...)`
   mounts `data-integration-hook="history-view"`;
 - `manager_gui.web.documents.render_source_documents_view(provider_or_model, scope=..., boundary=..., base_path=..., query=..., snapshot_token=...)`
-  mounts `data-integration-hook="source-documents-view"`.
+  mounts `data-integration-hook="source-documents-view"`;
+- `manager_gui.web.memory.render_memory_view(provider, filters=..., query_context=..., memory_id=..., snapshot_token=...)`
+  mounts `data-integration-hook="memory-view"`;
+- `manager_gui.web.failure_patterns.render_memory_failure_view(provider_or_model, filters=..., query_context=..., failure_id=..., pattern_id=..., snapshot_token=...)`
+  mounts the shared `data-integration-hook="failure-patterns-view"` for formal Memory failure/lineage;
+- `manager_gui.web.failure_patterns.render_failure_patterns_view(provider_or_model, filters=..., query_context=..., failure_id=..., pattern_id=..., snapshot_token=...)`
+  mounts the same hook for ordinary failures and explicitly Derived patterns.
+
+The S3 routes keep Formal Research Memory, ordinary failure records, and Derived
+patterns visibly separate. A missing or zero-entry Memory scope is rendered as
+missing/not recorded; blocked, stale, integrity-failure, and API-unavailable
+states never get relabeled as empty. Lineage is six-dimensional (campaign,
+candidate, run, evidence, artifact, and source document); each absent or blocked
+edge remains visibly `Missing / Unconfirmed`. Explicit fixture IDs link Memory to
+failure/Derived views and onward to campaign, run, evidence, and source-document
+locators. No similarity or LLM promotion, private-storage fallback, dereference,
+or mutation endpoint is used. S3 integrated tests cover complete, zero-entry,
+empty, partial, blocked, stale, integrity-failure, API-unavailable, missing-lineage,
+context-preserving links, and one-read provider audits.
+
+### S3 route integration / exit evidence for #628
+
+The S3 read-only loop is:
+`Research Memory → Memory failure/lineage or ordinary failure → explicit Derived
+pattern → campaign/run/evidence/source document (or Missing)`. The route hooks
+consume the existing `ManagerReadModel v0` envelope and cached shell read, so each
+integrated route performs exactly one public provider read. This note records the
+S3-T3 exit evidence; it does not close issue #628 and does not implement S4 or S6.
 
 ### S2 Genome route integration / exit evidence for #626
 
@@ -154,10 +187,10 @@ resource and no publish/propose/retry/delete/retire/revalidate/create/update/
 write method. These checks are the S2 exit evidence for #626; the issue remains
 open until the release owner closes it.
 
-S3's Memory and failure modules remain foundation/read-model consumers and are
-not mounted or changed by S2-T3. S4 can consume the stable Genome source,
-lineage, condition, and comparison hooks through the same v0 read seam; S2-T3
-does not implement an S4 evidence portal. S6 can compose these hooks for future
+S3's Memory and failure modules are mounted through the shared read-only shell.
+S4 can consume the stable Memory/failure source, lineage, condition, and comparison
+hooks through the same v0 read seam; S3-T3 does not implement an S4 evidence portal.
+S6 can compose these hooks for future
 search, portal, and accessibility work without changing the route keys or
 introducing page-specific envelopes.
 

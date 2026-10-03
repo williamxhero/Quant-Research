@@ -35,7 +35,7 @@ from .failure_lineage import (
     render_failure_lineage,
     render_references,
 )
-from .memory import MemoryEntry, MemoryViewModel
+from .memory import MemoryEntry, MemoryViewModel, memory_link
 from .status import DisplayState, render_operational_state, render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -666,6 +666,13 @@ def _stable_query(pairs: Sequence[tuple[str, str]]) -> str:
     return urlencode([(key, value) for key in keys for value in values[key]])
 
 
+def _route_view(context: QueryContext) -> str:
+    """Keep catalog/detail/filter links on the currently mounted failure route."""
+
+    value = dict(_query_pairs(context)).get("view")
+    return "memory-failures" if value == "memory-failures" else "failure-patterns"
+
+
 def failure_link(
     failure_id: str | None = None,
     *,
@@ -673,13 +680,14 @@ def failure_link(
     query_context: QueryContext = None,
     filters: FailureFilters | None = None,
     base_path: str = "/",
+    view: str = "failure-patterns",
 ) -> str:
     pairs = [
         (key, value)
         for key, value in _query_pairs(query_context)
         if key not in {"view", "failure_id", "pattern_id", *_FILTER_KEYS}
     ]
-    pairs.append(("view", "failure-patterns"))
+    pairs.append(("view", view))
     if filters is not None:
         pairs.extend(filters.as_query())
     if failure_id is not None:
@@ -703,6 +711,27 @@ def _context_with_filters(view: FailureViewModel, context: QueryContext) -> Quer
 # ------------------------------- rendering ----------------------------------
 
 
+def _explicit_record_id(item: Mapping[str, object], *keys: str) -> str | None:
+    """Read an explicitly published cross-layer identity without inventing one."""
+
+    return _first(item, *keys)
+
+
+def _render_cross_layer_links(entry: FailureExperience, context: QueryContext) -> str:
+    memory_id = _explicit_record_id(entry.raw, "memory_id", "memory_ref")
+    pattern_id = _explicit_record_id(entry.raw, "pattern_id", "pattern_ref")
+    links: list[str] = []
+    if memory_id:
+        links.append(
+            f'<a class="failure-memory-link" href="{escape(memory_link(memory_id, query_context=context), quote=True)}">Open Memory</a>'
+        )
+    if pattern_id:
+        links.append(
+            f'<a class="failure-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context, view=_route_view(context)), quote=True)}">Open derived pattern</a>'
+        )
+    return f'<p class="failure-cross-layer-links">{" · ".join(links)}</p>' if links else ""
+
+
 def _render_failure_detail(entry: FailureExperience, context: QueryContext) -> str:
     associations = "".join(
         f'<div><dt>{kind.replace("_", " ").title()}</dt><dd>{render_references((getattr(entry, kind),))}</dd></div>'
@@ -720,7 +749,8 @@ def _render_failure_detail(entry: FailureExperience, context: QueryContext) -> s
         f'<section class="failure-associations"><h3>Traceability associations</h3><dl>{associations}</dl></section>'
         f'<p><strong>Source refs</strong> {render_references(entry.references)}</p>'
         f'{render_failure_lineage(entry.lineage)}'
-        f'<p><a href="{escape(failure_link(query_context=context), quote=True)}">Back to failure catalog</a></p>'
+        f'{_render_cross_layer_links(entry, context)}'
+        f'<p><a href="{escape(failure_link(query_context=context, view=_route_view(context)), quote=True)}">Back to failure catalog</a></p>'
         '</article>'
     )
 
@@ -733,7 +763,7 @@ def _render_failure_row(entry: FailureExperience, context: QueryContext) -> str:
     )
     return (
         f'<tr data-failure-id="{escape(entry.failure_id, quote=True)}">'
-        f'<th scope="row"><a href="{escape(failure_link(entry.failure_id, query_context=context), quote=True)}">{escape(entry.title)}</a><br><small>{escape(entry.failure_id)}</small>{summary}</th>'
+        f'<th scope="row"><a href="{escape(failure_link(entry.failure_id, query_context=context, view=_route_view(context)), quote=True)}">{escape(entry.title)}</a><br><small>{escape(entry.failure_id)}</small>{summary}</th>'
         f'<td>{escape(entry.failure_category or "Missing / Unconfirmed")}</td>'
         f'<td>{escape(entry.stage or "Missing / Unconfirmed")}</td>'
         f'<td>{escape(entry.outcome or "Missing / Unconfirmed")}</td>'
@@ -765,17 +795,17 @@ def _render_filters(view: FailureViewModel, context: QueryContext) -> str:
         )
     return (
         '<form class="failure-filters" action="/" method="get" aria-label="Failure filters">'
-        '<input type="hidden" name="view" value="failure-patterns">'
+        f'<input type="hidden" name="view" value="{escape(_route_view(context), quote=True)}">'
         f'{hidden}{"".join(controls)}<button type="submit">Apply filters</button>'
-        '<a href="/?view=failure-patterns">Clear</a></form>'
+        f'<a href="/?view={escape(_route_view(context), quote=True)}">Clear</a></form>'
     )
 
 
-def _render_memory_layer(view: FailureViewModel) -> str:
+def _render_memory_layer(view: FailureViewModel, context: QueryContext) -> str:
     if view.memory_entries:
         entries = "".join(
             f'<article class="formal-memory-failure" data-failure-id="{escape(entry.failure_id, quote=True)}">'
-            f'<h3>{escape(entry.title)}</h3>'
+            f'<h3><a class="memory-failure-link" href="{escape(failure_link(entry.failure_id, query_context=context, view="memory-failures"), quote=True)}">{escape(entry.title)}</a></h3>'
             f'<p><strong>Failure category</strong> {escape(entry.failure_category or "Missing / Unconfirmed")} · '
             f'<strong>Stage</strong> {escape(entry.stage or "Missing / Unconfirmed")} · '
             f'<strong>Outcome</strong> {escape(entry.outcome or "Missing / Unconfirmed")}</p>'
@@ -787,7 +817,7 @@ def _render_memory_layer(view: FailureViewModel) -> str:
             f'<strong>Source document</strong> {render_references((entry.source_document,))}</p>'
             f'<p><strong>Conflicts</strong> {render_references(entry.conflicts, empty="None recorded; not proof of no conflicts")} · '
             f'<strong>Supersedes</strong> {render_references(entry.supersedes, empty="None recorded; no supersession inferred")}</p>'
-            f'{render_failure_lineage(entry.lineage)}</article>'
+            f'{render_failure_lineage(entry.lineage)}{_render_cross_layer_links(entry, context)}</article>'
             for entry in view.memory_entries
         )
         return (
@@ -834,8 +864,21 @@ def _render_failure_layer(view: FailureViewModel, context: QueryContext) -> str:
     )
 
 
+def _render_pattern_cross_layer_links(pattern: FailurePattern, context: QueryContext) -> str:
+    memory_id = _explicit_record_id(pattern.raw, "memory_id", "memory_ref")
+    if not memory_id:
+        return ""
+    return (
+        f'<p class="pattern-cross-layer-links"><a class="pattern-memory-link" '
+        f'href="{escape(memory_link(memory_id, query_context=context), quote=True)}">Open Memory</a></p>'
+    )
+
+
 def _render_pattern(pattern: FailurePattern, context: QueryContext) -> str:
-    members = ", ".join(escape(identifier) for identifier in pattern.failure_ids) or "Missing / Unconfirmed"
+    members = " · ".join(
+        f'<a class="pattern-failure-link" href="{escape(failure_link(identifier, query_context=context, view=_route_view(context)), quote=True)}">{escape(identifier)}</a>'
+        for identifier in pattern.failure_ids
+    ) or "Missing / Unconfirmed"
     return (
         f'<article class="failure-pattern" data-pattern-id="{escape(pattern.pattern_id, quote=True)}" data-pattern-status="derived" data-status="derived">'
         '<p class="eyebrow">Derived · GUI aggregation · not formal Research Memory</p>'
@@ -849,9 +892,10 @@ def _render_pattern(pattern: FailurePattern, context: QueryContext) -> str:
         f'<p><strong>Participating failure records</strong> {members}</p>'
         f'<p><strong>Source refs</strong> {render_references(pattern.source_refs)}</p>'
         f'{render_failure_lineage(pattern.lineage)}'
+        f'{_render_pattern_cross_layer_links(pattern, context)}'
         f'<p><strong>Conflicts</strong> {render_references(pattern.conflicts, empty="None recorded; no conflicts inferred")}</p>'
         f'<p><strong>Supersedes</strong> {render_references(pattern.supersedes, empty="None recorded; no supersession inferred")}</p>'
-        f'<p><a href="{escape(failure_link(pattern_id=pattern.pattern_id, query_context=context), quote=True)}">Open derived pattern</a></p>'
+        f'<p><a href="{escape(failure_link(pattern_id=pattern.pattern_id, query_context=context, view=_route_view(context)), quote=True)}">Open derived pattern</a></p>'
         '</article>'
     )
 
@@ -903,7 +947,7 @@ def render_failure_patterns(
     ]
     if model.availability.status is ReadModelStatus.KNOWN and not model.availability.complete:
         pieces.append('<p data-failure-state="partial">Partial failure scope: unavailable entries are not filled in.</p>')
-    pieces.extend((_render_memory_layer(view), _render_filters(view, context), _render_failure_layer(view, context), _render_pattern_layer(view, context)))
+    pieces.extend((_render_memory_layer(view, context), _render_filters(view, context), _render_failure_layer(view, context), _render_pattern_layer(view, context)))
     if view.empty and model.availability.status is ReadModelStatus.MISSING:
         pieces.append(render_operational_state(DisplayState.EMPTY, detail="No formal Memory or failure-pattern records are present in this scope."))
     pieces.append('</section>')

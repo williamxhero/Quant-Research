@@ -33,6 +33,11 @@ from .documents import (
     build_source_documents_fixture,
     render_source_documents_view,
 )
+from .failure_patterns import (
+    FAILURE_PATTERNS_RESOURCE,
+    render_failure_patterns_view,
+    render_memory_failure_view,
+)
 from .genome import (
     GENOME_RESOURCE,
     GenomeFixtureState,
@@ -40,6 +45,7 @@ from .genome import (
     render_genome_view,
 )
 from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
+from .memory import render_memory_view
 from .methodology import (
     MethodologyFixtureState,
     build_methodology_fixture,
@@ -251,6 +257,10 @@ class ManagerGUIApp:
             return CONDITIONS_RESOURCE
         if view is ViewId.COMPARISON:
             return COMPARISON_RESOURCE
+        if view is ViewId.MEMORY_FAILURES:
+            return "memory"
+        if view is ViewId.FAILURE_PATTERNS:
+            return FAILURE_PATTERNS_RESOURCE
         if view is ViewId.SOURCE_DOCUMENTS:
             return DOCUMENTS_RESOURCE
         return view.value
@@ -313,6 +323,26 @@ class ManagerGUIApp:
             )
         if state.view is ViewId.COMPARISON:
             return render_genome_comparison_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+            )
+        if state.view is ViewId.MEMORY:
+            return render_memory_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+                memory_id=dict(state.context).get("memory_id"),
+            )
+        if state.view is ViewId.MEMORY_FAILURES:
+            return render_memory_failure_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+                failure_id=dict(state.context).get("failure_id") or dict(state.context).get("memory_id"),
+            )
+        if state.view is ViewId.FAILURE_PATTERNS:
+            return render_failure_patterns_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,

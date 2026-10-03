@@ -6,7 +6,7 @@ Runtime, Reporting, or any private SQLite/database path.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import cast
 
@@ -54,6 +54,218 @@ def _source(
     )
 
 
+def _s3_fixture(state: FixtureState, resource: str) -> ManagerReadModel:
+    """Build the shared S3 Memory/failure fixture without owner-side I/O."""
+
+    if state not in {FixtureState.COMPLETE, FixtureState.PARTIAL}:
+        return build_fixture(state, resource=f"{resource}-state")
+
+    sources = (
+        _source(
+            "campaign-fixture-1",
+            owner="apex-research",
+            kind="campaign",
+            locator="fixture://manager-gui/campaign/campaign-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "candidate-fixture-1",
+            owner="apex-research",
+            kind="candidate",
+            locator="fixture://manager-gui/candidate/candidate-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "run-fixture-1",
+            owner="apex-research",
+            kind="run",
+            locator="fixture://manager-gui/run/run-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "evidence-fixture-1",
+            owner="apex-research",
+            kind="evidence",
+            locator="fixture://manager-gui/evidence/evidence-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "artifact-fixture-1",
+            owner="apex-research",
+            kind="artifact",
+            locator="fixture://manager-gui/artifact/artifact-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "document-fixture-1",
+            owner="apex-research",
+            kind="source_document",
+            locator="fixture://manager-gui/source-document/document-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+        _source(
+            "pattern-fixture-1",
+            owner="apex-research",
+            kind="derived-pattern",
+            locator="fixture://manager-gui/pattern/pattern-fixture-1",
+            schema="s3.fixture.v0",
+        ),
+    )
+    memory_entry = {
+        "memory_id": "memory-fixture-1",
+        "title": "Formal data-gate failure memory",
+        "safe_summary": "The declared data gate rejected the candidate.",
+        "family_id": "memory-family-fixture-1",
+        "family_label": "Fixture data quality",
+        "stage": "formal",
+        "outcome": "rejected",
+        "failure_category": "data_blocker",
+        "campaign_id": "campaign-fixture-1",
+        "failure_id": "failure-fixture-1",
+        "pattern_id": "pattern-fixture-1",
+        "subject": {
+            "semantic_id": "subject-fixture-1",
+            "structural_fingerprint": "fingerprint-fixture-1",
+            "label": "Fixture candidate",
+        },
+        "references": ["evidence-fixture-1"],
+        "lineage": [
+            {"kind": "campaign", "record_id": "campaign-fixture-1"},
+            {"kind": "candidate", "record_id": "candidate-fixture-1"},
+            {"kind": "run", "record_id": "run-fixture-1"},
+            {"kind": "evidence", "record_id": "evidence-fixture-1"},
+            {"kind": "artifact", "record_id": "artifact-fixture-1"},
+            {"kind": "source_document", "record_id": "document-fixture-1"},
+        ],
+        "policy_id": "memory-policy-fixture-1",
+        "decisions": {
+            "inclusion": "included",
+            "exclusion": "not excluded",
+            "duplicate": "novel",
+            "repeated_equivalent": "not repeated",
+            "reconciliation": "not required",
+        },
+    }
+    payload: dict[str, object] = {
+        "memory_policies": [
+            {
+                "policy_id": "memory-policy-fixture-1",
+                "policy_version": "v1",
+                "bounds": {"max_items": 10, "max_depth": 4},
+                "source_trust": [{"record_type": "apex-research.run.v1", "rank": 1}],
+                "snapshot": {
+                    "token": "memory-policy-snapshot-v0",
+                    "as_of": "2026-10-03T08:55:00Z",
+                },
+                "inclusion_rule": "admitted by the owner-published policy",
+                "exclusion_rule": "outside the declared fixture scope",
+            }
+        ],
+        "memory_families": [
+            {
+                "family_id": "memory-family-fixture-1",
+                "family_key": "data-quality",
+                "label": "Fixture data quality",
+                "campaign_id": "campaign-fixture-1",
+                "entry_ids": ["memory-fixture-1"],
+            }
+        ],
+        "memory_entries": [memory_entry],
+        "failures": [
+            {
+                "failure_id": "failure-fixture-1",
+                "title": "Fixture data gate failure",
+                "summary": "The adapter did not expose the required data field.",
+                "failure_category": "data_blocker",
+                "stage": "intake",
+                "outcome": "rejected",
+                "campaign_id": "campaign-fixture-1",
+                "memory_id": "memory-fixture-1",
+                "pattern_id": "pattern-fixture-1",
+                "candidate_id": "candidate-fixture-1",
+                "run_id": "run-fixture-1",
+                "evidence_id": "evidence-fixture-1",
+                "artifact_id": "artifact-fixture-1",
+                "source_document_id": "document-fixture-1",
+                "references": ["evidence-fixture-1"],
+                "lineage": {
+                    "state": "complete",
+                    "reason": "All fixture lineage dimensions are explicitly published.",
+                    "edges": [
+                        {"kind": "run", "record_id": "run-fixture-1"},
+                        {"kind": "evidence", "record_id": "evidence-fixture-1"},
+                    ],
+                },
+            }
+        ],
+        "derived_patterns": [
+            {
+                "pattern_id": "pattern-fixture-1",
+                "memory_id": "memory-fixture-1",
+                "title": "Repeated fixture data-gate failures",
+                "status": "derived",
+                "rule": "group by failure_category and stage",
+                "input_scope": ["campaign-fixture-1", "runs:fixture"],
+                "sample_count": 1,
+                "failure_ids": ["failure-fixture-1"],
+                "failure_category": "data_blocker",
+                "stage": "intake",
+                "outcome": "rejected",
+                "source_refs": ["pattern-fixture-1"],
+                "lineage": {
+                    "state": "complete",
+                    "edges": [{"kind": "source_document", "record_id": "document-fixture-1"}],
+                },
+            }
+        ],
+        "family_memory": {
+            "memory_id": "family-memory-fixture-1",
+            "policy": {"record_id": "memory-policy-fixture-1"},
+            "target_family": {"record_id": "memory-family-fixture-1"},
+            "source_families": [{"record_id": "memory-family-fixture-1"}],
+            "snapshot_token": "family-memory-snapshot-v0",
+            "decisions": [{"fact": {"record_id": "memory-fixture-1"}, "included": True}],
+        },
+        "duplicate_decisions": [
+            {
+                "decision_id": "duplicate-fixture-1",
+                "disposition": "novel",
+                "matched": [],
+                "subject_semantic_id": "subject-fixture-1",
+                "structural_fingerprint": "fingerprint-fixture-1",
+            }
+        ],
+    }
+    if state is FixtureState.PARTIAL:
+        payload["memory_entries"] = [
+            {
+                "memory_id": "memory-fixture-partial",
+                "title": "Partial fixture failure memory",
+                "safe_summary": "Only the campaign-side failure record is in scope.",
+                "failure_category": "data_blocker",
+                "stage": "intake",
+                "outcome": "rejected",
+                "campaign_id": "campaign-fixture-1",
+                "references": [],
+            }
+        ]
+        payload["failures"] = []
+        payload["derived_patterns"] = []
+    base = build_fixture(state, resource=f"{resource}-state")
+    return replace(
+        base,
+        data=cast(JSONValue, payload),
+        source_refs=sources,
+        as_of="2026-10-03T09:00:00Z",
+        snapshot_token=f"fixture-s3-{resource}-v0",
+        derivation=Derivation(
+            kind="direct",
+            inputs=tuple(source.source_id for source in sources),
+            version="v0",
+        ),
+    )
+
+
 def build_fixture(state: FixtureState | str, *, resource: str = "atlas") -> ManagerReadModel:
     """Build a fresh fixture envelope for ``state`` and ``resource``."""
 
@@ -63,6 +275,8 @@ def build_fixture(state: FixtureState | str, *, resource: str = "atlas") -> Mana
         raise ValueError(f"unknown Manager GUI fixture state: {state!r}") from exc
     if not resource.strip():
         raise ValueError("resource must be a non-empty string")
+    if resource in {"memory", "failure_patterns"}:
+        return _s3_fixture(selected, resource)
 
     if selected is FixtureState.EMPTY:
         return ManagerReadModel(

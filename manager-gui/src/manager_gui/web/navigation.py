@@ -18,6 +18,8 @@ class ViewId(StrEnum):
     CONDITIONS = "strategy-conditions"
     COMPARISON = "strategy-genome-comparison"
     MEMORY = "memory"
+    MEMORY_FAILURES = "memory-failures"
+    FAILURE_PATTERNS = "failure-patterns"
     EVIDENCE = "evidence"
     METHODOLOGY = "methodology"
     HISTORY = "history"
@@ -78,6 +80,20 @@ NAVIGATION: tuple[NavigationItem, ...] = (
         "ME",
         "Failure knowledge and retained research memory.",
         "memory-view",
+    ),
+    NavigationItem(
+        ViewId.MEMORY_FAILURES,
+        "Memory Failures",
+        "MF",
+        "Formal Memory failure entries and explicit lineage.",
+        "failure-patterns-view",
+    ),
+    NavigationItem(
+        ViewId.FAILURE_PATTERNS,
+        "Failure Patterns",
+        "FP",
+        "Ordinary failures and explicitly derived patterns.",
+        "failure-patterns-view",
     ),
     NavigationItem(
         ViewId.EVIDENCE,
