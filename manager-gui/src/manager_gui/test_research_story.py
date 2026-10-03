@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
+from manager_gui.models import JSONValue
 from manager_gui.web.research_story import (
     ResearchStoryViewModel,
     StoryMode,
@@ -26,7 +29,7 @@ def _model(
     data: object, *, status: ReadModelStatus = ReadModelStatus.KNOWN, complete: bool = True
 ) -> ManagerReadModel:
     return ManagerReadModel(
-        data=data,
+        data=cast(JSONValue, data),
         source_refs=(
             _source("record-intent", "fixture://records/record-intent"),
             _source("record-run", "fixture://records/record-run"),
