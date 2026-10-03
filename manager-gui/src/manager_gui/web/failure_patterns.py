@@ -36,6 +36,7 @@ from .failure_lineage import (
     render_references,
 )
 from .memory import MemoryEntry, MemoryViewModel, memory_link
+from .navigation import clear_filters_link
 from .status import DisplayState, render_operational_state, render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -793,11 +794,17 @@ def _render_filters(view: FailureViewModel, context: QueryContext) -> str:
         controls.append(
             f'<label>{escape(key.replace("_", " ").title())} <select name="{escape(key, quote=True)}"><option value="">All</option>{options}</select></label>'
         )
+    clear_href = clear_filters_link(
+        context,
+        view=_route_view(context),
+        filter_keys=_FILTER_KEYS,
+        selection_keys=("failure_id", "pattern_id"),
+    )
     return (
         '<form class="failure-filters" action="/" method="get" aria-label="Failure filters">'
         f'<input type="hidden" name="view" value="{escape(_route_view(context), quote=True)}">'
         f'{hidden}{"".join(controls)}<button type="submit">Apply filters</button>'
-        f'<a href="/?view={escape(_route_view(context), quote=True)}">Clear</a></form>'
+        f'<a href="{escape(clear_href, quote=True)}">Clear</a></form>'
     )
 
 

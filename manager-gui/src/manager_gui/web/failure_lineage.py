@@ -18,6 +18,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from ..models import SourceReference
+from .interaction import render_alternative_view
 
 LINEAGE_KINDS = ("campaign", "candidate", "run", "evidence", "artifact", "source_document")
 _UNUSABLE = frozenset({"missing", "blocked", "integrity_failure", "api_unavailable"})
@@ -235,11 +236,6 @@ def render_references(links: Sequence[FailureReference], *, empty: str = "Missin
 
 
 def render_failure_lineage(trace: FailureLineage) -> str:
-    rows = "".join(
-        f'<div data-association-kind="{kind}"><dt>{kind.replace("_", " ").title()}</dt>'
-        f'<dd>{render_references(tuple(link for link in trace.associations if link.kind == kind))}</dd></div>'
-        for kind in LINEAGE_KINDS
-    )
     sections = "".join(
         f'<section data-lineage-relation="{key}"><h4>{label}</h4>'
         f'{render_references(getattr(trace, key), empty=empty)}</section>'
@@ -250,11 +246,40 @@ def render_failure_lineage(trace: FailureLineage) -> str:
             ("supersedes", "Supersedes", "None recorded; no supersession inferred"),
         )
     )
+    table_rows = "".join(
+        f'<tr data-association-kind="{escape(kind, quote=True)}">'
+        f'<th scope="row">{escape(kind.replace("_", " ").title())}</th>'
+        f'<td>{render_references(tuple(link for link in trace.associations if link.kind == kind))}</td></tr>'
+        for kind in LINEAGE_KINDS
+    )
+    table_markup = (
+        '<table class="lineage-table"><caption>Lineage table / 谱系表</caption>'
+        '<thead><tr><th scope="col">Dimension</th><th scope="col">Published reference</th></tr></thead>'
+        f'<tbody>{table_rows}</tbody></table>{sections}'
+    )
+    graph_items = "".join(
+        f'<li data-graph-node-kind="{escape(kind, quote=True)}">'
+        f'<strong>{escape(kind.replace("_", " ").title())}</strong> · '
+        f'{render_references(tuple(link for link in trace.associations if link.kind == kind))}</li>'
+        for kind in LINEAGE_KINDS
+    )
+    graph_markup = (
+        '<ol class="lineage-graph" aria-label="Lineage graph / 谱系图">'
+        f"{graph_items}</ol>"
+    )
+    alternatives = render_alternative_view(
+        target="failure-lineage",
+        graph_markup=graph_markup,
+        table_markup=table_markup,
+        selected="table",
+        label="Lineage view",
+        label_zh="谱系视图",
+    )
     return (
         f'<section class="failure-lineage" data-lineage-coverage="{trace.coverage}" '
         f'data-lineage-state="{escape(trace.declared_state or "missing", quote=True)}">'
-        '<h3>Lineage / traceability</h3>'
+        '<h3>Lineage / traceability <span lang="zh-CN">/ 谱系与可追溯性</span></h3>'
         f'<p>Declared state: {escape(trace.declared_state or "Missing")} · '
         f'Observed link coverage: {trace.coverage}. {escape(trace.reason or "")}</p>'
-        f'<dl>{rows}</dl>{sections}</section>'
+        f"{alternatives}</section>"
     )

@@ -592,6 +592,18 @@ def render_genome_comparison(
             _list_section("Missing axes", comparison.missing_axes, marker="missing_axes"),
             _list_section("Incompatible axes", comparison.incompatible_axes, marker="incompatible_axes"),
         )
+    # A derived comparison can legitimately be published with an ``incomparable``
+    # result; surface the shared incomparable state beside the envelope provenance.
+    incomparable_state = (
+        render_status_block(
+            ReadModelStatus.INCOMPARABLE,
+            reason=comparison.reason or "The declared comparison axes are not complete or compatible.",
+        )
+        if comparison is not None
+        and comparison.result is ComparisonResult.INCOMPARABLE
+        and model.availability.status is not ReadModelStatus.INCOMPARABLE
+        else ""
+    )
     return "".join(
         (
             f'<section class="genome-comparison-page" data-integration-hook="{COMPARISON_INTEGRATION_HOOK}">',
@@ -602,6 +614,7 @@ def render_genome_comparison(
             f'<a class="comparison-context-link" href="{escape(comparison_href, quote=True)}">Stable comparison context</a>',
             _render_related_links(comparison, query_context),
             render_status_block(model),
+            incomparable_state,
             *fields,
             '</section>',
         )

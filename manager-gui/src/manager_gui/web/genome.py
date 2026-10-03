@@ -39,6 +39,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .navigation import clear_filters_link
 from .status import DisplayState, render_operational_state, render_status_block
 
 GENOME_RESOURCE = "genomes"
@@ -1083,11 +1084,14 @@ def _render_filters(view: GenomeViewModel, context: QueryContext) -> str:
         controls.append(
             f'<label>{escape(label)} <input name="{escape(key, quote=True)}" value="{escape(values[key], quote=True)}"></label>'
         )
+    clear_href = clear_filters_link(
+        context, view=GENOME_ROUTE, filter_keys=_FILTER_KEYS, selection_keys=("genome_id",)
+    )
     return (
         '<form class="genome-filters" action="/" method="get" aria-label="Genome filters">'
         f'<input type="hidden" name="view" value="{GENOME_ROUTE}">{hidden}{"".join(controls)}'
         '<button type="submit">Apply filters</button>'
-        f'<a class="genome-clear" href="/?view={GENOME_ROUTE}">Clear</a></form>'
+        f'<a class="genome-clear" href="{escape(clear_href, quote=True)}">Clear</a></form>'
     )
 
 

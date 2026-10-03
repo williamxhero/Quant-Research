@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from html import escape
@@ -134,6 +134,28 @@ NAVIGATION: tuple[NavigationItem, ...] = (
 
 NAVIGATION_BY_ID = {item.view_id: item for item in NAVIGATION}
 
+NAVIGATION_LABELS_ZH: Mapping[ViewId, str] = {
+    ViewId.ATLAS: "总览",
+    ViewId.STORIES: "研究故事",
+    ViewId.STRATEGIES: "策略 / 基因组",
+    ViewId.CONDITIONS: "基因组条件",
+    ViewId.COMPARISON: "基因组比较",
+    ViewId.MEMORY: "记忆",
+    ViewId.MEMORY_FAILURES: "记忆失败",
+    ViewId.FAILURE_PATTERNS: "失败模式",
+    ViewId.EVIDENCE: "证据",
+    ViewId.METHODOLOGY: "方法论",
+    ViewId.HISTORY: "历史",
+    ViewId.SOURCE_DOCUMENTS: "来源文档",
+    ViewId.SEARCH: "搜索",
+}
+
+
+def navigation_label_zh(value: ViewId | str) -> str:
+    """Return the stable Chinese navigation label for an accessibility name."""
+
+    return NAVIGATION_LABELS_ZH[ViewId(value)]
+
 
 def navigation_item(value: ViewId | str) -> NavigationItem:
     """Return a navigation item, raising a useful error for unknown URLs."""
@@ -181,6 +203,26 @@ def context_link(
     return "/?" + urlencode(sorted(values.items()))
 
 
+def clear_filters_link(
+    context: str | Mapping[str, object] | None,
+    *,
+    view: ViewId | str,
+    filter_keys: Sequence[str],
+    selection_keys: Sequence[str] = (),
+) -> str:
+    """Reset a page's filters/selection while keeping shell context.
+
+    Fixture, snapshot token, panel, query, presentation, and unrelated opaque
+    context are retained so "Clear" never silently changes the read being viewed.
+    """
+
+    return context_link(
+        context,
+        view=view,
+        **{key: None for key in (*filter_keys, *selection_keys)},
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PageWindow:
     """Bounded local presentation of an already-read envelope, not an owner cursor."""
@@ -216,21 +258,37 @@ class PageWindow:
     def render(self, context: str | Mapping[str, object] | None, *, view: ViewId | str) -> str:
         pages = max(1, (self.total + self.page_size - 1) // self.page_size)
         links = []
-        for label, target in (("Previous", self.page - 1), ("Next", self.page + 1)):
+        for label, label_zh, rel, target in (
+            ("Previous", "上一页", "prev", self.page - 1),
+            ("Next", "下一页", "next", self.page + 1),
+        ):
             if 1 <= target <= pages:
                 url = context_link(context, view=view, page=target, page_size=self.page_size)
                 links.append(
-                    f'<a class="pagination-link" href="{escape(url, quote=True)}">{label}</a>'
+                    f'<a class="pagination-link" rel="{rel}" '
+                    f'href="{escape(url, quote=True)}" aria-label="{label} / {label_zh}">'
+                    f'{label} / <span lang="zh-CN">{label_zh}</span></a>'
                 )
         return (
-            '<nav class="page-pagination" aria-label="Read-model pagination">'
-            f'<span>Page {self.page} of {pages} · {self.total} indexed entries</span>'
+            '<nav class="page-pagination" aria-label="Read-model pagination / 只读模型分页">'
+            f'<span>Page {self.page} of {pages} · {self.total} indexed entries'
+            f' / <span lang="zh-CN">第 {self.page} / {pages} 页 · '
+            f'共 {self.total} 条索引</span></span>'
             + "".join(links)
             + "</nav>"
         )
 
 
 __all__ = [
-    "NAVIGATION", "NAVIGATION_BY_ID", "NavigationItem", "PageWindow", "ViewId",
-    "context_link", "navigation_item", "query_values",
+    "NAVIGATION",
+    "NAVIGATION_BY_ID",
+    "NAVIGATION_LABELS_ZH",
+    "NavigationItem",
+    "PageWindow",
+    "ViewId",
+    "clear_filters_link",
+    "context_link",
+    "navigation_item",
+    "navigation_label_zh",
+    "query_values",
 ]

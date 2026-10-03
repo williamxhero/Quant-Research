@@ -34,6 +34,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "application/json; charset=utf-8",
             )
             return
+        if path == "/api/export":
+            self._send_text(
+                self.server.app.render_export(self.path),
+                "application/json; charset=utf-8",
+            )
+            return
         if path == "/health":
             self._send_text(
                 f'{{"status":"ok","read_only":true,"schema":"{MANAGER_READ_MODEL_SCHEMA}"}}',
@@ -58,6 +64,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 head_only=True,
             )
             return
+        if path == "/api/export":
+            self._send_text(
+                self.server.app.render_export(self.path),
+                "application/json; charset=utf-8",
+                head_only=True,
+            )
+            return
         if path == "/health":
             self._send_text(
                 f'{{"status":"ok","read_only":true,"schema":"{MANAGER_READ_MODEL_SCHEMA}"}}',
@@ -67,11 +80,25 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         self.send_error(404, "Not found")
 
-    def do_POST(self) -> None:
+    def _reject_mutation(self) -> None:
+        """Keep every HTTP mutation verb outside the read-only server surface."""
+
         self.send_response(405)
         self.send_header("Allow", "GET, HEAD")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_POST(self) -> None:
+        self._reject_mutation()
+
+    def do_PUT(self) -> None:
+        self._reject_mutation()
+
+    def do_PATCH(self) -> None:
+        self._reject_mutation()
+
+    def do_DELETE(self) -> None:
+        self._reject_mutation()
 
     def _send_text(self, body: str, content_type: str, *, head_only: bool = False) -> None:
         encoded = body.encode("utf-8")
