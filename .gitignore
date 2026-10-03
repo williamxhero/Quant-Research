@@ -11,6 +11,14 @@ src/*
 src/quantresearch_acceptance/*
 !src/quantresearch_acceptance/*.py
 
+# Independent Manager GUI owner package.
+!manager-gui/
+!manager-gui/README.md
+!manager-gui/pyproject.toml
+!manager-gui/src/
+!manager-gui/src/manager_gui/
+!manager-gui/src/manager_gui/*.py
+
 # Local-only by default. AGENTS.md defines the narrow exceptions.
 /runtime/
 /tests/
