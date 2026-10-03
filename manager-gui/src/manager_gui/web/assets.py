@@ -83,6 +83,7 @@ a { color: inherit; }
 }
 .nav-link:hover, .nav-link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
 .nav-short { display: none; color: var(--accent); font-size: 10px; letter-spacing: .08em; }
+.nav-label-zh { color: var(--muted); font-size: 10px; font-weight: 600; }
 
 .workspace {
   display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 22px;
@@ -105,6 +106,7 @@ a { color: inherit; }
 .status-line { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .status-mark { width: 9px; height: 9px; background: var(--accent); border-radius: 50%; }
 .status-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.status-label-zh { color: var(--muted); font-size: 12px; font-weight: 650; }
 .display-state {
   margin-left: auto; padding: 3px 7px; color: var(--muted); font-size: 10px; font-weight: 750;
   letter-spacing: .08em; text-transform: uppercase; background: var(--surface-alt); border-radius: 3px;
@@ -149,6 +151,21 @@ a { color: inherit; }
   border: 1px solid var(--line); border-radius: 4px; cursor: pointer;
 }
 .panel-button:hover { border-color: var(--accent); }
+.copy-reference {
+  display: inline-flex; align-items: center; margin-left: 6px; padding: 3px 6px;
+  color: var(--accent); font-size: 10px; font-weight: 700; background: transparent;
+  border: 1px solid var(--line); border-radius: 3px; cursor: pointer;
+}
+.copy-reference:hover { border-color: var(--accent); background: var(--accent-soft); }
+.copy-status { min-height: 1.2em; margin: 9px 0 0; color: var(--muted); font-size: 11px; }
+.view-mode-controls {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0;
+}
+.view-mode-controls [aria-pressed="true"] { color: white; background: var(--accent); border-color: var(--accent); }
+[data-view-panel][hidden] { display: none; }
+.lineage-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lineage-table th, .lineage-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.lineage-table th { color: var(--muted); font-size: 11px; }
 
 .event-drawer {
   position: fixed; z-index: 5; right: 0; bottom: 0; left: 0; max-height: min(48vh, 430px); padding: 18px 28px;
@@ -173,7 +190,7 @@ a { color: inherit; }
   .inspector { position: static; }
   .nav-short { display: inline; }
   .nav-link { padding: 0 10px; }
-  .nav-label { display: none; }
+  .nav-label, .nav-label-zh { display: none; }
   .event-drawer { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 480px) {
@@ -191,7 +208,9 @@ JS = r"""
   const inspector = document.querySelector("#inspector");
   const drawer = document.querySelector("#event-drawer");
   const title = document.querySelector("[data-page-title]");
+  const copyStatus = document.querySelector("#copy-status");
   const params = () => new URLSearchParams(window.location.search);
+  let lastTrigger = null;
 
   function updatePanelUrl(panel) {
     const next = params();
@@ -201,37 +220,153 @@ JS = r"""
     window.history.replaceState({}, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
   }
 
+  // The inspector is the default side panel; only the raw-JSON drawer replaces it.
+  function syncPanelButtons(panel) {
+    document.querySelectorAll("[data-panel-target]").forEach((button) => {
+      const expanded = button.dataset.panelTarget === "events" ? panel === "events" : panel !== "events";
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    });
+  }
+
   function showPanel(panel, shouldUpdateUrl = true) {
     const inspectorOpen = panel === "inspector" || panel === null;
     const drawerOpen = panel === "events";
     if (inspector) inspector.hidden = !inspectorOpen;
     if (drawer) drawer.hidden = !drawerOpen;
     if (shouldUpdateUrl) updatePanelUrl(panel === "inspector" ? "inspector" : drawerOpen ? "events" : null);
-    const target = drawerOpen ? drawer : inspectorOpen ? inspector : title;
-    if (target) target.focus({ preventScroll: true });
+    syncPanelButtons(panel);
+    // Closing returns focus to the control that opened the panel, never to <body>.
+    const target = drawerOpen ? drawer : inspectorOpen && panel ? inspector : lastTrigger || title;
+    if (target && typeof target.focus === "function") target.focus({ preventScroll: true });
+  }
+
+  function focusNav(index) {
+    if (!links.length) return;
+    links[(index + links.length) % links.length].focus();
   }
 
   links.forEach((link, index) => {
     link.addEventListener("keydown", (event) => {
+      if (["Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        focusNav(event.key === "Home" ? 0 : links.length - 1);
+        return;
+      }
       if (!["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(event.key)) return;
       event.preventDefault();
       const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      links[(index + direction + links.length) % links.length].focus();
+      focusNav(index + direction);
     });
   });
 
   document.querySelectorAll("[data-panel-target]").forEach((button) => {
-    button.addEventListener("click", () => showPanel(button.dataset.panelTarget));
+    button.addEventListener("click", () => {
+      lastTrigger = button;
+      showPanel(button.dataset.panelTarget);
+    });
   });
   document.querySelectorAll("[data-close-panels]").forEach((button) => {
     button.addEventListener("click", () => showPanel(null));
   });
 
+  // The drawer is a non-modal overlay, so Escape closes it without trapping Tab.
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && drawer && !drawer.hidden) {
+      event.preventDefault();
+      showPanel(null);
+    }
+  });
+
+  async function copyValue(value) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    if (!copied) throw new Error("copy unavailable");
+  }
+
+  document.querySelectorAll("[data-copy-value]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await copyValue(button.dataset.copyValue || "");
+        if (copyStatus) copyStatus.textContent = "Copied opaque reference / 已复制不透明引用";
+      } catch (error) {
+        if (copyStatus) copyStatus.textContent = "Copy unavailable / 无法复制引用";
+      }
+    });
+  });
+
+  // Every alternative-view root owns its controls, so a page may render several
+  // graph/table pairs (for example one per failure) without sharing identifiers.
+  function setViewMode(root, mode, shouldUpdateUrl = true) {
+    const selected = mode === "graph" ? "graph" : "table";
+    root.dataset.viewMode = selected;
+    root.querySelectorAll(":scope > .view-mode-controls [data-view-mode]").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.viewMode === selected ? "true" : "false");
+    });
+    root.querySelectorAll(":scope > [data-view-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.viewPanel !== selected;
+    });
+    if (shouldUpdateUrl) {
+      const next = params();
+      next.set("presentation", selected);
+      window.history.replaceState({}, "", `${window.location.pathname}?${next.toString()}`);
+      document.querySelectorAll("[data-alternative-view]").forEach((other) => {
+        if (other !== root) setViewMode(other, selected, false);
+      });
+    }
+  }
+
+  document.querySelectorAll("[data-alternative-view]").forEach((root) => {
+    root.querySelectorAll(":scope > .view-mode-controls [data-view-mode]").forEach((button) => {
+      button.addEventListener("click", () => setViewMode(root, button.dataset.viewMode));
+    });
+  });
+  const requestedPresentation = params().get("presentation");
+  if (requestedPresentation) {
+    document.querySelectorAll("[data-alternative-view]").forEach((root) => {
+      setViewMode(root, requestedPresentation, false);
+    });
+  }
+
+  document.querySelectorAll("[data-export-current-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const payload = button.dataset.exportPayload;
+      if (!payload) {
+        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+        return;
+      }
+      try {
+        const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = button.dataset.exportFilename || "manager-gui-current-view.json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
+        if (copyStatus) copyStatus.textContent = "Current view exported locally / 当前视图已导出到本地";
+      } catch (error) {
+        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+      }
+    });
+  });
+
   const requestedPanel = params().get("panel");
   if (requestedPanel === "events" || requestedPanel === "inspector") {
     showPanel(requestedPanel, false);
-  } else if (title) {
-    title.focus({ preventScroll: true });
+  } else {
+    syncPanelButtons(null);
+    if (title) title.focus({ preventScroll: true });
   }
 })();
 """

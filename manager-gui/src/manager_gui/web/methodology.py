@@ -32,7 +32,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .navigation import PageWindow, context_link
-from .status import render_operational_state, render_status_block
+from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 METHODOLOGY_INTEGRATION_HOOK = "manager_gui.web.methodology.render_methodology_view"
 METHODOLOGY_RESOURCE = "methodology"
@@ -950,11 +950,21 @@ def render_methodology(
             )
         )
     if not paged_methods and view.index_state is not MethodologyIndexState.NOT_INDEXED:
-        pieces.append(
-            render_operational_state(
-                "empty", detail="No methodology methods are recorded in this scope."
+        if display_state_for(model) is DisplayState.ERROR:
+            # A blocked/stale/incomparable/integrity-failed source has not proven an
+            # empty scope, so the shared error state must not be relabeled as empty.
+            pieces.append(
+                render_operational_state(
+                    DisplayState.ERROR,
+                    detail="Methods cannot be listed from this source state; this is not a recorded empty scope.",
+                )
             )
-        )
+        else:
+            pieces.append(
+                render_operational_state(
+                    DisplayState.EMPTY, detail="No methodology methods are recorded in this scope."
+                )
+            )
     for group, methods in paged_groups:
         body = (
             '<p class="methodology-empty">No methods recorded in this category.</p>'

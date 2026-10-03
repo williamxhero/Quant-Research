@@ -20,6 +20,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
+from .navigation import clear_filters_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 LIFECYCLE_SPINE: tuple[str, ...] = (
@@ -631,6 +632,9 @@ def _render_filters(view: AtlasViewModel, *, query_context: QueryContext) -> str
         "date": sorted({record.changed_at[:10] for record in view.records if record.changed_at}),
         "source": sorted({record.source for record in view.records if record.source is not None}),
     }
+    clear_href = clear_filters_link(
+        query_context, view="atlas", filter_keys=_FILTER_KEYS, selection_keys=("record_id",)
+    )
     controls: list[str] = []
     for key in _FILTER_KEYS:
         if key == "date":
@@ -651,7 +655,7 @@ def _render_filters(view: AtlasViewModel, *, query_context: QueryContext) -> str
         '<input type="hidden" name="view" value="atlas">'
         f"{hidden}{''.join(controls)}"
         '<button type="submit">Apply filters</button>'
-        '<a class="atlas-clear" href="/?view=atlas">Clear</a></form>'
+        f'<a class="atlas-clear" href="{escape(clear_href, quote=True)}">Clear</a></form>'
     )
 
 

@@ -31,6 +31,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
 from ..provider import ManagerDataProvider
+from .navigation import clear_filters_link
 from .status import (
     DisplayState,
     render_operational_state,
@@ -1553,11 +1554,14 @@ def _render_filters(view: MemoryViewModel, *, context: QueryContext) -> str:
         controls.append(
             f'<label>{escape(key.replace("_", " ").title())} <select name="{escape(key, quote=True)}"><option value="">All</option>{choices}</select></label>'
         )
+    clear_href = clear_filters_link(
+        context, view="memory", filter_keys=_MEMORY_FILTER_KEYS, selection_keys=("memory_id",)
+    )
     return (
         '<form class="memory-filters" action="/" method="get" aria-label="Research Memory filters">'
         '<input type="hidden" name="view" value="memory">'
         f"{hidden}{''.join(controls)}"
-        '<button type="submit">Apply filters</button><a class="memory-clear" href="/?view=memory">Clear</a></form>'
+        f'<button type="submit">Apply filters</button><a class="memory-clear" href="{escape(clear_href, quote=True)}">Clear</a></form>'
     )
 
 

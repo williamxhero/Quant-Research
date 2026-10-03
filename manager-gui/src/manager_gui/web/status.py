@@ -33,6 +33,14 @@ DISPLAY_STATE_LABELS = {
     DisplayState.ERROR: "Error",
 }
 
+DISPLAY_STATE_LABELS_ZH = {
+    DisplayState.READY: "就绪",
+    DisplayState.LOADING: "加载中",
+    DisplayState.EMPTY: "空结果",
+    DisplayState.PARTIAL: "部分可用",
+    DisplayState.ERROR: "错误",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class StatusDescriptor:
@@ -42,6 +50,12 @@ class StatusDescriptor:
     label: str
     tone: str
     explanation: str
+
+    @property
+    def label_zh(self) -> str:
+        """Chinese label without changing the existing descriptor constructor."""
+
+        return _STATUS_LABELS_ZH[self.status]
 
 
 _STATUS_LABELS = {
@@ -54,6 +68,21 @@ _STATUS_LABELS = {
     ReadModelStatus.INCOMPARABLE: "Incomparable",
     ReadModelStatus.INTEGRITY_FAILURE: "Integrity failure",
     ReadModelStatus.API_UNAVAILABLE: "API unavailable",
+}
+
+# Chinese labels are deliberately kept beside the machine status vocabulary.  They
+# are an accessibility aid, not a second status taxonomy or a translation of the
+# source envelope.
+_STATUS_LABELS_ZH = {
+    ReadModelStatus.KNOWN: "已确认",
+    ReadModelStatus.DERIVED: "已推导",
+    ReadModelStatus.INTERPRETED: "已解释",
+    ReadModelStatus.MISSING: "未记录",
+    ReadModelStatus.BLOCKED: "已阻断",
+    ReadModelStatus.STALE: "已过期",
+    ReadModelStatus.INCOMPARABLE: "不可比较",
+    ReadModelStatus.INTEGRITY_FAILURE: "完整性失败",
+    ReadModelStatus.API_UNAVAILABLE: "API 不可用",
 }
 
 _STATUS_TONES = {
@@ -100,6 +129,18 @@ def describe_status(status: ReadModelStatus | str) -> StatusDescriptor:
     )
 
 
+def status_label_zh(status: ReadModelStatus | str) -> str:
+    """Return the stable Chinese accessibility label for a source status."""
+
+    return _STATUS_LABELS_ZH[ReadModelStatus(status)]
+
+
+def display_state_label_zh(state: DisplayState | str) -> str:
+    """Return the stable Chinese accessibility label for an operational state."""
+
+    return DISPLAY_STATE_LABELS_ZH[DisplayState(state)]
+
+
 def display_state_for(model: ManagerReadModel) -> DisplayState:
     """Map source availability to a separate user-facing loading/data state."""
 
@@ -128,16 +169,53 @@ def render_operational_state(
 
     selected = DisplayState(state)
     label = DISPLAY_STATE_LABELS[selected]
+    label_zh = DISPLAY_STATE_LABELS_ZH[selected]
     tone = _OPERATIONAL_STATE_TONES[selected]
     copy = detail or _OPERATIONAL_STATE_COPY[selected]
     live = ' aria-live="polite"' if selected is DisplayState.LOADING else ""
     return (
         f'<section class="status-block tone-{tone} operational-state" '
-        f'data-display-state="{selected.value}"{live}>'
+        f'data-display-state="{selected.value}" data-display-state-label-zh="{label_zh}"{live}>'
         f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
-        f'<span class="status-label">{escape(label)}</span></div>'
+        f'<span class="status-label">{escape(label)}</span>'
+        f'<span class="status-label-zh" lang="zh-CN">{escape(label_zh)}</span></div>'
         f"<h2>{escape(copy)}</h2></section>"
     )
+
+
+def render_common_state(
+    state_or_model: DisplayState | ReadModelStatus | ManagerReadModel | str,
+    *,
+    reason: str | None = None,
+    complete: bool | None = None,
+    errors: Sequence[ReadModelError] = (),
+) -> str:
+    """Render the shared state vocabulary used by every page hook.
+
+    ``DisplayState`` values (including ``loading``) use the operational renderer;
+    read-model statuses and envelopes use the provenance-preserving renderer.
+    The helper gives future S6 integrations one seam without introducing a
+    page-specific state component.
+    """
+
+    if isinstance(state_or_model, ManagerReadModel):
+        return render_status_block(
+            state_or_model,
+            reason=reason,
+            complete=complete,
+            errors=errors,
+        )
+    if isinstance(state_or_model, DisplayState):
+        return render_operational_state(state_or_model, detail=reason)
+    try:
+        return render_operational_state(DisplayState(state_or_model), detail=reason)
+    except ValueError:
+        return render_status_block(
+            ReadModelStatus(state_or_model),
+            reason=reason,
+            complete=complete,
+            errors=errors,
+        )
 
 
 def render_status_block(
@@ -209,11 +287,16 @@ def render_status_block(
     )
     return (
         f'<section class="status-block tone-{descriptor.tone}" '
-        f'data-status="{descriptor.status.value}" data-display-state="{state.value}" '
+        f'data-status="{descriptor.status.value}" '
+        f'data-status-label-zh="{escape(descriptor.label_zh, quote=True)}" '
+        f'data-display-state="{state.value}" '
+        f'data-display-state-label-zh="{escape(DISPLAY_STATE_LABELS_ZH[state], quote=True)}" '
         f'aria-labelledby="status-heading-{descriptor.status.value}">'
         f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
         f'<span class="status-label">{escape(descriptor.label)}</span>'
-        f'<span class="display-state">{escape(DISPLAY_STATE_LABELS[state])}</span></div>'
+        f'<span class="status-label-zh" lang="zh-CN">{escape(descriptor.label_zh)}</span>'
+        f'<span class="display-state">{escape(DISPLAY_STATE_LABELS[state])} · '
+        f'<span lang="zh-CN">{escape(DISPLAY_STATE_LABELS_ZH[state])}</span></span></div>'
         f'<h2 id="status-heading-{descriptor.status.value}">{escape(reason_text)}</h2>'
         f"<p>{escape(descriptor.explanation)}</p>{errors_markup}"
         "</section>"
@@ -222,10 +305,14 @@ def render_status_block(
 
 __all__ = [
     "DISPLAY_STATE_LABELS",
+    "DISPLAY_STATE_LABELS_ZH",
     "DisplayState",
     "StatusDescriptor",
     "describe_status",
     "display_state_for",
+    "display_state_label_zh",
+    "render_common_state",
     "render_operational_state",
     "render_status_block",
+    "status_label_zh",
 ]

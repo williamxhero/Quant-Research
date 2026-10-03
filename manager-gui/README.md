@@ -221,6 +221,52 @@ provider audit verifies that the fixture adapter exposes only `read`; no S1 code
 opens SQLite/private storage or calls publish, retry, delete, retire, or
 revalidation operations. This note is evidence for issue #618 and does not
 close the issue or implement S2–S6.
+
+### S6-T3 common interaction contract / S6-T4 integration hand-off
+
+S6-T3 owns the shared interaction behavior; it deliberately does **not** mount
+Search or Strategy Reporting Portal page hooks. The shell continues to render the
+Search navigation item as an integration placeholder until S6-T4 mounts the
+approved read seams.
+
+- `web/status.py` is the one state vocabulary for all mounted pages. Use
+  `render_status_block(model)` for source provenance and
+  `render_operational_state(...)` for loading/empty/partial/error presentation.
+  `render_common_state(...)` dispatches both forms. Every rendered state keeps
+  the machine status and includes stable English plus Chinese accessibility
+  labels; blocked, stale, incomparable, integrity-failure, and API-unavailable
+  are never relabeled as empty.
+- `web/interaction.py` owns pure `opaque_copy_button`, stable `export_url`,
+  `current_view_export`, `export_json`, `render_export_control`, and
+  `render_alternative_view` helpers. The shell embeds the already-read envelope
+  and URL context in the current document; the browser creates a local JSON Blob;
+  the UI does not issue a second read and never writes a ledger. `/api/export`
+  is a compatibility GET/HEAD read route for external smoke clients only.
+- Copy controls carry opaque source IDs and snapshot tokens without
+  dereferencing them. Filter reset links use `clear_filters_link` so fixture,
+  panel, query, snapshot, presentation mode, and unrelated opaque context stay
+  intact. `presentation=graph|table` is reserved for the graph/table hook.
+- `web/failure_lineage.py` exposes both a graph hook and a semantic table
+  alternative under `data-alternative-view="failure-lineage"`.
+  The table is the default keyboard/screen-reader path; page owners may replace
+  only the graph panel.
+- The server has no mutation routes. `POST`, `PUT`, `PATCH`, and `DELETE`
+  receive `405 Allow: GET, HEAD`; providers expose only `read`.
+
+S6-T4 may now, and only now:
+
+1. map `ViewId.SEARCH` to `ManagerDataProvider.read("search", snapshot_token=...)`
+   and call `render_search_view` with the cached envelope, preserving `q`, type,
+   source, page, panel, snapshot, and opaque query context;
+2. add the Portal view ID/route and map it to
+   `read("report_source", snapshot_token=...)`, calling `render_portal_view`
+   with the same cached envelope; keep source publication and generated artifact
+   separate and do not add rebuild/run/publish controls;
+3. retain the shared document chrome, status renderer, copy/export controls,
+   inspector/raw JSON drawer, URL/query state, one-read provider audit, and
+   `405` mutation behavior; add route fixtures for Search and Portal rather than
+   changing this T3 interaction contract.
+
 ## Read-only boundary
 
 `ManagerDataProvider` in `src/manager_gui/provider.py` exposes one operation:
