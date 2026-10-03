@@ -24,10 +24,21 @@ uv build
 uv run manager-gui --fixture partial --pretty
 # Equivalent without installation
 python -m manager_gui --fixture api_unavailable
+# Start the independently runnable local WebUI shell
+uv run manager-gui-web --fixture partial --port 8765
+# Equivalent without installation
+python -m manager_gui.web --fixture partial
 ```
 
-The command emits one JSON `ManagerReadModel v0` envelope. Fixtures are
-synthetic and do not stand in for a connected data gate.
+Open `http://127.0.0.1:8765/`. The shell is fixture-backed and read-only: it
+serves the shared navigation, status/availability rendering, right Inspector,
+and bottom raw JSON drawer while later pages are still placeholders. No write
+or mutation route is exposed. Query state is stable and bookmarkable, for
+example `/?view=evidence&fixture=partial&panel=events&q=campaign`.
+
+The command emits one JSON `ManagerReadModel v0` envelope when using the
+contract entry point. Fixtures are synthetic and do not stand in for a
+connected data gate.
 
 ## ManagerReadModel v0
 
@@ -48,6 +59,28 @@ The machine-readable schemas are exported as
 `known`, `derived`, `interpreted`, `missing`, `blocked`, `stale`,
 `incomparable`, `integrity_failure`, and `api_unavailable`.
 
+## Shared WebUI contract
+
+Shared WebUI code lives under `src/manager_gui/web/`; no Atlas or Research Story
+owner behavior is implemented here. `navigation.py` owns URL-stable view IDs
+and integration hooks. `status.py` owns reusable rendering for all nine
+read-model statuses plus `ready`, `loading`, `empty`, `partial`, and `error`
+operational states. `app.py` consumes only `ManagerDataProvider.read` and
+renders the shell around the unchanged v0 envelope.
+
+The stable URL query keys are:
+
+- `view`: `atlas`, `stories`, `strategies`, `memory`, `evidence`, `methodology`,
+  `history`, or `search`;
+- `fixture`: one of the deterministic fixture states;
+- `panel`: `inspector` or `events` (optional);
+- `q`: global search text (optional and currently display-only).
+
+T3/T4 views should register or consume a `NavigationItem` and use its
+`integration_hook`, call the public provider seam, and keep the same
+`ManagerReadModel v0` envelope. They should not add page-specific mutation
+endpoints, infer owner facts from private storage, or replace the shared
+Inspector/event drawer.
 ## Read-only boundary
 
 `ManagerDataProvider` in `src/manager_gui/provider.py` exposes one operation:
@@ -78,12 +111,14 @@ adapter, a page, a mutation, a retry, or a fallback.
 ## Planned Manager GUI S1–S6 ownership
 
 All later slices consume `ManagerReadModel v0`; they do not introduce a second
-page-specific envelope. T1 is the only implementation in this change.
+page-specific envelope. T2 implements the shared shell only; domain pages remain
+placeholders until their owning slices.
 
 | Slice | Owner | Dependency | Read-model contract |
 | --- | --- | --- | --- |
 | S1 / T1 base contract | `manager-gui` | none | defines v0 |
-| S1 / T2 Atlas and Research Story | `manager-gui` | T1 plus approved public read seams | v0 |
+| S1 / T2 shared WebUI shell | `manager-gui` | T1 | shared shell, statuses, navigation, inspector, raw JSON |
+| S1 / T3 Atlas and Research Story | `manager-gui` | T1/T2 plus approved public read seams | v0 |
 | S2 Genome and conditions | `manager-gui` | T1; Apex public read seam | v0 |
 | S3 Memory and failure knowledge | `manager-gui` | T1; Apex public read seam | v0 |
 | S4 Evidence, lineage, comparison | `manager-gui` | T1; owner-published evidence/read seams | v0 |
