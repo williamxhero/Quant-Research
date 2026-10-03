@@ -85,6 +85,7 @@ class ConditionFixtureState(StrEnum):
     SUPPORTED = "supported"
     FAILED = "failed"
     NOT_EVALUATED = "not_evaluated"
+    PARTIAL = "partial"
     EMPTY = "empty"
     MISSING = "missing"
     BLOCKED = "blocked"
@@ -648,6 +649,30 @@ def _render_sources(sources: Sequence[ConditionSourceRef]) -> str:
     return " · ".join(parts)
 
 
+def _render_related_links(genome_id: str | None, context: QueryContext) -> str:
+    """Keep condition evidence connected to Genome identity and comparison."""
+
+    if genome_id is None:
+        return ""
+    from .comparison import genome_comparison_link
+    from .genome import genome_link
+
+    values = dict(_query_pairs(context))
+    comparison_href = genome_comparison_link(
+        values.get("left_genome_id") or genome_id,
+        values.get("right_genome_id"),
+        query_context=context,
+    )
+    genome_href = genome_link(genome_id, query_context=context)
+    return (
+        '<nav class="conditions-related-links" aria-label="Condition related views">'
+        f'<a class="condition-genome-link" href="{escape(genome_href, quote=True)}">'
+        "Back to Genome</a>"
+        f'<a class="condition-comparison-link" href="{escape(comparison_href, quote=True)}">'
+        "Compare Genome</a></nav>"
+    )
+
+
 def _render_card(record: ConditionEvidence) -> str:
     outcome = record.outcome.value if record.outcome is not None else NOT_RECORDED
     rows = (
@@ -719,6 +744,7 @@ def render_genome_conditions(
             '<p class="page-intro">Applicability and invalidation conditions are shown only when an owner record publishes evidence. Regime and behaviour descriptors remain observations.</p>',
             f'<p class="context-line condition-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>',
             f'<a class="conditions-context-link" href="{escape(context_href, quote=True)}">Stable condition context</a>',
+            _render_related_links(view.genome_id, query_context),
             render_status_block(model),
             _render_group("Evidence-supported applicability conditions", ConditionCategory.APPLICABILITY, view.applicability),
             _render_group("Evidence-supported invalidation / failure conditions", ConditionCategory.INVALIDATION, view.invalidation),
@@ -834,6 +860,7 @@ def build_conditions_fixture(state: ConditionFixtureState | str) -> ManagerReadM
         ConditionFixtureState.SUPPORTED: "supported",
         ConditionFixtureState.FAILED: "failed",
         ConditionFixtureState.NOT_EVALUATED: "not_evaluated",
+        ConditionFixtureState.PARTIAL: "supported",
         ConditionFixtureState.INCOMPARABLE: "incomparable",
     }[selected]
     payload = {
@@ -846,13 +873,40 @@ def build_conditions_fixture(state: ConditionFixtureState | str) -> ManagerReadM
             {"category": "descriptor", "record_id": "descriptor-1", "descriptor": "high-volatility regime", "scope": {"universe": "cn-equity"}, "data_version": "market-data-v3", "source_refs": [source.source_id]},
         ],
     }
+    partial = selected is ConditionFixtureState.PARTIAL
+    incomparable = selected is ConditionFixtureState.INCOMPARABLE
     return ManagerReadModel(
         data=cast(JSONValue, payload),
         source_refs=(source,),
         as_of="2026-10-03T10:00:00Z",
         snapshot_token=f"conditions-fixture-{selected.value}-v0",
         derivation=Derivation(kind="direct", inputs=(source.source_id,), version="v0"),
-        availability=Availability(ReadModelStatus.KNOWN, True, "Condition evidence fixture."),
+        availability=Availability(
+            ReadModelStatus.INCOMPARABLE if incomparable else ReadModelStatus.KNOWN,
+            not partial and not incomparable,
+            "The condition evidence cannot be evaluated on compatible axes."
+            if incomparable
+            else "Condition evidence is only partially recorded in this scope."
+            if partial
+            else "Condition evidence fixture.",
+        ),
+        errors=(
+            (
+                ReadModelError(
+                    "condition_axes_incomparable",
+                    "The condition evidence cannot be evaluated on compatible axes.",
+                    source.source_id,
+                )
+                if incomparable
+                else ReadModelError(
+                    "condition_scope_partial",
+                    "Some condition evidence categories are outside the indexed scope.",
+                    source.source_id,
+                ),
+            )
+            if partial or incomparable
+            else ()
+        ),
     )
 
 

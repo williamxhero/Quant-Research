@@ -15,11 +15,29 @@ from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelSt
 from ..provider import ManagerDataProvider
 from .assets import CSS, JS
 from .atlas import render_atlas_view
+from .comparison import (
+    COMPARISON_RESOURCE,
+    ComparisonFixtureState,
+    build_genome_comparison_fixture,
+    render_genome_comparison_view,
+)
+from .conditions import (
+    CONDITIONS_RESOURCE,
+    ConditionFixtureState,
+    build_conditions_fixture,
+    render_genome_conditions_view,
+)
 from .documents import (
     DOCUMENTS_RESOURCE,
     ApprovedDirectoryBoundary,
     build_source_documents_fixture,
     render_source_documents_view,
+)
+from .genome import (
+    GENOME_RESOURCE,
+    GenomeFixtureState,
+    build_genome_fixture,
+    render_genome_view,
 )
 from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
 from .methodology import (
@@ -108,6 +126,12 @@ class _FixtureReadProvider:
         snapshot_token: str | None = None,
     ) -> ManagerReadModel:
         del snapshot_token
+        if resource == GENOME_RESOURCE:
+            return build_genome_fixture(self._genome_fixture_state())
+        if resource == CONDITIONS_RESOURCE:
+            return build_conditions_fixture(self._conditions_fixture_state())
+        if resource == COMPARISON_RESOURCE:
+            return build_genome_comparison_fixture(self._comparison_fixture_state())
         if resource == "methodology":
             return self._methodology()
         if resource == "history":
@@ -115,6 +139,17 @@ class _FixtureReadProvider:
         if resource == DOCUMENTS_RESOURCE:
             return self._documents()
         return build_fixture(self.fixture, resource=resource)
+
+    def _genome_fixture_state(self) -> GenomeFixtureState:
+        return GenomeFixtureState(self.fixture.value)
+
+    def _conditions_fixture_state(self) -> ConditionFixtureState:
+        return ConditionFixtureState(self.fixture.value)
+
+    def _comparison_fixture_state(self) -> ComparisonFixtureState:
+        if self.fixture is FixtureState.EMPTY:
+            return ComparisonFixtureState.MISSING
+        return ComparisonFixtureState(self.fixture.value)
 
     def _methodology(self) -> ManagerReadModel:
         selected = self.fixture
@@ -210,6 +245,12 @@ class ManagerGUIApp:
 
     @staticmethod
     def _resource_for_view(view: ViewId) -> str:
+        if view is ViewId.STRATEGIES:
+            return GENOME_RESOURCE
+        if view is ViewId.CONDITIONS:
+            return CONDITIONS_RESOURCE
+        if view is ViewId.COMPARISON:
+            return COMPARISON_RESOURCE
         if view is ViewId.SOURCE_DOCUMENTS:
             return DOCUMENTS_RESOURCE
         return view.value
@@ -255,6 +296,26 @@ class ManagerGUIApp:
                 mode=state.mode,
                 base_path=url,
                 query=url,
+            )
+        if state.view is ViewId.STRATEGIES:
+            return render_genome_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+                genome_id=dict(state.context).get("genome_id"),
+            )
+        if state.view is ViewId.CONDITIONS:
+            return render_genome_conditions_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
+                genome_id=dict(state.context).get("genome_id"),
+            )
+        if state.view is ViewId.COMPARISON:
+            return render_genome_comparison_view(
+                cached,
+                query_context=url,
+                snapshot_token=model.snapshot_token,
             )
         if state.view is ViewId.METHODOLOGY:
             return render_methodology_view(
@@ -305,6 +366,21 @@ class ManagerGUIApp:
         as_of = model.as_of or "Unavailable"
         query_value = escape(state.query, quote=True)
         state_value = escape(state.fixture.value, quote=True)
+        context_hidden = "".join(
+            f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
+            for key, value in state.context
+            if key != "q"
+        )
+        panel_hidden = (
+            f'<input type="hidden" name="panel" value="{escape(state.panel, quote=True)}">'
+            if state.panel
+            else ""
+        )
+        mode_hidden = (
+            f'<input type="hidden" name="mode" value="{escape(state.mode.value, quote=True)}">'
+            if state.view is ViewId.STORIES
+            else ""
+        )
         panel_text = "Events & raw JSON"
         if page is None:
             page_markup = f"""
@@ -349,7 +425,7 @@ class ManagerGUIApp:
       <input class="search-input" id="global-search" name="q" value="{query_value}"
         placeholder="Search read models…" autocomplete="off">
       <input type="hidden" name="view" value="{escape(state.view.value, quote=True)}">
-      <input type="hidden" name="fixture" value="{state_value}">
+      <input type="hidden" name="fixture" value="{state_value}">{context_hidden}{panel_hidden}{mode_hidden}
     </form>
   </header>
   <nav class="nav-strip" aria-label="Manager GUI sections">{ManagerGUIApp._render_navigation_static(state)}</nav>

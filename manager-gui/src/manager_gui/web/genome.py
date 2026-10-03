@@ -122,10 +122,13 @@ class GenomeFixtureState(StrEnum):
 
     COMPLETE = "complete"
     EMPTY = "empty"
+    PARTIAL = "partial"
     MISSING_FIELDS = "missing_fields"
     BLOCKED = "blocked"
     STALE = "stale"
+    INCOMPARABLE = "incomparable"
     INTEGRITY_FAILURE = "integrity_failure"
+    API_UNAVAILABLE = "api_unavailable"
 
 
 FIXTURE_STATES: tuple[str, ...] = tuple(state.value for state in GenomeFixtureState)
@@ -1043,6 +1046,30 @@ def _render_raw(genome: GenomeRecord) -> str:
     return f'<details class="genome-raw"><summary>Raw JSON</summary><pre data-raw-json>{escape(raw)}</pre></details>'
 
 
+def _render_related_links(genome: GenomeRecord, context: QueryContext) -> str:
+    """Link the published Genome identity into the S2 read-only subroutes."""
+
+    if genome.genome_id is None:
+        return ""
+    from .comparison import genome_comparison_link
+    from .conditions import genome_conditions_link
+
+    values = dict(_query_pairs(context))
+    comparison_href = genome_comparison_link(
+        genome.genome_id,
+        values.get("right_genome_id"),
+        query_context=context,
+    )
+    conditions_href = genome_conditions_link(genome.genome_id, query_context=context)
+    return (
+        '<nav class="genome-related-links" aria-label="Genome related views">'
+        f'<a class="genome-conditions-link" href="{escape(conditions_href, quote=True)}">'
+        "Condition evidence</a>"
+        f'<a class="genome-comparison-link" href="{escape(comparison_href, quote=True)}">'
+        "Compare Genome</a></nav>"
+    )
+
+
 def _render_filters(view: GenomeViewModel, context: QueryContext) -> str:
     values = {key: getattr(view.filters, key) or "" for key in _FILTER_KEYS}
     hidden = "".join(
@@ -1120,6 +1147,7 @@ def render_genome(
             (
                 f'<article class="genome-detail" data-genome-id="{escape(selected.genome_id or "", quote=True)}" aria-labelledby="genome-detail-title">',
                 f'<h2 id="genome-detail-title">Genome detail: {escape(selected.genome_id or "Missing")}</h2>',
+                _render_related_links(selected, context),
                 f'<p class="genome-detail-context"><a href="{escape(genome_link(None, query_context=context, filters=view.filters), quote=True)}">Back to catalog</a></p>',
                 _render_identity(selected),
                 _render_behavior(selected),
@@ -1304,7 +1332,7 @@ def build_genome_fixture(state: GenomeFixtureState | str) -> ManagerReadModel:
             derivation=Derivation(kind="direct", inputs=source_ids, version="v0"),
             availability=Availability(ReadModelStatus.KNOWN, True, "Complete Genome fixture."),
         )
-    if selected is GenomeFixtureState.MISSING_FIELDS:
+    if selected in {GenomeFixtureState.MISSING_FIELDS, GenomeFixtureState.PARTIAL}:
         data = {
             "genomes": [
                 {
@@ -1314,19 +1342,32 @@ def build_genome_fixture(state: GenomeFixtureState | str) -> ManagerReadModel:
                 }
             ]
         }
+        partial_reason = (
+            "Genome fields are missing from the fixture."
+            if selected is GenomeFixtureState.MISSING_FIELDS
+            else "The Genome read model is only partially recorded in this scope."
+        )
+        error_code = (
+            "genome_fields_missing"
+            if selected is GenomeFixtureState.MISSING_FIELDS
+            else "genome_scope_partial"
+        )
+        error_message = (
+            "The fixture omits identity, validation, event, and lineage fields."
+            if selected is GenomeFixtureState.MISSING_FIELDS
+            else partial_reason
+        )
         return ManagerReadModel(
             data=cast(JSONValue, data),
             source_refs=(source,),
             as_of="2026-10-03T10:00:00Z",
-            snapshot_token="genome-fixture-missing-v0",
+            snapshot_token=f"genome-fixture-{selected.value}-v0",
             derivation=Derivation(kind="direct", inputs=source_ids, version="v0"),
-            availability=Availability(
-                ReadModelStatus.KNOWN, False, "Genome fields are missing from the fixture."
-            ),
+            availability=Availability(ReadModelStatus.KNOWN, False, partial_reason),
             errors=(
                 ReadModelError(
-                    "genome_fields_missing",
-                    "The fixture omits identity, validation, event, and lineage fields.",
+                    error_code,
+                    error_message,
                     source.source_id,
                 ),
             ),
@@ -1342,24 +1383,42 @@ def build_genome_fixture(state: GenomeFixtureState | str) -> ManagerReadModel:
             "The Genome source is stale.",
             "genome_source_stale",
         ),
+        GenomeFixtureState.INCOMPARABLE: (
+            ReadModelStatus.INCOMPARABLE,
+            "The Genome records cannot be compared on compatible axes.",
+            "genome_axes_incomparable",
+        ),
         GenomeFixtureState.INTEGRITY_FAILURE: (
             ReadModelStatus.INTEGRITY_FAILURE,
             "The Genome artifact failed integrity validation.",
             "genome_integrity_failure",
         ),
+        GenomeFixtureState.API_UNAVAILABLE: (
+            ReadModelStatus.API_UNAVAILABLE,
+            "The approved Genome read API is unavailable.",
+            "genome_api_unavailable",
+        ),
     }
     status, reason, code = status_by_state[selected]
     data = (
         {"genomes": []}
-        if selected in {GenomeFixtureState.BLOCKED, GenomeFixtureState.INTEGRITY_FAILURE}
+        if selected in {
+            GenomeFixtureState.BLOCKED,
+            GenomeFixtureState.INTEGRITY_FAILURE,
+            GenomeFixtureState.API_UNAVAILABLE,
+        }
         else _complete_fixture_data(source_ids)
     )
     return ManagerReadModel(
         data=cast(JSONValue, data),
         source_refs=(source,),
-        as_of="2025-01-01T00:00:00Z"
-        if selected is GenomeFixtureState.STALE
-        else "2026-10-03T10:00:00Z",
+        as_of=(
+            None
+            if selected is GenomeFixtureState.API_UNAVAILABLE
+            else "2025-01-01T00:00:00Z"
+            if selected is GenomeFixtureState.STALE
+            else "2026-10-03T10:00:00Z"
+        ),
         snapshot_token=f"genome-fixture-{selected.value}-v0",
         derivation=Derivation(kind="direct", inputs=source_ids, version="v0"),
         availability=Availability(status, False, reason),

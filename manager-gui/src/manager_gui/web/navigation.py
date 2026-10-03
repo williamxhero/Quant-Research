@@ -15,6 +15,8 @@ class ViewId(StrEnum):
     ATLAS = "atlas"
     STORIES = "stories"
     STRATEGIES = "strategies"
+    CONDITIONS = "strategy-conditions"
+    COMPARISON = "strategy-genome-comparison"
     MEMORY = "memory"
     EVIDENCE = "evidence"
     METHODOLOGY = "methodology"
@@ -55,6 +57,20 @@ NAVIGATION: tuple[NavigationItem, ...] = (
         "SG",
         "Strategy and genome read surfaces.",
         "strategy-genome-view",
+    ),
+    NavigationItem(
+        ViewId.CONDITIONS,
+        "Genome Conditions",
+        "GC",
+        "Genome applicability, invalidation, and descriptor evidence.",
+        "strategy-genome-conditions-view",
+    ),
+    NavigationItem(
+        ViewId.COMPARISON,
+        "Genome Comparison",
+        "CP",
+        "Explicit Genome comparison axes and provenance.",
+        "strategy-genome-comparison-view",
     ),
     NavigationItem(
         ViewId.MEMORY,

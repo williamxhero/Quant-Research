@@ -60,9 +60,11 @@ GenomeComparisonStatus = ComparisonResult
 class ComparisonFixtureState(StrEnum):
     """Deterministic result and read-seam states for focused tests."""
 
+    COMPLETE = "complete"
     EQUAL = "equal"
     DIFFERENT = "different"
     INCOMPARABLE = "incomparable"
+    PARTIAL = "partial"
     MISSING = "missing"
     BLOCKED = "blocked"
     STALE = "stale"
@@ -506,6 +508,37 @@ def _render_refs(refs: Sequence[ComparisonSourceRef]) -> str:
     return " · ".join(values)
 
 
+def _render_related_links(comparison: GenomeComparison | None, context: QueryContext) -> str:
+    """Expose stable paths back to each Genome and its condition evidence."""
+
+    values = dict(_query_pairs(context))
+    left_id = None if comparison is None else comparison.left_genome_id
+    right_id = None if comparison is None else comparison.right_genome_id
+    left_id = left_id or values.get("left_genome_id")
+    right_id = right_id or values.get("right_genome_id")
+    if left_id is None and right_id is None:
+        return ""
+    from .conditions import genome_conditions_link
+    from .genome import genome_link
+
+    links: list[str] = []
+    if left_id is not None:
+        links.append(
+            f'<a class="comparison-left-genome-link" href="{escape(genome_link(left_id, query_context=context), quote=True)}">'
+            f"Left Genome {escape(left_id)}</a>"
+        )
+        links.append(
+            f'<a class="comparison-left-conditions-link" href="{escape(genome_conditions_link(left_id, query_context=context), quote=True)}">'
+            "Left condition evidence</a>"
+        )
+    if right_id is not None:
+        links.append(
+            f'<a class="comparison-right-genome-link" href="{escape(genome_link(right_id, query_context=context), quote=True)}">'
+            f"Right Genome {escape(right_id)}</a>"
+        )
+    return '<nav class="comparison-related-links" aria-label="Comparison related views">' + "".join(links) + "</nav>"
+
+
 def _list_section(title: str, values: Sequence[str], *, marker: str) -> str:
     if not values:
         body = f'<p class="comparison-not-recorded" data-axis-list="{marker}">{NOT_RECORDED}</p>'
@@ -567,6 +600,7 @@ def render_genome_comparison(
             '<p class="page-intro">Only explicit comparison axes are shown. Equal, different, and incomparable remain distinct outcomes.</p>',
             f'<p class="context-line comparison-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span></p>',
             f'<a class="comparison-context-link" href="{escape(comparison_href, quote=True)}">Stable comparison context</a>',
+            _render_related_links(comparison, query_context),
             render_status_block(model),
             *fields,
             '</section>',
@@ -657,8 +691,14 @@ def build_genome_comparison_fixture(state: ComparisonFixtureState | str) -> Mana
             derivation=Derivation(kind="direct", inputs=(), version="v0"),
             availability=Availability(ReadModelStatus.MISSING, False, "No explicit Genome comparison is recorded in this scope."),
         )
+    partial = selected is ComparisonFixtureState.PARTIAL
     left = _genome("genome-left", 1, left_source.source_id, "snapshot-left-v1")
-    right = _genome("genome-right", 1 if selected is ComparisonFixtureState.EQUAL else 2, right_source.source_id, "snapshot-right-v1")
+    right = _genome(
+        "genome-right",
+        1 if selected in {ComparisonFixtureState.EQUAL, ComparisonFixtureState.COMPLETE} else 2,
+        right_source.source_id,
+        "snapshot-right-v1",
+    )
     if selected is ComparisonFixtureState.INCOMPARABLE:
         right["data_requirements"] = {"version": "market-data-v4", "compatible": False}
         declared = {
@@ -668,7 +708,11 @@ def build_genome_comparison_fixture(state: ComparisonFixtureState | str) -> Mana
             "reason": "The data versions are incompatible.",
         }
     else:
-        declared = {"result": "equal" if selected is ComparisonFixtureState.EQUAL else "different"}
+        declared = {
+            "result": "equal"
+            if selected in {ComparisonFixtureState.EQUAL, ComparisonFixtureState.COMPLETE}
+            else "different"
+        }
     payload = {"comparison": {"left": left, "right": right, **declared, "source_refs": [source.source_id for source in sources]}}
     return ManagerReadModel(
         data=cast(JSONValue, payload),
@@ -676,7 +720,21 @@ def build_genome_comparison_fixture(state: ComparisonFixtureState | str) -> Mana
         as_of="2026-10-03T10:00:00Z",
         snapshot_token=f"comparison-fixture-{selected.value}-v0",
         derivation=Derivation(kind="derived", rule="manager-gui.genome-comparison.v0", inputs=tuple(source.source_id for source in sources), version="v0"),
-        availability=Availability(ReadModelStatus.DERIVED, True, "Genome comparison fixture."),
+        availability=Availability(
+            ReadModelStatus.KNOWN if partial else ReadModelStatus.DERIVED,
+            not partial,
+            "Genome comparison is only partially recorded in this scope."
+            if partial
+            else "Genome comparison fixture.",
+        ),
+        errors=(
+            ReadModelError(
+                "comparison_scope_partial",
+                "Some comparison axes are outside the indexed scope.",
+            ),
+        )
+        if partial
+        else (),
     )
 
 
