@@ -20,7 +20,12 @@ uv run --directory manager-gui ruff check .
 # Build the isolated wheel and source distribution
 uv build --directory manager-gui
 
-# Compile and smoke-test the package without a server dependency
+# Temporary type check (keeps mypy out of production dependencies)
+uv run --directory manager-gui --with mypy mypy --python-version 3.11 src
+
+# Full S5 verification helpers
+uv run --directory manager-gui pytest -q
+uv run --directory manager-gui ruff check .
 python -m compileall -q manager-gui/src
 uv run --directory manager-gui python -m manager_gui --fixture complete --pretty
 
@@ -30,16 +35,23 @@ uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
 uv run --directory manager-gui python -m manager_gui.web --fixture complete --port 8765
 ```
 
-Open `http://127.0.0.1:8765/`. S1 mounts Atlas and Research Story into the
-shared shell: `/?view=atlas&fixture=complete` renders the Atlas hook and
-`/?view=stories&fixture=complete&mode=evidence` renders the Story hook. The
-fixture-backed path is read-only and preserves `fixture`, `panel`, `q`, Atlas
-filters, story root identifiers, `record_id`, and `mode` in stable links. The
-shared top bar, navigation, read-only badge, status block, Inspector, and raw
-JSON drawer remain owned by the shell. Atlas object links include a stable
-Research Story link; story entries retain explicit source references and show
-`Missing / Unconfirmed` when one is not available. No write or mutation route
-is exposed: `POST` requests return `405 Allow: GET, HEAD`.
+Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
+Methodology, History, and Source Documents:
+
+- `/?view=atlas&fixture=complete` renders the Atlas hook;
+- `/?view=stories&fixture=complete&mode=evidence` renders the Story hook;
+- `/?view=methodology&fixture=complete&scope=A0` renders the versioned method archive;
+- `/?view=history&fixture=complete&scope=S3` renders source-recorded history;
+- `/?view=source-documents&fixture=complete&scope=CPA` renders the approved document index.
+
+The fixture-backed path is read-only and preserves `fixture`, `scope`, `panel`, `q`,
+`snapshot_token`, Atlas filters, story root identifiers, `record_id`, `document_id`,
+and `mode` in stable links. The shared top bar, navigation, read-only badge, status
+block, Inspector, and raw JSON drawer remain owned by the shell. Methodology links
+its explicit document and record references to Source Documents and History; History
+links source artifacts, records, and documents; Source Documents links record
+citations and reverse citations in both directions. No write or mutation route is
+exposed: `POST` requests return `405 Allow: GET, HEAD`.
 
 The command emits one JSON `ManagerReadModel v0` envelope when using the
 contract entry point. Fixtures are synthetic and do not stand in for a
@@ -76,30 +88,40 @@ renders the shell around the unchanged v0 envelope.
 The stable URL query keys are:
 
 - `view`: `atlas`, `stories`, `strategies`, `memory`, `evidence`, `methodology`,
-  `history`, or `search`;
-- `fixture`: one of the deterministic fixture states;
+  `history`, `source-documents`, or `search`;
+- `fixture`: one of the deterministic shell fixture states;
+- `scope`: `A0`, `S3`, `CPA`, or `V1.x` on History and Source Documents;
 - `panel`: `inspector` or `events` (optional);
 - `q`: global search text (optional and currently display-only);
 - `mode`: `narrative`, `evidence`, or `timeline` on the Stories route;
+- `page` and `page_size`: bounded presentation pagination for already-read entries;
 - `record_type`, `state`, `date`, `source`, and `availability` on Atlas;
-- `record_id`, `campaign`, `study`, and `strategy_family` are opaque object/root
-  context retained by detail and mode links.
+- `record_id`, `document_id`, `campaign`, `study`, and `strategy_family` are opaque
+  object/root context retained by detail and mode links.
 
-T3/T4 views register or consume a `NavigationItem`, use the public provider seam,
-and keep the same `ManagerReadModel v0` envelope. S1-T5 mounts the exported
-hooks without moving shell ownership into a page module:
+All page hooks register or consume a `NavigationItem`, use the public provider seam,
+and keep the same `ManagerReadModel v0` envelope. The shell passes a cached copy of
+the envelope to hooks that accept a provider, so an integrated route performs one
+owner read. The current public hook contract is:
 
 - `manager_gui.web.atlas.render_atlas_view(provider, filters=..., query_context=..., snapshot_token=...)`
-  reads the Atlas resource and returns a fragment at `data-integration-hook="atlas-view"`.
-  The app passes a cached copy of the shell's envelope so the hook does not perform a
-  second provider read.
+  mounts `data-integration-hook="atlas-view"`;
 - `manager_gui.web.research_story.render_research_story(model, mode=..., base_path=..., query=...)`
-  consumes the already-read Stories envelope and mounts at
-  `data-integration-hook="research-story-view"`. `mode` is `narrative`, `evidence`,
-  or `timeline`; the shell parses invalid modes as the safe narrative default.
-- `manager_gui.web.ATLAS_INTEGRATION_HOOK`, `render_atlas_view`, `StoryMode`,
-  `render_research_story`, and `render_research_story_view` are exported from the
-  `manager_gui.web` package for the public integration seam.
+  mounts `data-integration-hook="research-story-view"`;
+- `manager_gui.web.methodology.render_methodology_view(provider_or_model, snapshot_token=..., query_context=...)`
+  mounts `data-integration-hook="methodology-view"`;
+- `manager_gui.web.history.render_history_view(provider_or_model, scope=..., base_path=..., query=..., snapshot_token=...)`
+  mounts `data-integration-hook="history-view"`;
+- `manager_gui.web.documents.render_source_documents_view(provider_or_model, scope=..., boundary=..., base_path=..., query=..., snapshot_token=...)`
+  mounts `data-integration-hook="source-documents-view"`.
+
+Methodology is the canonical methodology-record surface: usage, results, validity
+evidence, limitations, failure cases, versions, and superseded state are separate
+fields. History admits only explicit source-event times and categories. Source
+Documents is an interpreted-document index: document metadata, plans, reports,
+retrospectives, future ideas, external sources, and raw evidence never become
+canonical facts merely because they are indexed. Each page has explicit boundary
+copy and stable links to the related view.
 
 The app remains responsible for the document chrome, top bar, navigation,
 read-only badge, shared status/operational-state rendering, Inspector, raw JSON
@@ -147,11 +169,42 @@ not implementations of other owners:
 These are public-read seams only. T1 does not add an owner API, a database
 adapter, a page, a mutation, a retry, or a fallback.
 
+## S5 directory and document boundary
+
+`SourceDocumentsViewModel` consumes an explicit approved document index through
+`ManagerDataProvider.read("source_documents")`. It uses stable `document_id`, type,
+version, source locator, update time, forward citations, and reverse citations. It
+never treats a filename as identity, scans a directory, opens a document, reads
+SQLite, or dereferences a private path. URI/fixture locators are renderable public
+references. A local `file:` or Windows path is renderable only when it is beneath
+an explicitly configured `ApprovedDirectoryBoundary` (for example,
+`ManagerGUIApp(..., approved_directories=("D:/approved-documents",))`); otherwise
+its locator is withheld and the page reports `boundary-blocked`.
+
+The index keeps `missing`, `version-conflict`, `not-indexed`, `api-unavailable`,
+and `boundary-blocked` distinct. A version conflict retains all versions and never
+silently chooses the newest one. History and Methodology can link into the Source
+Documents route, but a link does not imply that a document interpretation is a
+canonical owner fact.
+
+### S5 exit evidence / integration note for #629
+
+The S5 read-only loop is:
+`Methodology record → explicit document/record refs → Source Documents ↔ History
+record/event → source artifact/document`. Integrated routes preserve the shared
+shell, source refs, `as_of`, snapshot token, status/error envelope, raw JSON, and
+opaque query context. Deterministic scope fixtures cover `A0`, `S3`, `CPA`, and
+`V1.x`; shell fixtures exercise missing, partial, blocked, stale, incomparable,
+integrity-failure, and API-unavailable states. Tests verify source-event-only
+history, canonical-fact versus document-interpretation boundaries, document and
+record navigation, bounded pagination, provider read-only shape, and approved
+directory blocking. This evidence does not close issue #629 from the worktree and
+does not implement S2, S3, S4, or S6 search/portal behavior.
 ## Planned Manager GUI S1–S6 ownership
 
 All later slices consume `ManagerReadModel v0`; they do not introduce a second
-page-specific envelope. T2 implements the shared shell only; domain pages remain
-placeholders until their owning slices.
+page-specific envelope. S2–S4 and S6 remain consumers or future owners outside
+this ticket; S5 is integrated here through the public document-index seam.
 
 | Slice | Owner | Dependency | Read-model contract |
 | --- | --- | --- | --- |
@@ -161,15 +214,10 @@ placeholders until their owning slices.
 | S2 Genome and conditions | `manager-gui` | T1; Apex public read seam | v0 |
 | S3 Memory and failure knowledge | `manager-gui` | T1; Apex public read seam | v0 |
 | S4 Evidence, lineage, comparison | `manager-gui` | T1; owner-published evidence/read seams | v0 |
-| S5 Methodology, history, source documents | `manager-gui` | T1; document-index seam | v0 |
+| S5 Methodology, history, source documents | `manager-gui` | T1; document-index seam | v0, integrated in S5-T3 |
 | S6 Search, portal, accessibility | `manager-gui` | T1 and S2–S5 read seams | v0 |
 
-No later slice is implemented here. The package remains independently runnable
-with fixtures while those public seams are pending.
-
 ### S2–S6 consumption contract
-
-Every later slice consumes the same `ManagerReadModel v0` envelope and the same
 `ManagerDataProvider.read(resource, snapshot_token=...)` boundary. A page may add
 its own exported renderer and URL-stable `NavigationItem`, but it must:
 
@@ -187,5 +235,6 @@ its own exported renderer and URL-stable `NavigationItem`, but it must:
 
 S2 consumes Genome/condition reads, S3 consumes Memory/failure reads, S4 consumes
 Evidence/lineage/comparison reads, S5 consumes Methodology/History/document-index
-reads, and S6 composes those read seams for search and Portal integration. None
-of these contracts is implemented or simulated by S1-T5.
+reads, and S6 composes those read seams for search and Portal integration. S5-T3
+publishes the integration hook and contract; it does not implement S2, S3, S4, or
+S6 search/portal behavior.

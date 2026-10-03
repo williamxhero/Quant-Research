@@ -6,15 +6,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import escape
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from ..fixtures import FixtureState, fixture_provider
-from ..models import ManagerReadModel
+from ..fixtures import FixtureState, build_fixture
+from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
 from .assets import CSS, JS
 from .atlas import render_atlas_view
+from .documents import (
+    DOCUMENTS_RESOURCE,
+    ApprovedDirectoryBoundary,
+    build_source_documents_fixture,
+    render_source_documents_view,
+)
+from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
+from .methodology import (
+    MethodologyFixtureState,
+    build_methodology_fixture,
+    render_methodology_view,
+)
 from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item
 from .research_story import StoryMode, render_research_story
 from .status import render_status_block
@@ -83,6 +95,70 @@ class WebRequestState:
 
 
 @dataclass(frozen=True, slots=True)
+class _FixtureReadProvider:
+    """Route the shared fixture selector to each S5 public read seam."""
+
+    fixture: FixtureState
+    scope: str
+
+    def read(
+        self,
+        resource: str = "atlas",
+        *,
+        snapshot_token: str | None = None,
+    ) -> ManagerReadModel:
+        del snapshot_token
+        if resource == "methodology":
+            return self._methodology()
+        if resource == "history":
+            return self._history()
+        if resource == DOCUMENTS_RESOURCE:
+            return self._documents()
+        return build_fixture(self.fixture, resource=resource)
+
+    def _methodology(self) -> ManagerReadModel:
+        selected = self.fixture
+        if selected in {
+            FixtureState.EMPTY,
+            FixtureState.COMPLETE,
+            FixtureState.PARTIAL,
+            FixtureState.STALE,
+        }:
+            state = MethodologyFixtureState(selected.value)
+            return build_methodology_fixture(state)
+        if selected is FixtureState.API_UNAVAILABLE:
+            return build_methodology_fixture(MethodologyFixtureState.NOT_INDEXED)
+        return build_fixture(selected, resource="methodology")
+
+    def _history(self) -> ManagerReadModel:
+        if self.fixture is FixtureState.COMPLETE:
+            return build_history_fixture(self.scope)
+        if self.fixture is FixtureState.PARTIAL:
+            model = build_history_fixture(self.scope)
+            return replace(
+                model,
+                availability=Availability(
+                    status=ReadModelStatus.KNOWN,
+                    complete=False,
+                    reason="Only part of the source-event history is in scope.",
+                ),
+                errors=(
+                    ReadModelError(
+                        code="history_scope_partial",
+                        message="Some source-event categories are outside the indexed scope.",
+                        source_ref=model.source_refs[0].source_id if model.source_refs else None,
+                    ),
+                ),
+            )
+        return build_fixture(self.fixture, resource="history")
+
+    def _documents(self) -> ManagerReadModel:
+        if self.fixture is FixtureState.COMPLETE:
+            return build_source_documents_fixture(self.scope)
+        return build_fixture(self.fixture, resource=DOCUMENTS_RESOURCE)
+
+
+@dataclass(frozen=True, slots=True)
 class _CachedReadProvider:
     """Adapt the already-read envelope to a page hook without a second read."""
 
@@ -106,9 +182,11 @@ class ManagerGUIApp:
         provider: ManagerDataProvider | None = None,
         *,
         default_fixture: FixtureState | str = FixtureState.PARTIAL,
+        approved_directories: tuple[str, ...] = (),
     ) -> None:
         self._provider = provider
         self._default_fixture = FixtureState(default_fixture)
+        self._approved_directories = tuple(approved_directories)
 
     @property
     def default_fixture(self) -> FixtureState:
@@ -122,10 +200,29 @@ class ManagerGUIApp:
         return WebRequestState.from_url(url, default_fixture=self._default_fixture)
 
     def read_model(self, state: WebRequestState) -> ManagerReadModel:
-        """Read through the T1 seam; this method intentionally has no writes."""
+        """Read through the public seam; this method intentionally has no writes."""
 
-        provider = self._provider if self._provider is not None else fixture_provider(state.fixture)
-        return provider.read(state.view.value, snapshot_token=dict(state.context).get("snapshot_token"))
+        provider = self._provider or _FixtureReadProvider(
+            self._default_fixture_for_state(state), self._scope_for_state(state)
+        )
+        resource = self._resource_for_view(state.view)
+        return provider.read(resource, snapshot_token=dict(state.context).get("snapshot_token"))
+
+    @staticmethod
+    def _resource_for_view(view: ViewId) -> str:
+        if view is ViewId.SOURCE_DOCUMENTS:
+            return DOCUMENTS_RESOURCE
+        return view.value
+
+    def _default_fixture_for_state(self, state: WebRequestState) -> FixtureState:
+        """Use the URL fixture while keeping S5 scopes as page-local context."""
+
+        return state.fixture
+
+    @staticmethod
+    def _scope_for_state(state: WebRequestState) -> str:
+        requested = dict(state.context).get("scope")
+        return requested if requested in HISTORY_SCOPES else "A0"
 
     def render(self, url: str = "/") -> str:
         """Render a complete HTML document for the shell route."""
@@ -142,13 +239,13 @@ class ManagerGUIApp:
         state = self.request_state(url)
         return self.read_model(state).to_json(indent=2)
 
-    @staticmethod
-    def _render_page(state: WebRequestState, model: ManagerReadModel, url: str) -> str | None:
-        """Mount an S1 page hook while leaving all shell chrome in this app."""
+    def _render_page(self, state: WebRequestState, model: ManagerReadModel, url: str) -> str | None:
+        """Mount a page hook while leaving all shell chrome in this app."""
 
+        cached = _CachedReadProvider(model)
         if state.view is ViewId.ATLAS:
             return render_atlas_view(
-                _CachedReadProvider(model),
+                cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
             )
@@ -156,6 +253,27 @@ class ManagerGUIApp:
             return render_research_story(
                 model,
                 mode=state.mode,
+                base_path=url,
+                query=url,
+            )
+        if state.view is ViewId.METHODOLOGY:
+            return render_methodology_view(
+                cached,
+                snapshot_token=model.snapshot_token,
+                query_context=url,
+            )
+        if state.view is ViewId.HISTORY:
+            return render_history_view(
+                model,
+                scope=self._scope_for_state(state),
+                base_path=url,
+                query=url,
+            )
+        if state.view is ViewId.SOURCE_DOCUMENTS:
+            return render_source_documents_view(
+                model,
+                scope=self._scope_for_state(state),
+                boundary=ApprovedDirectoryBoundary(self._approved_directories),
                 base_path=url,
                 query=url,
             )

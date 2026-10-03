@@ -84,6 +84,105 @@ def test_shell_preserves_navigation_context_and_read_only_surface() -> None:
     assert "No mutation route" not in document
 
 
+def test_s5_integrated_routes_preserve_shell_links_and_scope_context() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    routes = {
+        "methodology": 'data-integration-hook="methodology-view"',
+        "history": 'data-integration-hook="history-view"',
+        "source-documents": 'data-integration-hook="source-documents-view"',
+    }
+    for view, hook in routes.items():
+        document = app.render(
+            f"/?view={view}&fixture=complete&scope=CPA&panel=events&q=research&snapshot_token=s5"
+        )
+        assert hook in document
+        assert 'class="read-only-badge"' in document
+        assert 'id="inspector"' in document
+        assert 'id="event-drawer"' in document
+        assert "research" in document
+        assert "s5" in document
+        assert 'class="page-pagination"' in document
+
+    methodology = app.render("/?view=methodology&fixture=complete&scope=A0&q=methods")
+    assert 'data-boundary="canonical-fact"' in methodology
+    assert 'data-link-kind="document"' in methodology
+    assert 'view=source-documents' in unescape(methodology)
+    assert 'document_id=doc-g0' in unescape(methodology)
+    assert 'view=history' in unescape(methodology)
+    assert 'record_id=record-g0' in unescape(methodology)
+
+    history = app.render("/?view=history&fixture=complete&scope=S3&q=events")
+    assert 'data-history-scope="S3"' in history
+    assert 'data-boundary="canonical-fact"' in history
+    assert 'data-link-kind="source-artifact"' in history
+    assert 'data-link-kind="document"' in history
+    assert 'document_id=s3-' in unescape(history)
+
+    documents = app.render("/?view=source-documents&fixture=complete&scope=V1.x&q=docs")
+    assert 'data-document-scope="V1.x"' in documents
+    assert 'data-boundary="document-interpretation"' in documents
+    assert 'data-link-kind="record"' in documents
+    assert 'view=history' in unescape(documents)
+
+
+def test_s5_scope_fixture_navigation_covers_all_declared_scopes() -> None:
+    app = ManagerGUIApp(default_fixture="complete")
+    for scope in ("A0", "S3", "CPA", "V1.x"):
+        history = app.render(f"/?view=history&fixture=complete&scope={scope}")
+        documents = app.render(f"/?view=source-documents&fixture=complete&scope={scope}")
+        assert f'data-history-scope="{scope}"' in history
+        assert f'data-document-scope="{scope}"' in documents
+        assert f"fixture-history-{scope}-v0" in history
+        assert f"fixture-documents-{scope}-v0" in documents
+
+
+def test_s5_integrated_fixture_states_remain_explicit() -> None:
+    app = ManagerGUIApp(default_fixture="complete")
+    for fixture in FixtureState:
+        expected = fixture_provider(fixture).read("atlas").availability.status.value
+        for view in ("methodology", "history", "source-documents"):
+            document = app.render(f"/?view={view}&fixture={fixture.value}&scope=A0")
+            assert f'data-status="{expected}"' in document
+            assert 'class="read-only-badge"' in document
+            assert 'id="event-drawer"' in document
+    assert 'data-document-index-state="boundary-blocked"' not in app.render(
+        "/?view=source-documents&fixture=complete&scope=A0"
+    )
+
+
+def test_s5_integration_reads_each_injected_resource_once() -> None:
+    from manager_gui.web.documents import build_source_documents_fixture
+    from manager_gui.web.history import build_history_fixture
+    from manager_gui.web.methodology import build_methodology_fixture
+
+    class CountingProvider:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            self.calls.append((resource, snapshot_token))
+            if resource == "methodology":
+                return build_methodology_fixture("complete")
+            if resource == "history":
+                return build_history_fixture("A0")
+            if resource == "source_documents":
+                return build_source_documents_fixture("A0")
+            return fixture_provider("complete").read(resource, snapshot_token=snapshot_token)
+
+    provider = CountingProvider()
+    app = ManagerGUIApp(provider)
+    app.render("/?view=methodology&fixture=complete&snapshot_token=method")
+    app.render("/?view=history&fixture=complete&snapshot_token=history")
+    app.render("/?view=source-documents&fixture=complete&snapshot_token=documents")
+    assert provider.calls == [
+        ("methodology", "method"),
+        ("history", "history"),
+        ("source_documents", "documents"),
+    ]
+    assert public_provider_methods(provider) == ("read",)
+    assert not FORBIDDEN_PROVIDER_METHODS.intersection(public_provider_methods(provider))
+
+
 def test_local_server_serves_html_json_and_rejects_mutations() -> None:
     server = create_server(port=0, fixture="partial")
     thread = threading.Thread(target=server.serve_forever, daemon=True)

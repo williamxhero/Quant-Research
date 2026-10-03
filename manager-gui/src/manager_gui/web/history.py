@@ -37,6 +37,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 
@@ -196,6 +197,32 @@ def _source_locator(item: Mapping[str, object], source_refs: Mapping[str, Source
     return (source_ids[0] if source_ids else None, None)
 
 
+def _document_ids(item: Mapping[str, object]) -> tuple[str, ...]:
+    values: list[str] = []
+    for key in ("document_id", "document_ref", "document_ids", "document_refs", "source_document"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip())
+        elif isinstance(value, Mapping):
+            identifier = _first_text(value, ("document_id", "documentId", "id"))
+            if identifier:
+                values.append(identifier)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            for entry in value:
+                values.extend(_document_ids({"document_id": entry}))
+    return tuple(dict.fromkeys(values))
+
+
+def _context_url(
+    base_path: str,
+    query: Mapping[str, object] | str | None,
+    *,
+    view: str,
+    **updates: object,
+) -> str:
+    return context_link(query if query is not None else base_path, view=view, **updates)
+
+
 def _record_id(item: Mapping[str, object]) -> str | None:
     return _first_text(item, ("record_id", "recordId", "id", "uid", "key"))
 
@@ -227,6 +254,7 @@ class HistoryEvent:
     source_locator: str | None = None
     detail: str | None = None
     known_at: str | None = None
+    document_ids: tuple[str, ...] = ()
     raw: Mapping[str, object] | None = None
 
     @property
@@ -252,6 +280,7 @@ class HistoryEvent:
             "source_locator": self.source_locator,
             "detail": self.detail,
             "known_at": self.known_at,
+            "document_ids": list(self.document_ids),
         }
 
 
@@ -299,6 +328,7 @@ class HistoryViewModel:
                     source_locator=source_locator,
                     detail=detail,
                     known_at=_nested_text(item, ("known_at", "system_known_at", "recorded_at")),
+                    document_ids=_document_ids(item),
                     raw=item,
                 )
             )
@@ -353,7 +383,14 @@ class HistoryViewModel:
             f'>{escape(selected)}</a>'
             for selected in HISTORY_SCOPES
         )
-        if not self.events:
+        window = PageWindow.from_query(query if query is not None else base_path, total=len(self.events))
+        paged_events = self.events[window.start : window.stop]
+        related = (
+            f'<nav class="history-related-nav" aria-label="History related sources">'
+            f'<a class="history-methodology-link" href="{escape(_context_url(base_path, query, view="methodology"), quote=True)}">Methodology</a>'
+            f'<a class="history-documents-link" href="{escape(_context_url(base_path, query, view="source-documents"), quote=True)}">Source Documents</a></nav>'
+        )
+        if not paged_events:
             state = display_state_for(self.read_model)
             if self.read_model.availability.status is ReadModelStatus.KNOWN:
                 empty = render_operational_state(
@@ -364,7 +401,9 @@ class HistoryViewModel:
                 empty = render_operational_state(state, detail="No source events are available in this scope.")
             body = empty
         else:
-            rows = "".join(_render_event(event) for event in self.events)
+            rows = "".join(
+                _render_event(event, base_path=base_path, query=query) for event in paged_events
+            )
             body = (
                 '<ol class="history-event-list" aria-label="Source event timeline">'
                 f"{rows}</ol>"
@@ -375,20 +414,39 @@ class HistoryViewModel:
             '<p class="eyebrow">History · source events only</p>'
             '<h1 class="page-title" data-page-title tabindex="-1">History</h1>'
             '<p class="page-intro">Only source-recorded events are shown. GUI phase transitions are never inferred.</p>'
+            '<p class="boundary-note" data-boundary="canonical-fact"><strong>Canonical facts</strong> '
+            "are limited to source-recorded events. Reports, plans, and future ideas remain document "
+            "interpretation and are linked through the approved index.</p>"
             f'<p class="context-line history-context"><strong>Scope</strong> {escape(scope)}</p>'
+            f"{related}"
             f'<nav class="history-scope-nav" aria-label="History fixture scopes">{scope_links}</nav>'
-            f"{render_status_block(self.read_model)}{body}</section>"
+            f"{render_status_block(self.read_model)}{body}{window.render(query if query is not None else base_path, view='history')}</section>"
         )
 
 
-def _render_event(event: HistoryEvent) -> str:
+def _render_event(
+    event: HistoryEvent,
+    *,
+    base_path: str,
+    query: Mapping[str, object] | str | None,
+) -> str:
     locator = (
-        f'<a class="history-source-link" href="{escape(event.source_locator, quote=True)}">'
+        f'<a class="history-source-link" data-link-kind="source-artifact" href="{escape(event.source_locator, quote=True)}">'
         f"{escape(event.source_locator)}</a>"
         if event.source_locator
         else '<span class="history-source-missing">Missing / Unconfirmed source locator</span>'
     )
-    record = escape(event.record_id) if event.record_id else "Missing / Unconfirmed"
+    document_links = " · ".join(
+        f'<a class="history-document-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+        f"{escape(document_id)}</a>"
+        for document_id in event.document_ids
+    ) or '<span class="history-source-missing">Missing / Unconfirmed document</span>'
+    record = (
+        f'<a class="history-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=event.record_id), quote=True)}">'
+        f"{escape(event.record_id)}</a>"
+        if event.record_id
+        else "Missing / Unconfirmed"
+    )
     detail = escape(event.detail or "Source event recorded.")
     return (
         f'<li class="history-event" data-event-id="{escape(event.event_id, quote=True)}" '
@@ -397,7 +455,7 @@ def _render_event(event: HistoryEvent) -> str:
         f'<time datetime="{escape(event.source_event_time, quote=True)}">{escape(event.source_event_time)}</time>'
         f'<span class="history-event-type">{escape(event.event_type.value)}</span>'
         f'<strong>{escape(event.title)}</strong><p>{detail}</p>'
-        f'<p class="history-event-meta">Record: {record} · Source: {locator}</p></li>'
+        f'<p class="history-event-meta">Record: {record} · Source: {locator} · Document: {document_links}</p></li>'
     )
 
 
@@ -472,6 +530,9 @@ def build_history_fixture(scope: str = "A0") -> ManagerReadModel:
             "source_event_time": f"2026-10-{index + 1:02d}T08:00:00Z",
             "record_id": f"{scope.lower()}-record-{index + 1}",
             "source_ref": source.source_id,
+            "document_refs": [
+                f"{scope.lower()}-{('plan', 'design', 'report', 'retrospective', 'future-idea', 'external-source', 'raw-evidence')[index % 7]}-{index % 7 + 1}"
+            ],
         }
         for index, event_type in enumerate(categories)
     ]
