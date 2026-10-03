@@ -101,6 +101,7 @@ def test_blocked_stale_integrity_and_api_unavailable_are_not_comparison_results(
         assert f'data-status="{status.value}"' in document
         assert 'data-display-state="error"' in document
         assert 'data-comparison-result="not recorded"' in document
+        assert model.availability.reason is not None
         assert model.availability.reason in document
 
 

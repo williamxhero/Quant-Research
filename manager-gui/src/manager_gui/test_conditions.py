@@ -115,6 +115,7 @@ def test_blocked_stale_integrity_and_api_unavailable_use_shared_status_component
         assert model.availability.status is status
         assert f'data-status="{status.value}"' in document
         assert 'data-display-state="error"' in document
+        assert model.availability.reason is not None
         assert model.availability.reason in document
 
 
