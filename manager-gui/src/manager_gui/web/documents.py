@@ -30,7 +30,7 @@ from enum import StrEnum
 from html import escape
 from pathlib import Path
 from typing import cast
-from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
+from urllib.parse import unquote, urlsplit
 
 from ..models import (
     Availability,
@@ -41,6 +41,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .navigation import PageWindow, context_link
 from .status import DisplayState, render_operational_state, render_status_block
 
 
@@ -432,7 +433,15 @@ class SourceDocumentsViewModel:
             f'href="{escape(_scope_url(base_path, query, selected), quote=True)}">{escape(selected)}</a>'
             for selected in DOCUMENT_SCOPES
         )
-        if not self.documents:
+        window = PageWindow.from_query(query if query is not None else base_path, total=len(self.documents))
+        paged_documents = self.documents[window.start : window.stop]
+        paged_categories = {
+            document_type: tuple(
+                document for document in paged_documents if document.document_type is document_type
+            )
+            for document_type in DOCUMENT_TYPES
+        }
+        if not paged_documents:
             body = render_operational_state(
                 DisplayState.EMPTY if self.state is DocumentIndexState.MISSING else DisplayState.ERROR,
                 detail=_state_detail(self.state),
@@ -440,9 +449,12 @@ class SourceDocumentsViewModel:
         else:
             sections: list[str] = []
             for document_type in DOCUMENT_TYPES:
-                documents = self.categories[document_type]
+                documents = paged_categories[document_type]
                 if documents:
-                    rows = "".join(_render_document(document) for document in documents)
+                    rows = "".join(
+                        _render_document(document, base_path=base_path, query=query)
+                        for document in documents
+                    )
                     sections.append(
                         f'<section class="document-category" data-document-type="{document_type.value}" '
                         f'aria-labelledby="documents-{document_type.value}"><h2 id="documents-{document_type.value}">{escape(document_type.value)}</h2>'
@@ -451,7 +463,12 @@ class SourceDocumentsViewModel:
             body = "".join(sections)
         reverse_rows = "".join(
             f'<li data-record-id="{escape(record_id, quote=True)}"><strong>{escape(record_id)}</strong>: '
-            f'{escape(", ".join(document_ids))}</li>'
+            + ", ".join(
+                f'<a class="document-reverse-link" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+                f"{escape(document_id)}</a>"
+                for document_id in document_ids
+            )
+            + "</li>"
             for record_id, document_ids in self.reverse_citations.items()
         )
         reverse = (
@@ -465,12 +482,15 @@ class SourceDocumentsViewModel:
             '<p class="eyebrow">Source Documents · approved index</p>'
             '<h1 class="page-title" data-page-title tabindex="-1">Source Documents</h1>'
             '<p class="page-intro">Index metadata and citations are shown without interpreting a document as an owner fact.</p>'
+            '<p class="boundary-note" data-boundary="document-interpretation"><strong>Document interpretation</strong> '
+            "includes plans, reports, retrospectives, future ideas, and external sources. These entries "
+            "remain distinct from canonical records and are never silently promoted.</p>"
             f'<p class="context-line document-context"><strong>Scope</strong> {escape(scope)} · '
             f'<strong>Index state</strong> {escape(self.state.value)}</p>'
             f'<nav class="document-scope-nav" aria-label="Source Document fixture scopes">{nav}</nav>'
             f"{render_status_block(self.read_model)}"
             f'<div class="document-index-state" data-state="{self.state.value}">{escape(_state_detail(self.state))}</div>'
-            f"{body}{reverse}</section>"
+            f'{body}{reverse}{window.render(query if query is not None else base_path, view="source-documents")}</section>'
         )
 
 
@@ -485,7 +505,22 @@ def _state_detail(state: DocumentIndexState) -> str:
     }[state]
 
 
-def _render_document(document: SourceDocument) -> str:
+def _context_url(
+    base_path: str,
+    query: Mapping[str, object] | str | None,
+    *,
+    view: str,
+    **updates: object,
+) -> str:
+    return context_link(query if query is not None else base_path, view=view, **updates)
+
+
+def _render_document(
+    document: SourceDocument,
+    *,
+    base_path: str,
+    query: Mapping[str, object] | str | None,
+) -> str:
     locator = (
         f'<a class="document-source-link" href="{escape(document.source_locator, quote=True)}">{escape(document.source_locator)}</a>'
         if document.approved and document.source_locator
@@ -493,8 +528,16 @@ def _render_document(document: SourceDocument) -> str:
         if not document.approved
         else '<span class="document-source-missing">Missing / Unconfirmed</span>'
     )
-    citations = ", ".join(document.record_citations) if document.record_citations else "None recorded"
-    reverse = ", ".join(document.reverse_citations) if document.reverse_citations else "None recorded"
+    citations = " · ".join(
+        f'<a class="document-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=record_id), quote=True)}">'
+        f"{escape(record_id)}</a>"
+        for record_id in document.record_citations
+    ) or "None recorded"
+    reverse = " · ".join(
+        f'<a class="document-reverse-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+        f"{escape(document_id)}</a>"
+        for document_id in document.reverse_citations
+    ) or "None recorded"
     return (
         f'<li class="source-document" data-document-id="{escape(document.document_id, quote=True)}">'
         f'<h3>{escape(document.title or document.document_id)}</h3>'
@@ -503,22 +546,13 @@ def _render_document(document: SourceDocument) -> str:
         f'<div><dt>version</dt><dd>{escape(document.version or "Missing / Unconfirmed")}</dd></div>'
         f'<div><dt>source locator</dt><dd>{locator}</dd></div>'
         f'<div><dt>updated</dt><dd>{escape(document.updated_at or "Missing / Unconfirmed")}</dd></div>'
-        f'<div><dt>record citations</dt><dd>{escape(citations)}</dd></div>'
-        f'<div><dt>reverse citations</dt><dd>{escape(reverse)}</dd></div></dl></li>'
+        f'<div><dt>record citations</dt><dd>{citations}</dd></div>'
+        f'<div><dt>reverse citations</dt><dd>{reverse}</dd></div></dl></li>'
     )
 
 
 def _scope_url(base_path: str, query: Mapping[str, object] | str | None, scope: str) -> str:
-    parsed = urlsplit(base_path)
-    values = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    if isinstance(query, str):
-        values.update(parse_qsl(urlsplit(query).query or query.lstrip("?"), keep_blank_values=True))
-    elif query is not None:
-        values.update((str(key), str(value)) for key, value in query.items() if value is not None)
-    values.update({"view": "source-documents", "scope": scope})
-    return parsed._replace(
-        path=parsed.path or "/", query=urlencode(sorted(values.items()))
-    ).geturl()
+    return context_link(query if query is not None else base_path, view="source-documents", scope=scope)
 
 
 def source_documents_view(

@@ -31,6 +31,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .navigation import PageWindow, context_link
 from .status import render_operational_state, render_status_block
 
 METHODOLOGY_INTEGRATION_HOOK = "manager_gui.web.methodology.render_methodology_view"
@@ -765,9 +766,22 @@ def _extract_methods(
 # --- rendering ----------------------------------------------------------------
 
 
+def _context_url(
+    query_context: str | Mapping[str, object] | None,
+    *,
+    view: str,
+    **updates: object,
+) -> str:
+    """Build a shell URL while retaining opaque query context."""
+
+    return context_link(query_context, view=view, **updates)
+
+
 def _render_ref_list(
     title: str,
     refs: Sequence[MethodologySourceRef | MethodologyDocumentRef | MethodologyRecordRef],
+    *,
+    query_context: str | Mapping[str, object] | None = None,
 ) -> str:
     if not refs:
         return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd>Missing / Unconfirmed</dd></div>'
@@ -775,12 +789,32 @@ def _render_ref_list(
     for ref in refs:
         if isinstance(ref, MethodologySourceRef):
             label, target = ref.source_id, ref.locator
+            link_kind = "source"
         elif isinstance(ref, MethodologyDocumentRef):
-            label, target = ref.title or ref.document_id, ref.locator
+            label = ref.title or ref.document_id
+            target = (
+                _context_url(
+                    query_context,
+                    view="source-documents",
+                    document_id=ref.document_id,
+                )
+                if ref.available
+                else None
+            )
+            link_kind = "document"
         else:
-            label, target = ref.label or ref.record_id, ref.locator
+            label = ref.label or ref.record_id
+            target = (
+                _context_url(query_context, view="history", record_id=ref.record_id)
+                if ref.available
+                else None
+            )
+            link_kind = "record"
         if target:
-            items.append(f'<li><a href="{escape(target, quote=True)}">{escape(label)}</a></li>')
+            items.append(
+                f'<li><a class="methodology-ref-link" data-link-kind="{link_kind}" '
+                f'href="{escape(target, quote=True)}">{escape(label)}</a></li>'
+            )
         else:
             items.append(f"<li>{escape(label)} — Missing / Unconfirmed</li>")
     return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd><ul>{"".join(items)}</ul></dd></div>'
@@ -797,7 +831,11 @@ def _render_text_list(title: str, values: Sequence[str]) -> str:
     )
 
 
-def _render_method(method: MethodologyMethod) -> str:
+def _render_method(
+    method: MethodologyMethod,
+    *,
+    query_context: str | Mapping[str, object] | None = None,
+) -> str:
     usage_count = "Missing / Unconfirmed" if method.usage_count is None else str(method.usage_count)
     version = method.version or "Missing / Unconfirmed"
     definition = method.definition or "Missing / Unconfirmed"
@@ -857,9 +895,9 @@ def _render_method(method: MethodologyMethod) -> str:
         f'<div class="methodology-detail"><dt>Validity evidence</dt><dd>{evidence}</dd></div>'
         f"{_render_text_list('Limitations', method.limitations)}"
         f"{_render_text_list('Failure cases', method.failure_cases)}"
-        f"{_render_ref_list('Source refs', method.source_refs)}"
-        f"{_render_ref_list('Document refs', method.document_refs)}"
-        f"{_render_ref_list('Record refs', method.record_refs)}"
+        f"{_render_ref_list('Source refs', method.source_refs, query_context=query_context)}"
+        f"{_render_ref_list('Document refs', method.document_refs, query_context=query_context)}"
+        f"{_render_ref_list('Record refs', method.record_refs, query_context=query_context)}"
         "</dl></article>"
     )
 
@@ -871,7 +909,6 @@ def render_methodology(
 ) -> str:
     """Render a methodology archive fragment for a shared shell to mount."""
 
-    del query_context  # Reserved for S5-T3's shell-owned URL context.
     view = (
         view_or_model
         if isinstance(view_or_model, MethodologyViewModel)
@@ -881,13 +918,27 @@ def render_methodology(
     sources = ", ".join(source.source_id for source in model.source_refs) or "None recorded"
     observed = model.as_of or "Unavailable"
     snapshot = model.snapshot_token or "Unavailable"
+    documents_url = _context_url(query_context, view="source-documents")
+    history_url = _context_url(query_context, view="history")
+    window = PageWindow.from_query(query_context, total=len(view.methods))
+    paged_methods = view.methods[window.start : window.stop]
+    paged_groups = tuple(
+        (group, tuple(method for method in paged_methods if method.category is group.category))
+        for group in view.groups
+    )
     pieces = [
         '<section class="methodology-page" data-integration-hook="methodology-view" '
-        f'data-index-state="{view.index_state.value}">',
+        f'data-index-state="{view.index_state.value}" data-boundary="canonical-fact">',
         '<p class="eyebrow">Methodology archive · read-only</p>',
         '<h1 class="page-title" data-page-title tabindex="-1">Methodology</h1>',
         '<p class="page-intro">Versioned methods are catalogued by category. Usage records, '
         "associated results, and explicit validity evidence remain separate facts.</p>",
+        '<p class="boundary-note" data-boundary="canonical-fact"><strong>Canonical facts</strong> '
+        "come from the approved methodology record. Document notes, plans, and future ideas remain "
+        "document interpretation and are never promoted to owner facts.</p>",
+        f'<nav class="methodology-related-nav" aria-label="Methodology related sources">'
+        f'<a class="methodology-documents-link" href="{escape(documents_url, quote=True)}">Source Documents</a>'
+        f'<a class="methodology-history-link" href="{escape(history_url, quote=True)}">History</a></nav>',
         f'<p class="context-line methodology-context"><span><strong>Observed</strong> {escape(observed)}</span>'
         f"<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(sources)}</span></p>",
         render_status_block(model),
@@ -898,23 +949,24 @@ def render_methodology(
                 "error", detail="The approved methodology document index is not indexed."
             )
         )
-    if not view.methods and view.index_state is not MethodologyIndexState.NOT_INDEXED:
+    if not paged_methods and view.index_state is not MethodologyIndexState.NOT_INDEXED:
         pieces.append(
             render_operational_state(
                 "empty", detail="No methodology methods are recorded in this scope."
             )
         )
-    for group in view.groups:
+    for group, methods in paged_groups:
         body = (
             '<p class="methodology-empty">No methods recorded in this category.</p>'
-            if not group.methods
-            else "".join(_render_method(method) for method in group.methods)
+            if not methods
+            else "".join(_render_method(method, query_context=query_context) for method in methods)
         )
         pieces.append(
             f'<section class="methodology-category" data-methodology-category="{group.category.value}" '
             f'aria-labelledby="methodology-category-{group.category.value}">'
             f'<h2 id="methodology-category-{group.category.value}">{escape(group.label)}</h2>{body}</section>'
         )
+    pieces.append(window.render(query_context, view="methodology"))
     pieces.append("</section>")
     return "".join(pieces)
 
@@ -932,17 +984,19 @@ def methodology_view(
 
 
 def render_methodology_view(
-    provider: ManagerDataProvider,
+    source: ManagerDataProvider | ManagerReadModel,
     *,
     snapshot_token: str | None = None,
     query_context: str | Mapping[str, object] | None = None,
 ) -> str:
-    """S5-T3 integration hook: read and render the methodology archive."""
+    """S5-T3 integration hook accepting a provider or cached read model."""
 
-    return render_methodology(
-        methodology_view(provider, snapshot_token=snapshot_token),
-        query_context=query_context,
+    model = (
+        source
+        if isinstance(source, ManagerReadModel)
+        else methodology_view(source, snapshot_token=snapshot_token).read_model
     )
+    return render_methodology(model, query_context=query_context)
 
 
 # --- deterministic fixtures ---------------------------------------------------
