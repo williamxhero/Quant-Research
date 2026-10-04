@@ -28,6 +28,7 @@ class ViewId(StrEnum):
     HISTORY = "history"
     SOURCE_DOCUMENTS = "source-documents"
     SEARCH = "search"
+    PORTAL = "portal"
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +155,13 @@ NAVIGATION: tuple[NavigationItem, ...] = (
         "Search across approved read-model records.",
         "search-view",
     ),
+    NavigationItem(
+        ViewId.PORTAL,
+        "Portal",
+        "PO",
+        "Published Strategy Reporting source and artifact metadata.",
+        "portal-view",
+    ),
 )
 
 NAVIGATION_BY_ID = {item.view_id: item for item in NAVIGATION}
@@ -175,6 +183,7 @@ NAVIGATION_LABELS_ZH: Mapping[ViewId, str] = {
     ViewId.HISTORY: "历史",
     ViewId.SOURCE_DOCUMENTS: "来源文档",
     ViewId.SEARCH: "搜索",
+    ViewId.PORTAL: "报告门户",
 }
 
 
