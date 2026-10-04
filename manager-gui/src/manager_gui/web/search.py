@@ -258,26 +258,27 @@ def _target_route(item: Mapping[str, object], *, kind: str, record_type: str) ->
     route = _route_hint(item)
     if route is None:
         normalized = record_type.casefold().replace("_", "-").replace(" ", "-")
-        if kind == "document" or normalized in {"document", "report", "plan", "retrospective", "future-idea", "external-source", "raw-evidence"}:
+        if kind == "document" or normalized in {"document", "report", "plan", "retrospective", "future-idea", "external-source", "raw-evidence"} or _first_text(item, ("document_id", "documentId")):
             route = ViewId.SOURCE_DOCUMENTS.value
-        elif normalized in {"genome", "genome-revision", "strategy-genome", "strategy-genome-revision"}:
+        elif normalized in {"genome", "genome-revision", "strategy-genome", "strategy-genome-revision"} or _first_text(item, ("genome_id", "genomeId")):
             route = ViewId.STRATEGIES.value
-        elif normalized in {"memory", "memory-entry", "memory-policy", "memory-family", "family-memory", "duplicate-decision"}:
+        elif normalized in {"memory", "memory-entry", "memory-policy", "memory-family", "family-memory", "duplicate-decision"} or _first_text(item, ("memory_id", "memoryId")):
             route = ViewId.MEMORY.value
-        elif normalized in {"evidence", "evidence-record", "evidence-ledger"}:
+        elif normalized in {"evidence", "evidence-record", "evidence-ledger"} or _first_text(item, ("evidence_id", "evidenceId")):
             route = ViewId.EVIDENCE.value
-        elif normalized in {"lineage", "lineage-node", "lineage-record"}:
+        elif normalized in {"lineage", "lineage-node", "lineage-record"} or _first_text(item, ("lineage_id", "lineageId")):
             route = ViewId.LINEAGE.value
         else:
             route = ViewId.ATLAS.value
     selector = {
-        ViewId.SOURCE_DOCUMENTS.value: "document_id",
-        ViewId.STRATEGIES.value: "genome_id",
-        ViewId.MEMORY.value: "memory_id",
-        ViewId.EVIDENCE.value: "record_id",
-        ViewId.LINEAGE.value: "record_id",
-    }.get(route, "record_id")
-    target_id = _first_text(item, (selector, "target_id", "targetId", "record_id", "recordId", "document_id", "documentId"))
+        ViewId.SOURCE_DOCUMENTS.value: ("document_id", "documentId"),
+        ViewId.STRATEGIES.value: ("genome_id", "genomeId"),
+        ViewId.MEMORY.value: ("memory_id", "memoryId"),
+        ViewId.EVIDENCE.value: ("evidence_id", "evidenceId", "record_id", "recordId"),
+        ViewId.LINEAGE.value: ("lineage_id", "lineageId", "record_id", "recordId"),
+        ViewId.PORTAL.value: ("report_id", "reportId", "record_id", "recordId"),
+    }.get(route, ("record_id", "recordId"))
+    target_id = _first_text(item, (*selector, "target_id", "targetId", "document_id", "documentId"))
     return route, target_id or ""
 
 
@@ -918,7 +919,7 @@ def _hit_link(hit: SearchHit, context: str | Mapping[str, object]) -> str:
     """Build a local link to the mounted route that owns a hit identity."""
 
     values = query_values(context)
-    for key in ("page", "page_size", "cursor", "record_id", "document_id", "genome_id", "memory_id", "failure_id", "pattern_id", "artifact_id", "source_id"):
+    for key in ("page", "page_size", "cursor", "record_id", "document_id", "genome_id", "memory_id", "evidence_id", "lineage_id", "report_id", "failure_id", "pattern_id", "artifact_id", "source_id"):
         values.pop(key, None)
     selector = {
         ViewId.SOURCE_DOCUMENTS.value: "document_id",
@@ -926,15 +927,35 @@ def _hit_link(hit: SearchHit, context: str | Mapping[str, object]) -> str:
         ViewId.MEMORY.value: "memory_id",
         ViewId.EVIDENCE.value: "record_id",
         ViewId.LINEAGE.value: "record_id",
+        ViewId.PORTAL.value: "report_id",
     }.get(hit.target_view, "record_id")
-    updates: dict[str, object] = {key: None for key in ("record_id", "document_id", "genome_id", "memory_id")}
+    updates: dict[str, object] = {key: None for key in ("record_id", "document_id", "genome_id", "memory_id", "evidence_id", "lineage_id", "report_id")}
     updates[selector] = hit.target_id or hit.record_id
     updates["record_type"] = hit.record_type
     return context_link(values, view=hit.target_view, **updates)
 
 
+def search_result_link(
+    hit: SearchHit,
+    context: str | Mapping[str, object] | None = None,
+) -> str:
+    """Return the stable local URL for a Search hit's owning mounted route."""
+
+    return _hit_link(hit, context or {})
+
+
 def _render_hit(hit: SearchHit) -> str:
-    target = hit.stable_url or context_link(None, view=hit.target_view, record_id=hit.target_id or hit.record_id)
+    selector = {
+        ViewId.SOURCE_DOCUMENTS.value: "document_id",
+        ViewId.STRATEGIES.value: "genome_id",
+        ViewId.MEMORY.value: "memory_id",
+        ViewId.EVIDENCE.value: "record_id",
+        ViewId.LINEAGE.value: "record_id",
+        ViewId.PORTAL.value: "report_id",
+    }.get(hit.target_view, "record_id")
+    target = hit.stable_url or context_link(
+        None, view=hit.target_view, **{selector: hit.target_id or hit.record_id}
+    )
     title = hit.title or hit.document_title or hit.record_id
     fields = ", ".join(hit.matched_fields) or "none (browse entry)"
     source_markup = (
@@ -1280,5 +1301,6 @@ __all__ = [
     "render_search_view",
     "search_fixture_provider",
     "search_hook",
+    "search_result_link",
     "search_view",
 ]

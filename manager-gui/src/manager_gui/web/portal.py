@@ -718,6 +718,11 @@ def _portal_state(
         return PortalArtifactState.NOT_GENERATED
     if status is ReadModelStatus.KNOWN and not model.availability.complete:
         return PortalArtifactState.PARTIAL
+    if status is not ReadModelStatus.MISSING:
+        # A blocked/stale/incomparable read is not evidence that Portal metadata
+        # was never published; keep the local state non-empty while the shared
+        # status block carries the source-level limitation.
+        return PortalArtifactState.PARTIAL
     return PortalArtifactState.MISSING
 
 

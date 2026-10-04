@@ -67,10 +67,11 @@ from .methodology import (
     render_methodology_view,
 )
 from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item, navigation_label_zh
-from .portal import REPORT_SOURCE_RESOURCE, build_portal_fixture, render_portal_view
+from .portal import REPORT_SOURCE_RESOURCE, render_portal_view
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
-from .search import SEARCH_RESOURCE, SearchFixtureState, build_search_fixture, render_search_view
+from .s6_fixtures import S6_RESOURCES, build_s6_fixture
+from .search import SEARCH_RESOURCE, render_search_view
 from .status import render_status_block
 
 
@@ -150,28 +151,8 @@ class _FixtureReadProvider:
         snapshot_token: str | None = None,
     ) -> ManagerReadModel:
         del snapshot_token
-        if resource == SEARCH_RESOURCE:
-            if self.fixture is FixtureState.COMPLETE:
-                return build_search_fixture(SearchFixtureState.COMPLETE)
-            if self.fixture is FixtureState.PARTIAL:
-                return build_search_fixture(SearchFixtureState.PARTIAL)
-            if self.fixture is FixtureState.EMPTY:
-                return build_search_fixture(SearchFixtureState.EMPTY)
-            if self.fixture is FixtureState.API_UNAVAILABLE:
-                return build_search_fixture(SearchFixtureState.API_UNAVAILABLE)
-            return build_fixture(self.fixture, resource=resource)
-        if resource == REPORT_SOURCE_RESOURCE:
-            if self.fixture is FixtureState.COMPLETE:
-                return build_portal_fixture("complete")
-            if self.fixture is FixtureState.PARTIAL:
-                return build_portal_fixture("partial")
-            if self.fixture is FixtureState.EMPTY:
-                return build_portal_fixture("missing")
-            if self.fixture is FixtureState.INTEGRITY_FAILURE:
-                return build_portal_fixture("integrity_failure")
-            if self.fixture is FixtureState.API_UNAVAILABLE:
-                return build_portal_fixture("api_unavailable")
-            return build_fixture(self.fixture, resource=resource)
+        if resource in S6_RESOURCES:
+            return build_s6_fixture(resource, self.fixture)
         if resource in S4_RESOURCES:
             return build_s4_fixture(resource, self.fixture)
         if self.fixture in S4_FIXTURE_STATES:

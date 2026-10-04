@@ -166,8 +166,8 @@ def test_navigation_adds_the_s4_items_without_reordering_existing_ones() -> None
     assert [view for view in order if view in previous] == previous
     for view in S4_ROUTES:
         assert order.count(view) == 1
-    # S6-T4 owns Search/Portal mounting; S4-T4 must not add a Portal item.
-    assert "portal" not in order
+    # S6-T4 appends Search and Portal without reordering S1-S5/S4 items.
+    assert order[-2:] == ["search", "portal"]
 
 
 def test_s4_general_comparison_is_separate_from_the_s2_genome_comparison() -> None:
@@ -760,18 +760,20 @@ def test_s4_only_selector_values_give_other_routes_the_shared_generic_envelope(
         assert [error.code for error in model.errors] == [error.code for error in generic.errors]
 
 
-def test_search_and_portal_remain_unmounted_for_s6_t4() -> None:
+def test_search_and_portal_mount_after_s6_t4_without_remapping_s4_resources() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     search = app.render(_url("search"))
-    assert "Integration point ready" in search
-    assert 'class="search-page"' not in search
+    assert 'data-integration-hook="search-view"' in search
+    assert 'class="search-page"' in search
+    assert "Integration point ready" not in search
     portal = app.render(_url("portal"))
-    assert 'data-integration-hook="portal-view"' not in portal
-    assert "portal" not in {item.view_id.value for item in NAVIGATION}
-    # search keeps its provider resource; S4-T4 must not have remapped it
+    assert 'data-integration-hook="portal-view"' in portal
+    assert 'class="portal-page"' in portal
+    assert "portal" in {item.view_id.value for item in NAVIGATION}
     provider = _CountingProvider()
     ManagerGUIApp(provider).render(_url("search", q="x"))
-    assert provider.calls == [("search", None)]
+    ManagerGUIApp(provider).render(_url("portal"))
+    assert provider.calls == [("search", None), ("report_source", None)]
 
 
 def test_s2_comparison_and_s3_failure_routes_keep_their_resources() -> None:

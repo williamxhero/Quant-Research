@@ -580,21 +580,23 @@ def test_mounted_pages_expose_only_read_only_controls(view: str) -> None:
         assert "formaction" not in document.lower()
 
 
-def test_s1_to_s5_routes_still_mount_and_search_portal_wait_for_s6_t4() -> None:
+def test_s1_to_s6_routes_mount_through_the_shared_interaction_shell() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     for view, hook in MOUNTED_VIEWS.items():
         assert f'data-integration-hook="{hook}"' in app.render(_url(view))
     assert "Integration point ready" not in app.render(_url("atlas"))
 
-    # S6-T4 owns mounting; T3 only supplies shared interaction behavior.
-    search = app.render(_url("search"))
-    assert "Integration point ready" in search
-    assert 'class="search-page"' not in search
+    search = app.render(_url("search", q="campaign"))
+    assert 'data-integration-hook="search-view"' in search
+    assert 'class="search-page"' in search
+    assert "Integration point ready" not in search
     portal = app.render(_url("portal"))
-    assert 'data-integration-hook="portal-view"' not in portal
-    assert 'class="portal-page"' not in portal
-    assert "portal" not in {item.view_id.value for item in NAVIGATION}
+    assert 'data-integration-hook="portal-view"' in portal
+    assert 'class="portal-page"' in portal
+    assert "Integration point ready" not in portal
+    assert {item.view_id.value for item in NAVIGATION} >= {"search", "portal"}
     assert ViewId.SEARCH in {item.view_id for item in NAVIGATION}
+    assert ViewId.PORTAL in {item.view_id for item in NAVIGATION}
 
 
 def test_pagination_links_keep_context_and_have_chinese_labels() -> None:
