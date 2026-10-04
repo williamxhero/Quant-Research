@@ -31,7 +31,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .locators import public_locator
-from .status import render_status_block
+from .status import render_operational_state, render_status_block
 
 EVIDENCE_COMPARISON_RESOURCE = "evidence_comparison"
 EVIDENCE_COMPARISON_ROUTE = "evidence-object-comparison"
@@ -44,6 +44,15 @@ NOT_RECORDED = "not recorded"
 QueryContext: TypeAlias = str | Mapping[str, object] | None
 JSONMapping: TypeAlias = Mapping[str, JSONValue]
 _MISSING = object()
+# Statuses where the read itself succeeded, so an absent comparison is a content fact.
+_READABLE_STATUSES = frozenset(
+    {
+        ReadModelStatus.KNOWN,
+        ReadModelStatus.DERIVED,
+        ReadModelStatus.INTERPRETED,
+        ReadModelStatus.INCOMPARABLE,
+    }
+)
 
 
 class ComparisonAxis(StrEnum):
@@ -842,14 +851,21 @@ def render_evidence_comparison(
         render_status_block(model),
     ]
     if comparison is None:
-        detail = (
-            "No explicit object comparison is recorded in this scope."
-            if model.availability.status is ReadModelStatus.MISSING
-            else model.availability.reason or "The object comparison is not determined in this scope."
-        )
+        status = model.availability.status
+        # A source that could not be read is an error, never an empty scope.
+        if status is ReadModelStatus.MISSING:
+            state, heading = "empty", "Comparison not recorded"
+            detail = "No explicit object comparison is recorded in this scope."
+        else:
+            if status not in _READABLE_STATUSES:
+                state = "error"
+            else:
+                state = "empty" if model.availability.complete else "partial"
+            heading = "Comparison not recorded" if state == "empty" else "Comparison not determined"
+            detail = model.availability.reason or "The object comparison is not determined here."
         pieces.append(
-            f'<section class="comparison-not-recorded" data-display-state="empty"><h2>Comparison not recorded</h2>'
-            f'<p>{escape(detail)}</p></section>'
+            f'<section class="comparison-not-recorded"><h2>{heading}</h2>'
+            f"{render_operational_state(state, detail=detail)}</section>"
         )
     else:
         pieces.append(

@@ -234,6 +234,16 @@ def _comparison(state: FixtureState) -> ManagerReadModel:
     model = build_evidence_comparison_fixture(_COMPARISON[state])
     if state in _STALE_CAUSES:
         return _mark_stale(model, state)
+    if state is FixtureState.INCOMPARABLE:
+        # The shared status must say incomparable; the per-axis reasons stay on the page.
+        reason = "The compared objects declare incompatible axes; they are not ranked."
+        return replace(
+            model,
+            availability=Availability(
+                status=ReadModelStatus.INCOMPARABLE, complete=False, reason=reason
+            ),
+            errors=(ReadModelError(code="comparison_axis_incompatible", message=reason),),
+        )
     if state is FixtureState.NOT_EVALUATED:
         reason = "The object comparison has not been evaluated in this scope."
         return replace(
