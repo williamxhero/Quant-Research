@@ -21,9 +21,9 @@ uv run --directory manager-gui ruff check .
 uv build --directory manager-gui
 
 # Temporary type check (keeps mypy out of production dependencies)
-uv run --directory manager-gui --with mypy mypy --python-version 3.11 src
+uv run --directory manager-gui --with mypy --with pytest mypy --python-version 3.11 src
 
-# Full S5 verification helpers
+# Full S6 verification helpers
 uv run --directory manager-gui pytest -q
 uv run --directory manager-gui ruff check .
 python -m compileall -q manager-gui/src
@@ -38,7 +38,7 @@ uv run --directory manager-gui python -m manager_gui.web --fixture complete --po
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
 Genome, Genome Conditions, Genome Comparison, Memory, Memory Failures,
 Failure Patterns, Evidence, Lineage, Evidence Comparison, Derived Failure
-Grouping, Methodology, History, and Source Documents:
+Grouping, Methodology, History, Source Documents, Search, and Portal:
 
 - `/?view=atlas&fixture=complete` renders the Atlas hook;
 - `/?view=stories&fixture=complete&mode=evidence` renders the Story hook;
@@ -54,7 +54,9 @@ Grouping, Methodology, History, and Source Documents:
 - `/?view=evidence&fixture=complete` mounts the Evidence Ledger with the conclusion → evidence → source/artifact → lineage trace;
 - `/?view=lineage&fixture=complete&record_id=conclusion-1` mounts the bounded Lineage graph, table, inspector, and shortest evidence path;
 - `/?view=evidence-object-comparison&fixture=complete` mounts the general object/evidence comparison (not the S2 Genome comparison);
-- `/?view=derived-failure-grouping&fixture=complete` mounts explicitly Derived success/failure groups.
+- `/?view=derived-failure-grouping&fixture=complete` mounts explicitly Derived success/failure groups;
+- `/?view=search&fixture=complete&q=campaign` mounts deterministic Search across approved index entries;
+- `/?view=portal&fixture=complete` mounts Strategy Reporting source/artifact metadata.
 
 The fixture-backed path is read-only and preserves `fixture`, `scope`, `panel`, `q`,
 `snapshot_token`, Atlas/Memory/failure filters, story root identifiers, `record_id`,
@@ -68,6 +70,36 @@ exposed: `POST` requests return `405 Allow: GET, HEAD`.
 The command emits one JSON `ManagerReadModel v0` envelope when using the
 contract entry point. Fixtures are synthetic and do not stand in for a
 connected data gate.
+
+## Verification and release checks
+
+Run the complete package gate from the QuantResearch repository root:
+
+```console
+uv run --directory manager-gui pytest -q
+uv run --directory manager-gui ruff check .
+uv run --directory manager-gui --with mypy --with pytest mypy --python-version 3.11 src
+uv build --directory manager-gui
+python -m compileall -q manager-gui/src
+git diff --check
+```
+
+CLI smoke:
+
+```console
+uv run --directory manager-gui python -m manager_gui --fixture complete --pretty
+uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
+```
+
+With the server running on `127.0.0.1:8765`, live HTTP smoke checks every route
+and the read-only API boundary:
+
+```console
+python -c "import urllib.request; views=['atlas','stories','strategies','strategy-conditions','strategy-genome-comparison','memory','memory-failures','failure-patterns','evidence','lineage','evidence-object-comparison','derived-failure-grouping','methodology','history','source-documents','search','portal']; base='http://127.0.0.1:8765'; [urllib.request.urlopen(f'{base}/?view={v}&fixture=complete').read() for v in views]; [urllib.request.urlopen(f'{base}/api/read-model?view={v}&fixture=complete').read() for v in views]; urllib.request.urlopen(f'{base}/api/export?view=search&fixture=complete').read(); print('GET route/read-model/export smoke passed')"
+```
+
+`POST`, `PUT`, `PATCH`, and `DELETE` to `/`, `/api/read-model`,
+`/api/export`, and `/health` must return `405` with `Allow: GET, HEAD`.
 
 ## ManagerReadModel v0
 
@@ -102,13 +134,14 @@ The stable URL query keys are:
 - `view`: `atlas`, `stories`, `strategies`, `strategy-conditions`,
   `strategy-genome-comparison`, `memory`, `memory-failures`, `failure-patterns`,
   `evidence`, `lineage`, `evidence-object-comparison`, `derived-failure-grouping`,
-  `methodology`, `history`, `source-documents`, or `search`;
+  `methodology`, `history`, `source-documents`, `search`, or `portal`;
 - `fixture`: one of the deterministic shell fixture states (`empty`, `complete`,
   `partial`, `blocked`, `stale`, `incomparable`, `integrity_failure`,
   `api_unavailable`, `not_evaluated`, `cursor_expired`, `snapshot_drift`);
 - `scope`: `A0`, `S3`, `CPA`, or `V1.x` on History and Source Documents;
 - `panel`: `inspector` or `events` (optional);
-- `q`: global search text (optional and currently display-only);
+- `q`: literal, case-insensitive Search terms (optional; all whitespace-delimited terms must match);
+- `type`/`record_type` and `source`: Search filters; `cursor` is an opaque Search continuation token;
 - `mode`: `narrative`, `evidence`, or `timeline` on the Stories route;
 - `page` and `page_size`: bounded presentation pagination for already-read entries;
 - `record_type`, `state`, `date`, `source`, and `availability` on Atlas;
@@ -117,7 +150,9 @@ The stable URL query keys are:
 - `family`, `stage`, `outcome`, `failure_category`, `subject`, and `campaign` on
   Memory/failure filters; `memory_id`, `failure_id`, and `pattern_id` on detail views;
 - `record_id`, `document_id`, `campaign`, `study`, and `strategy_family` are opaque
-  object/root context retained by detail and mode links;
+  object/root context retained by detail and mode links; Search result links use
+  `genome_id`, `memory_id`, `record_id`, or `document_id` for the owning route;
+- `report_id`, `source_publication_id`, and `artifact_id` select Portal metadata context;
 - `record_id`, `artifact_id`, and `source_id` select the Evidence detail panel;
   `record_id` is the Lineage root; `node`, `path_to`, `direction`, `relations`,
   `record_types`, `depth`, `page_size`, `cursor`, and `snapshot_token` bound a Lineage page.
@@ -151,6 +186,12 @@ owner read. The current public hook contract is:
   mounts `data-integration-hook="evidence-comparison-view"` (resource `evidence_comparison`);
 - `manager_gui.web.failure_grouping.render_failure_grouping_view(provider_or_model, snapshot_token=..., query_context=...)`
   mounts `data-integration-hook="failure-grouping-view"` (resource `failure_grouping`).
+- `manager_gui.web.search.render_search_view(provider_or_model, query_context=..., snapshot_token=...)`
+  mounts `data-integration-hook="search-view"` (resource `search`) and links each
+  explicit hit to a mounted Atlas, Genome, Memory, Evidence, Lineage, or Source Documents route.
+- `manager_gui.web.portal.render_portal_view(provider_or_model, query_context=..., snapshot_token=...)`
+  mounts `data-integration-hook="portal-view"` (resource `report_source`) and keeps
+  source publication, generated artifact, renderer/version, verify, and rebuild metadata distinct.
 
 The S3 routes keep Formal Research Memory, ordinary failure records, and Derived
 patterns visibly separate. A missing or zero-entry Memory scope is rendered as
@@ -264,7 +305,8 @@ the shared URL state:
    derive it from an Evidence `record_id` or any similar-looking id.
 3. Render a locator as a link only through `web.locators.public_locator`.
 4. Do not call S4 renderers with a second provider read; pass the cached envelope.
-5. Keep Search and Portal outside S4: S4-T4 does not mount either.
+5. Keep Search and Portal outside S4's domain resources; S6-T4 composes their
+   cached read envelopes and may link into S4 only through published stable IDs.
 
 ### S3 route integration / exit evidence for #628
 
@@ -344,50 +386,72 @@ opens SQLite/private storage or calls publish, retry, delete, retire, or
 revalidation operations. This note is evidence for issue #618 and does not
 close the issue or implement S2–S6.
 
-### S6-T3 common interaction contract / S6-T4 integration hand-off
+### S6-T4 Search, Portal, and final S6 exit gate
 
-S6-T3 owns the shared interaction behavior; it deliberately does **not** mount
-Search or Strategy Reporting Portal page hooks. The shell continues to render the
-Search navigation item as an integration placeholder until S6-T4 mounts the
-approved read seams.
+S6 is integrated through the same read-only shell and `ManagerReadModel v0`
+seam as S1-S5. Search and Portal are mounted routes, not placeholders, while
+remaining outside the canonical research-state owners.
 
-- `web/status.py` is the one state vocabulary for all mounted pages. Use
-  `render_status_block(model)` for source provenance and
-  `render_operational_state(...)` for loading/empty/partial/error presentation.
-  `render_common_state(...)` dispatches both forms. Every rendered state keeps
-  the machine status and includes stable English plus Chinese accessibility
-  labels; blocked, stale, incomparable, integrity-failure, and API-unavailable
-  are never relabeled as empty.
-- `web/interaction.py` owns pure `opaque_copy_button`, stable `export_url`,
-  `current_view_export`, `export_json`, `render_export_control`, and
-  `render_alternative_view` helpers. The shell embeds the already-read envelope
-  and URL context in the current document; the browser creates a local JSON Blob;
-  the UI does not issue a second read and never writes a ledger. `/api/export`
-  is a compatibility GET/HEAD read route for external smoke clients only.
-- Copy controls carry opaque source IDs and snapshot tokens without
-  dereferencing them. Filter reset links use `clear_filters_link` so fixture,
-  panel, query, snapshot, presentation mode, and unrelated opaque context stay
-  intact. `presentation=graph|table` is reserved for the graph/table hook.
-- `web/failure_lineage.py` exposes both a graph hook and a semantic table
-  alternative under `data-alternative-view="failure-lineage"`.
-  The table is the default keyboard/screen-reader path; page owners may replace
-  only the graph panel.
-- The server has no mutation routes. `POST`, `PUT`, `PATCH`, and `DELETE`
-  receive `405 Allow: GET, HEAD`; providers expose only `read`.
+#### Full mounted route table
 
-S6-T4 may now, and only now:
+| `view` | Hook (`data-integration-hook`) | Read resource | Stable selectors / purpose |
+| --- | --- | --- | --- |
+| `atlas` | `atlas-view` | `atlas` | lifecycle filters and `record_id` |
+| `stories` | `research-story-view` | `stories` | `mode`, campaign/study/family roots |
+| `strategies` | `strategy-genome-view` | `genomes` | `genome_id` |
+| `strategy-conditions` | `strategy-genome-conditions-view` | `genome_conditions` | `genome_id` |
+| `strategy-genome-comparison` | `strategy-genome-comparison-view` | `genome_comparison` | left/right Genome IDs |
+| `memory` | `memory-view` | `memory` | Memory filters and `memory_id` |
+| `memory-failures` | `failure-patterns-view` | `memory` | `failure_id` / Memory lineage |
+| `failure-patterns` | `failure-patterns-view` | `failure_patterns` | failure/pattern filters and IDs |
+| `evidence` | `evidence-view` | `evidence` | `record_id`, `artifact_id`, `source_id` |
+| `lineage` | `lineage-view` | `lineage` | published `record_id`, cursor, snapshot |
+| `evidence-object-comparison` | `evidence-comparison-view` | `evidence_comparison` | declared comparison axes |
+| `derived-failure-grouping` | `failure-grouping-view` | `failure_grouping` | explicit Derived groups |
+| `methodology` | `methodology-view` | `methodology` | `scope` and method references |
+| `history` | `history-view` | `history` | `scope` and source-event records |
+| `source-documents` | `source-documents-view` | `source_documents` | `scope`, `document_id` |
+| `search` | `search-view` | `search` | `q`, `type`/`record_type`, `source`, cursor |
+| `portal` | `portal-view` | `report_source` | `report_id`, publication/artifact IDs |
 
-1. map `ViewId.SEARCH` to `ManagerDataProvider.read("search", snapshot_token=...)`
-   and call `render_search_view` with the cached envelope, preserving `q`, type,
-   source, page, panel, snapshot, and opaque query context;
-2. add the Portal view ID/route and map it to
-   `read("report_source", snapshot_token=...)`, calling `render_portal_view`
-   with the same cached envelope; keep source publication and generated artifact
-   separate and do not add rebuild/run/publish controls;
-3. retain the shared document chrome, status renderer, copy/export controls,
-   inspector/raw JSON drawer, URL/query state, one-read provider audit, and
-   `405` mutation behavior; add route fixtures for Search and Portal rather than
-   changing this T3 interaction contract.
+Search performs deterministic literal matching over the approved index only.
+Every result keeps source provenance and links to a real mounted owner surface:
+record → Atlas, Genome → Strategies, Memory → Memory, Evidence → Evidence,
+Lineage → Lineage, and document → Source Documents. Links retain fixture,
+query, panel, opaque context, and the requested snapshot token while dropping
+presentation pagination/cursor state that belongs only to the Search page.
+An incomplete page is explicitly partial and never claims a global no-match.
+
+Portal displays source publication metadata separately from generated artifact
+metadata, including renderer/version, verification status, rebuild status, and
+digest. It is always labelled as read-only publication metadata and never as
+canonical research state. It has no rebuild, run, publish, retry, or mutation
+control. Private/local locators are withheld through `public_locator`; no
+locator is dereferenced.
+
+#### Shared interaction and accessibility contract
+
+- `web/status.py` is the one source-status vocabulary for every route; blocked,
+  stale, incomparable, integrity-failure, API-unavailable, empty, and partial
+  states remain distinct and retain English/Chinese accessible labels.
+- `web/interaction.py` owns opaque copy controls, local JSON export, graph/table
+  alternatives, and stable `/api/export` compatibility reads. Export embeds the
+  already-read envelope and never writes a ledger or performs a second read.
+- The shell owns document chrome, navigation, read-only badge, keyboard/focus
+  behavior, Inspector, raw JSON drawer, URL state, and Chinese labels. Every
+  mounted route uses a cached envelope and therefore performs one provider read.
+- `POST`, `PUT`, `PATCH`, and `DELETE` return `405 Allow: GET, HEAD`; providers
+  expose only `read`.
+
+#### Exit evidence
+
+`test_s6_integration.py` is the final S6 exit gate. It covers all 17 mounted
+routes across every shared fixture selector, Search partial pagination and
+honest unavailable/empty/blocked states, Search cross-route identity links,
+Portal source/artifact separation, navigation/accessibility, one-read provider
+audits, no arbitrary filesystem access, `/api/read-model`, `/api/export`, and
+HTTP mutation rejection. Existing S1-S5 suites remain green and continue to
+cover their owner-specific boundaries.
 
 ## Read-only boundary
 
@@ -398,10 +462,13 @@ All source adapters must return the envelope and preserve provenance. No
 provider may read private SQLite/storage or use CLI stdout as an internal API.
 
 `src/manager_gui/fixtures.py` supplies deterministic `empty`, `partial`,
-`blocked`, `stale`, `incomparable`, `integrity_failure`, and
-`api_unavailable` states. The empty state is represented as `missing`; partial
-state remains `known` with `complete: false` and an explicit missing-record
-error. This prevents “not recorded” from becoming “did not happen”.
+`blocked`, `stale`, `incomparable`, `integrity_failure`, `api_unavailable`,
+`not_evaluated`, `cursor_expired`, and `snapshot_drift` states. The integrated
+`web/s6_fixtures.py` maps the same selectors onto Search and Portal-specific
+complete/partial/empty/integrity/API envelopes where those seams define them;
+other selectors retain their generic owner status. The empty state is represented
+as `missing`; partial state remains `known` with `complete: false` and an
+explicit limitation. This prevents “not recorded” from becoming “did not happen”.
 
 ## Public seam decisions
 
@@ -445,13 +512,13 @@ opaque query context. Deterministic scope fixtures cover `A0`, `S3`, `CPA`, and
 integrity-failure, and API-unavailable states. Tests verify source-event-only
 history, canonical-fact versus document-interpretation boundaries, document and
 record navigation, bounded pagination, provider read-only shape, and approved
-directory blocking. This evidence does not close issue #629 from the worktree and
-does not implement S2, S3, S4, or S6 search/portal behavior.
+directory blocking. This evidence does not close issue #629 from the worktree;
+the final S6 Search/Portal integration and exit evidence are recorded below.
 ## Planned Manager GUI S1–S6 ownership
 
 All later slices consume `ManagerReadModel v0`; they do not introduce a second
-page-specific envelope. S2–S4 and S6 remain consumers or future owners outside
-this ticket; S5 is integrated here through the public document-index seam.
+page-specific envelope. S2-S5 remain mounted consumers, and S6 is integrated here
+through the Search and Portal public read seams.
 
 | Slice | Owner | Dependency | Read-model contract |
 | --- | --- | --- | --- |
@@ -482,6 +549,6 @@ its own exported renderer and URL-stable `NavigationItem`, but it must:
 
 S2 consumes Genome/condition reads, S3 consumes Memory/failure reads, S4 consumes
 Evidence/lineage/comparison reads, S5 consumes Methodology/History/document-index
-reads, and S6 composes those read seams for search and Portal integration. S5-T3
-publishes the integration hook and contract; it does not implement S2, S3, S4, or
-S6 search/portal behavior.
+reads, and S6 composes those read seams for Search and Portal integration. S6-T4
+owns the shared-route mounts and final regression/accessibility exit gate without
+changing any domain repository or adding a mutation seam.
