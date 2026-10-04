@@ -37,7 +37,8 @@ uv run --directory manager-gui python -m manager_gui.web --fixture complete --po
 
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
 Genome, Genome Conditions, Genome Comparison, Memory, Memory Failures,
-Failure Patterns, Methodology, History, and Source Documents:
+Failure Patterns, Evidence, Lineage, Evidence Comparison, Derived Failure
+Grouping, Methodology, History, and Source Documents:
 
 - `/?view=atlas&fixture=complete` renders the Atlas hook;
 - `/?view=stories&fixture=complete&mode=evidence` renders the Story hook;
@@ -49,7 +50,11 @@ Failure Patterns, Methodology, History, and Source Documents:
 - `/?view=source-documents&fixture=complete&scope=CPA` renders the approved document index;
 - `/?view=memory&fixture=complete&memory_id=memory-fixture-1` mounts the S3-T1 Memory catalog/detail hook;
 - `/?view=memory-failures&fixture=complete&failure_id=memory-fixture-1` mounts the Memory failure/lineage projection;
-- `/?view=failure-patterns&fixture=complete&pattern_id=pattern-fixture-1` mounts ordinary failures and explicitly Derived patterns.
+- `/?view=failure-patterns&fixture=complete&pattern_id=pattern-fixture-1` mounts ordinary failures and explicitly Derived patterns;
+- `/?view=evidence&fixture=complete` mounts the Evidence Ledger with the conclusion → evidence → source/artifact → lineage trace;
+- `/?view=lineage&fixture=complete&record_id=conclusion-1` mounts the bounded Lineage graph, table, inspector, and shortest evidence path;
+- `/?view=evidence-object-comparison&fixture=complete` mounts the general object/evidence comparison (not the S2 Genome comparison);
+- `/?view=derived-failure-grouping&fixture=complete` mounts explicitly Derived success/failure groups.
 
 The fixture-backed path is read-only and preserves `fixture`, `scope`, `panel`, `q`,
 `snapshot_token`, Atlas/Memory/failure filters, story root identifiers, `record_id`,
@@ -94,9 +99,13 @@ renders the shell around the unchanged v0 envelope.
 
 The stable URL query keys are:
 
-- `view`: `atlas`, `stories`, `strategies`, `memory`, `memory-failures`,
-  `failure-patterns`, `evidence`, `methodology`, `history`, `source-documents`, or `search`;
-- `fixture`: one of the deterministic shell fixture states;
+- `view`: `atlas`, `stories`, `strategies`, `strategy-conditions`,
+  `strategy-genome-comparison`, `memory`, `memory-failures`, `failure-patterns`,
+  `evidence`, `lineage`, `evidence-object-comparison`, `derived-failure-grouping`,
+  `methodology`, `history`, `source-documents`, or `search`;
+- `fixture`: one of the deterministic shell fixture states (`empty`, `complete`,
+  `partial`, `blocked`, `stale`, `incomparable`, `integrity_failure`,
+  `api_unavailable`, `not_evaluated`, `cursor_expired`, `snapshot_drift`);
 - `scope`: `A0`, `S3`, `CPA`, or `V1.x` on History and Source Documents;
 - `panel`: `inspector` or `events` (optional);
 - `q`: global search text (optional and currently display-only);
@@ -108,7 +117,10 @@ The stable URL query keys are:
 - `family`, `stage`, `outcome`, `failure_category`, `subject`, and `campaign` on
   Memory/failure filters; `memory_id`, `failure_id`, and `pattern_id` on detail views;
 - `record_id`, `document_id`, `campaign`, `study`, and `strategy_family` are opaque
-  object/root context retained by detail and mode links.
+  object/root context retained by detail and mode links;
+- `record_id`, `artifact_id`, and `source_id` select the Evidence detail panel;
+  `record_id` is the Lineage root; `node`, `path_to`, `direction`, `relations`,
+  `record_types`, `depth`, `page_size`, `cursor`, and `snapshot_token` bound a Lineage page.
 
 All page hooks register or consume a `NavigationItem`, use the public provider seam,
 and keep the same `ManagerReadModel v0` envelope. The shell passes a cached copy of
@@ -130,7 +142,15 @@ owner read. The current public hook contract is:
 - `manager_gui.web.failure_patterns.render_memory_failure_view(provider_or_model, filters=..., query_context=..., failure_id=..., pattern_id=..., snapshot_token=...)`
   mounts the shared `data-integration-hook="failure-patterns-view"` for formal Memory failure/lineage;
 - `manager_gui.web.failure_patterns.render_failure_patterns_view(provider_or_model, filters=..., query_context=..., failure_id=..., pattern_id=..., snapshot_token=...)`
-  mounts the same hook for ordinary failures and explicitly Derived patterns.
+  mounts the same hook for ordinary failures and explicitly Derived patterns;
+- `manager_gui.web.evidence.render_evidence_view(provider_or_model, snapshot_token=..., query_context=...)`
+  mounts `data-integration-hook="evidence-view"` (resource `evidence`);
+- `manager_gui.web.lineage.render_lineage_view(provider_or_model, query_context=..., snapshot_token=..., record_id=..., route=...)`
+  mounts `data-integration-hook="lineage-view"` (resource `lineage`);
+- `manager_gui.web.evidence_comparison.render_evidence_comparison_view(provider_or_model, snapshot_token=..., query_context=...)`
+  mounts `data-integration-hook="evidence-comparison-view"` (resource `evidence_comparison`);
+- `manager_gui.web.failure_grouping.render_failure_grouping_view(provider_or_model, snapshot_token=..., query_context=...)`
+  mounts `data-integration-hook="failure-grouping-view"` (resource `failure_grouping`).
 
 The S3 routes keep Formal Research Memory, ordinary failure records, and Derived
 patterns visibly separate. A missing or zero-entry Memory scope is rendered as
@@ -143,6 +163,108 @@ locators. No similarity or LLM promotion, private-storage fallback, dereference,
 or mutation endpoint is used. S3 integrated tests cover complete, zero-entry,
 empty, partial, blocked, stale, integrity-failure, API-unavailable, missing-lineage,
 context-preserving links, and one-read provider audits.
+
+### S4 Evidence, Lineage and comparison routes / exit evidence for #639
+
+S4-T4 mounts the four S4 page hooks through the shared read-only shell. The shell
+still owns the top bar, navigation, read-only badge, status block, Inspector, raw
+JSON drawer, export control, and URL state; each route performs exactly one public
+provider read of its own resource through the cached envelope.
+
+| `view` | Hook (`data-integration-hook`) | Renderer | Resource |
+| --- | --- | --- | --- |
+| `evidence` | `evidence-view` | `evidence.render_evidence_view` | `evidence` |
+| `lineage` | `lineage-view` | `lineage.render_lineage_view` | `lineage` |
+| `evidence-object-comparison` | `evidence-comparison-view` | `evidence_comparison.render_evidence_comparison_view` | `evidence_comparison` |
+| `derived-failure-grouping` | `failure-grouping-view` | `failure_grouping.render_failure_grouping_view` | `failure_grouping` |
+
+The general comparison is separate from the S2 Genome comparison: it has its own view
+ID, hook, and resource, and the S2 route (`strategy-genome-comparison`, resource
+`genome_comparison`) is unchanged. Derived groups are always labelled Derived and never
+become an owner fact, a success rate, or a ranking.
+
+**Conclusion → evidence → source/artifact → lineage.** `web/evidence_trace.py` renders
+a trace after the Evidence Ledger and gives the ledger's `record_id` / `artifact_id` /
+`source_id` links a real selected-detail panel. It follows only explicit published
+pointers: `conclusion_id` on the ledger and `lineage_id` on a record or artifact name
+the Lineage root to open. Nothing is matched by similarity. A pointer, locator, record,
+or artifact that is not published is shown as `Missing / Unconfirmed`; that is not a
+failure and not proof of absence. These two pointer names are the read-seam contract
+this GUI consumes; until an owner publishes them, the lineage hop stays Missing.
+
+Rules every S4 route follows:
+
+- **Snapshots are never mixed.** Each resource owns its snapshot. Links from Evidence to
+  Lineage, comparison, or grouping do not forward `snapshot_token`, `page`, `page_size`,
+  or `cursor`; links inside one route keep them. A Lineage page pinned to a snapshot it
+  did not read fails closed with `snapshot_drift`.
+- **Locators.** `web/locators.py` decides which locator may become a link. Only public
+  (`http`/`https` without credentials) and fixture/`workspace`/`artifact` locators do;
+  local paths, `file:` URLs, and credential-bearing URLs are withheld and shown as
+  Missing. No locator is ever dereferenced.
+- **Unreadable is never empty.** Blocked, stale, integrity-failure, and API-unavailable
+  sources render the shared `error` state; only a `missing` source renders `empty`.
+
+Shell `fixture` values map onto every S4 seam in `web/s4_fixtures.py` (built from each
+owning module's own builder):
+
+| `fixture` | Evidence | Lineage | Comparison / grouping |
+| --- | --- | --- | --- |
+| `complete` | known ledger, both evidence classes | ready graph and path | derived axes / groups |
+| `empty` | `missing`, empty state | `missing`, empty state | `missing`, empty state |
+| `partial` | known, incomplete | partial page, next cursor, no absence claim | known, incomplete |
+| `blocked` | blocked outcome, never `fail` | withheld, `source_blocked` | error state |
+| `not_evaluated` | `not_evaluated` outcome | nodes keep `not_evaluated` status | not evaluated / excluded from both groups |
+| `stale` | stale, retained for history | stale label, not withheld | error state |
+| `incomparable` | incomparable outcome | withheld, `incomparable` | `incomparable` status, per-axis reasons kept |
+| `integrity_failure` | artifact `hash_mismatch` with its reason | withheld, `integrity_failure` | error state |
+| `api_unavailable` | nothing published | withheld, `source_unavailable` | error state |
+| `cursor_expired` | stale, cause `cursor_expired` | withheld, `cursor_expired`, clean restart link | stale, cause named |
+| `snapshot_drift` | stale, cause `snapshot_drift` | withheld, `snapshot_drift`, clean restart link | stale, cause named |
+
+`not_evaluated`, `cursor_expired`, and `snapshot_drift` are S4-only selector values:
+every other route receives the shared generic envelope for them, so S1/S2/S3/S5
+behavior is unchanged. The fixture provider serves only the first Lineage page, so
+following its next-cursor link fails closed with `cursor_mismatch`; it does not emulate
+a mutable backend.
+
+Exit evidence for S4 (#611 acceptance criteria; the issue stays open until the release
+owner closes it):
+
+1. Conclusion to source/artifact, evidence level, and limitations:
+   `test_s4_integration.py::test_conclusion_leads_to_evidence_sources_artifacts_and_lineage`.
+2. Bounded expansion, pagination, snapshot, and table alternative: `test_lineage.py`
+   plus the integrated Lineage routes in `test_s4_integration.py`.
+3. Per-axis equal/different/missing/incomparable: `test_evidence_comparison.py` and
+   `test_incomparable_keeps_the_per_axis_reason_and_is_never_ranked`.
+4. Blocked and not-evaluated never read as failure:
+   `test_blocked_is_never_shown_as_a_failure_or_as_empty`,
+   `test_not_evaluated_stays_distinct_from_failure_on_every_route`.
+5. Artifact hash failure keeps its reason:
+   `test_integrity_failure_keeps_the_specific_artifact_reason`.
+6. Incomplete pagination, expired cursor, unknown schema, snapshot drift: the fixture
+   matrix in `test_s4_integration.py` and `test_lineage.py`.
+7. Read-only and single-read audit, large graph: `test_each_s4_route_reads_exactly_its_resource_once_with_the_requested_snapshot`,
+   `test_large_lineage_graph_stays_bounded_inside_the_shell`, and the S6-T3 interaction suite,
+   which now also covers the four S4 routes (accessibility, read-only controls, export,
+   status vocabulary).
+
+Known limits: fixtures are synthetic and do not stand in for a connected data gate; the
+Evidence trace shows at most 20 rows per step and defers to the ledger for the rest.
+
+### S6-T4 consumption contract for S4
+
+S6-T4 may link Search results and Portal sections to the S4 routes, and only through
+the shared URL state:
+
+1. Build links with `context_link(context, view=ViewId.EVIDENCE | ViewId.LINEAGE, record_id=...)`;
+   keep `fixture`, `q`, `panel`, and opaque context, and drop `snapshot_token`, `page`,
+   `page_size`, and `cursor` when the target is a different resource.
+2. Treat a lineage `record_id` as a Lineage root only when the owner published it; do not
+   derive it from an Evidence `record_id` or any similar-looking id.
+3. Render a locator as a link only through `web.locators.public_locator`.
+4. Do not call S4 renderers with a second provider read; pass the cached envelope.
+5. Keep Search and Portal outside S4: S4-T4 does not mount either.
 
 ### S3 route integration / exit evidence for #628
 
@@ -338,7 +460,7 @@ this ticket; S5 is integrated here through the public document-index seam.
 | S1 / T3 Atlas and Research Story | `manager-gui` | T1/T2 plus approved public read seams | v0 |
 | S2 Genome and conditions | `manager-gui` | T1; Apex public read seam | v0 |
 | S3 Memory and failure knowledge | `manager-gui` | T1; Apex public read seam | v0 |
-| S4 Evidence, lineage, comparison | `manager-gui` | T1; owner-published evidence/read seams | v0 |
+| S4 Evidence, lineage, comparison | `manager-gui` | T1; owner-published evidence/read seams | v0, integrated in S4-T4 |
 | S5 Methodology, history, source documents | `manager-gui` | T1; document-index seam | v0, integrated in S5-T3 |
 | S6 Search, portal, accessibility | `manager-gui` | T1 and S2–S5 read seams | v0 |
 
