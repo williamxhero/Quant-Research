@@ -6,6 +6,7 @@ language-neutral. Pages never import catalog modules directly: they ask a
 `Translator` for a key.
 """
 
+from .catalog import CATALOG, REGISTRY, CatalogError, CatalogRegistry, merge, register
 from .glossary import TERMS, Term
 from .locale import DEFAULT_LOCALE, LANG_PARAM, Locale, resolve_locale, with_lang
 from .translator import (
@@ -18,6 +19,10 @@ from .translator import (
 )
 
 __all__ = [
+    "CATALOG",
+    "REGISTRY",
+    "CatalogError",
+    "CatalogRegistry",
     "DEFAULT_LOCALE",
     "LANG_PARAM",
     "PSEUDO_CLOSE",
@@ -31,4 +36,6 @@ __all__ = [
     "resolve_locale",
     "source_text",
     "with_lang",
+    "merge",
+    "register",
 ]

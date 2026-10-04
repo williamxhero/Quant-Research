@@ -19,6 +19,18 @@ class CatalogError(TranslationError):
     """A catalog entry is invalid or collides with an existing key."""
 
 
+def _entries_arg(entries: Mapping[str, M] | str, message: M | None) -> Mapping[str, M]:
+    if isinstance(entries, str):
+        if message is None:
+            raise CatalogError(f"missing message for catalog key: {entries!r}")
+        return {entries: message}
+    if message is not None:
+        raise CatalogError("message is only accepted with a single catalog key")
+    if not isinstance(entries, Mapping):
+        raise CatalogError(f"catalog entries must be a mapping, got {type(entries).__name__}")
+    return entries
+
+
 def merge(*parts: Mapping[str, M]) -> dict[str, M]:
     """Combine catalog dicts into a new validated dict; a repeated key is an error."""
 
@@ -47,11 +59,13 @@ class CatalogRegistry:
 
         return self._view
 
-    def register(self, entries: Mapping[str, M]) -> None:
-        """Validate and add `entries` atomically: on any error nothing is registered."""
+    def register(
+        self, entries: Mapping[str, M] | str, message: M | None = None
+    ) -> None:
+        """Validate and add entries atomically: on any error nothing is registered."""
 
         try:
-            staged = merge(entries)
+            staged = merge(_entries_arg(entries, message))
         except TranslationError as exc:
             if isinstance(exc, CatalogError):
                 raise
@@ -63,12 +77,14 @@ class CatalogRegistry:
 
 
 REGISTRY = CatalogRegistry()
+# A short public alias for callers that only need the read-only catalog mapping.
+CATALOG = REGISTRY.entries
 
 
-def register(entries: Mapping[str, M]) -> None:
-    """Register `entries` in the process-wide `REGISTRY` used by default Translators."""
+def register(entries: Mapping[str, M] | str, message: M | None = None) -> None:
+    """Register entries in the process-wide registry used by default Translators."""
 
-    REGISTRY.register(entries)
+    REGISTRY.register(entries, message)
 
 
-__all__ = ["REGISTRY", "CatalogError", "CatalogRegistry", "merge", "register"]
+__all__ = ["CATALOG", "REGISTRY", "CatalogError", "CatalogRegistry", "merge", "register"]
