@@ -16,7 +16,7 @@ from html import escape
 from types import MappingProxyType
 
 from .glossary import TERMS
-from .locale import DEFAULT_LOCALE, Locale
+from .locale import DEFAULT_LOCALE, Locale, resolve_locale
 
 PSEUDO_OPEN = "⟦"
 PSEUDO_CLOSE = "⟧"
@@ -31,7 +31,6 @@ _TOKEN = re.compile(
     r"|(?P<stray>[{}])"
 )
 _KEY = re.compile(r"[^\s{}]+")
-_LABEL_DOMAIN = re.compile(r"[a-z][a-z0-9_]*")
 _JOIN_SEPARATORS = {Locale.ZH_CN: "、", Locale.EN: ", "}
 
 
@@ -80,16 +79,16 @@ class M:
 
 
 def label_key(domain: str, value: str) -> str:
-    """Catalog key of a known value of an enumerated domain, e.g. `label.status.ready`."""
+    """Catalog key of a known value, e.g. `label.status.ready`."""
 
-    if not _LABEL_DOMAIN.fullmatch(domain):
-        raise TranslationError(f"label domain must be lower snake_case: {domain!r}")
-    if not value:
-        raise TranslationError(f"label value for domain {domain!r} must not be empty")
+    if not domain or not value:
+        raise TranslationError("label domain and value must not be empty")
     return f"{LABEL_PREFIX}.{domain}.{value}"
 
 
-def _scan(template: str, where: str) -> tuple[frozenset[str], frozenset[str]]:
+def _scan(
+    template: str, where: str
+) -> tuple[frozenset[str], frozenset[str]]:
     """Return the (placeholder names, glossary term ids) used by a template."""
 
     names: set[str] = set()
@@ -133,21 +132,27 @@ def validate_entry(key: str, message: M) -> None:
         forms["en.other"] = message.en["other"]
 
     placeholders: dict[str, frozenset[str]] = {}
-    term_ids: set[str] = set()
+    term_references: dict[str, frozenset[str]] = {}
     for form, template in forms.items():
         if not isinstance(template, str) or not template.strip():
             raise TranslationError(f"{key} [{form}]: text must be a non-empty string")
         names, terms = _scan(template, f"{key} [{form}]")
         placeholders[form] = names
-        term_ids |= terms
+        term_references[form] = terms
 
     expected = placeholders["zh"]
     for form, names in placeholders.items():
         if names != expected:
             raise TranslationError(
-                f"{key}: placeholders differ between zh {sorted(expected)} and {form} {sorted(names)}"
+                f"{key}: placeholders differ between zh {sorted(expected)} and "
+                f"{form} {sorted(names)}"
             )
-    unknown = sorted(term_id for term_id in term_ids if term_id not in TERMS)
+    unknown = sorted(
+        term_id
+        for references in term_references.values()
+        for term_id in references
+        if term_id not in TERMS
+    )
     if unknown:
         raise TranslationError(f"{key}: unknown glossary term(s) {unknown}")
     if key.startswith(f"{LABEL_PREFIX}."):
@@ -226,10 +231,14 @@ class Translator:
     """
 
     __slots__ = ("_catalog", "_locale", "_pseudo", "_strict")
+    _catalog: Mapping[str, M]
+    _locale: Locale
+    _pseudo: bool
+    _strict: bool
 
     def __init__(
         self,
-        locale: Locale = DEFAULT_LOCALE,
+        locale: Locale | str = DEFAULT_LOCALE,
         *,
         strict: bool = False,
         pseudo: bool = False,
@@ -240,10 +249,13 @@ class Translator:
             from .catalog import REGISTRY
 
             catalog = REGISTRY.entries
-        object.__setattr__(self, "_locale", Locale(locale))
+        resolved = resolve_locale(locale)
+        if resolved is None:
+            raise ValueError(f"unsupported locale: {locale!r}")
+        object.__setattr__(self, "_locale", resolved)
         object.__setattr__(self, "_strict", bool(strict))
         object.__setattr__(self, "_pseudo", bool(pseudo))
-        object.__setattr__(self, "_catalog", catalog)
+        object.__setattr__(self, "_catalog", MappingProxyType(dict(catalog)))
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("Translator is immutable")
@@ -285,9 +297,15 @@ class Translator:
         return self._format(key, {**params, "n": n}, n=n, as_html=False)
 
     def html(self, key: str, /, **params: object) -> str:
-        """Markup for a trusted catalog template; every parameter is HTML-escaped."""
+        """Markup for a trusted catalog template; every parameter is HTML-escaped.
 
-        return self._format(key, params, n=None, as_html=True)
+        For a plural entry, pass ``n=`` as a parameter to select the English form;
+        ``count()`` remains the plain-text convenience API.
+        """
+
+        n = params.get("n")
+        plural_n = n if isinstance(n, int) else None
+        return self._format(key, params, n=plural_n, as_html=True)
 
     def label(self, domain: str, value: str) -> str:
         """HTML fragment naming `value` within an enumerated `domain`.

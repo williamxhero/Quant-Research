@@ -32,7 +32,10 @@ CATALOG: Mapping[str, M] = merge(
         "common.title": M("研究总览", "Research overview"),
         "common.greeting": M("你好，{name}！", "Hello, {name}!", note="greeting with a name"),
         "common.braces": M("字面量 {{x}}", "literal {{x}}"),
-        "common.term_zh": M("查看{term:artifact}和{term:lineage}", "View artifacts and lineage"),
+        "common.term_zh": M(
+            "查看{term:artifact}和{term:lineage}",
+            "View {term:artifact} and {term:lineage}",
+        ),
         "common.term_html": M("<b>{term:known}</b>：{name}", "<b>{term:known}</b>: {name}"),
         "common.items": M(
             "共 {n} 项",
@@ -190,17 +193,13 @@ def test_seed_terms_are_present_and_immutable() -> None:
         TERMS["artifact"].zh = "产物"  # type: ignore[misc]
 
 
-def test_term_construction_is_validated() -> None:
-    term = Term("ok_id", "en", "中", "短", "说明", ("坏",))
-    assert (term.zh_short, term.note, term.forbidden_zh) == ("短", "说明", ("坏",))
-    with pytest.raises(ValueError, match="snake_case"):
-        Term("Bad-Id", "en", "中")
-    with pytest.raises(ValueError, match="empty"):
-        Term("x", "en", " ")
-    with pytest.raises(ValueError, match="tuple"):
-        Term("x", "en", "中", forbidden_zh=["坏"])  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="forbidden"):
-        Term("x", "en", "制品", forbidden_zh=("制品",))
+def test_term_is_a_frozen_record_and_registry_rejects_duplicate_ids() -> None:
+    term = Term("any-id", "en", "中", "短", "说明", ("坏",))
+    assert (term.id, term.zh_short, term.note, term.forbidden_zh) == (
+        "any-id", "短", "说明", ("坏",)
+    )
+    with pytest.raises(AttributeError):
+        term.zh = "改"  # type: ignore[misc]
     with pytest.raises(ValueError, match="duplicate"):
         glossary_module._registry([term, term])
 
@@ -293,7 +292,7 @@ def test_registration_rejects_unknown_terms_and_accepts_known_ones() -> None:
         validate_entry("a.b", M("见{term:no_such_term}", "see"))
     with pytest.raises(TranslationError, match="no_such_term"):
         validate_entry("a.b", M("见", "see {term:no_such_term}"))
-    validate_entry("a.b", M("见{term:artifact}", "see"))
+    validate_entry("a.b", M("见{term:artifact}", "see {term:artifact}"))
 
 
 def test_registration_rejects_label_entries_with_placeholders_or_plurals() -> None:
@@ -301,7 +300,7 @@ def test_registration_rejects_label_entries_with_placeholders_or_plurals() -> No
         validate_entry("label.status.x", M("{n}", "{n}"))
     with pytest.raises(TranslationError, match="label entries"):
         validate_entry("label.status.x", M("{n}", {"one": "{n}", "other": "{n}"}))
-    validate_entry("label.status.x", M("见{term:artifact}", "see"))
+    validate_entry("label.status.x", M("见{term:artifact}", "see {term:artifact}"))
 
 
 def test_registry_is_atomic_append_only_and_read_only() -> None:
@@ -319,6 +318,13 @@ def test_registry_is_atomic_append_only_and_read_only() -> None:
     view = registry.entries
     registry.register({"a.late": M("晚", "late")})
     assert "a.late" in view  # the view is live
+
+    registry.register("a.single", M("单个", "single"))
+    assert registry.entries["a.single"].en == "single"
+    with pytest.raises(CatalogError, match="missing message"):
+        registry.register("a.missing")
+    with pytest.raises(CatalogError, match="only accepted"):
+        registry.register({"a.extra": M("额外", "extra")}, M("多余", "extra"))
 
     translator = Translator(Locale.EN, strict=True, catalog=registry.entries)
     assert translator.t("a.late") == "late"
@@ -451,7 +457,9 @@ def test_plural_entry_without_count() -> None:
         with pytest.raises(TranslationError, match="count"):
             _translator(locale, strict=True).t("common.items", n=1)
         with pytest.raises(TranslationError, match="count"):
-            _translator(locale, strict=True).html("common.items", n=1)
+            _translator(locale, strict=True).html("common.items")
+    assert _translator(Locale.EN, strict=True).html("common.items", n=1) == "1 item"
+    assert _translator(Locale.EN, strict=True).html("common.items", n=2) == "2 items"
 
 
 def test_key_and_self_parameters_do_not_collide_with_method_arguments() -> None:
@@ -544,9 +552,8 @@ def test_label_renders_unknown_values_verbatim_in_code_never_title_cased(
         assert _translator(locale, strict=strict).label("never_registered", value) == rendered
 
 
-def test_label_with_a_bad_domain_is_a_strict_error_and_a_lenient_code() -> None:
-    with pytest.raises(TranslationError, match="domain"):
-        _translator(strict=True).label("Bad.Domain", "x")
+def test_label_with_an_unregistered_domain_is_an_unknown_code_value() -> None:
+    assert _translator(strict=True).label("Bad.Domain", "x") == "<code>x</code>"
     assert _translator().label("Bad.Domain", "x") == "<code>x</code>"
 
 
