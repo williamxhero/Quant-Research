@@ -34,6 +34,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .locators import public_locator
 from .navigation import context_link
 from .status import DisplayState, render_operational_state, render_status_block
 
@@ -765,10 +766,11 @@ def _render_publication(
             "</article>"
         )
     internal = _source_link(publication, query_context, report_id=report_id)
+    safe_locator = public_locator(publication.locator)
     locator = (
-        f'<a class="portal-source-locator" href="{escape(publication.locator, quote=True)}">'
-        f"{escape(publication.locator)}</a>"
-        if publication.locator
+        f'<a class="portal-source-locator" href="{escape(safe_locator, quote=True)}">'
+        f"{escape(safe_locator)}</a>"
+        if safe_locator
         else "Missing / Unconfirmed"
     )
     stable = (
@@ -813,10 +815,11 @@ def _render_artifact(
             "</article>"
         )
     internal = _artifact_link(artifact, query_context, report_id=report_id)
+    safe_locator = public_locator(artifact.locator)
     locator = (
-        f'<a class="portal-artifact-locator" href="{escape(artifact.locator, quote=True)}">'
-        f"{escape(artifact.locator)}</a>"
-        if artifact.locator
+        f'<a class="portal-artifact-locator" href="{escape(safe_locator, quote=True)}">'
+        f"{escape(safe_locator)}</a>"
+        if safe_locator
         else "Missing / Unconfirmed"
     )
     stable = (

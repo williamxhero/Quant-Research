@@ -68,9 +68,9 @@ from .methodology import (
 )
 from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item, navigation_label_zh
 from .portal import REPORT_SOURCE_RESOURCE, build_portal_fixture, render_portal_view
-from .search import SEARCH_RESOURCE, SearchFixtureState, build_search_fixture, render_search_view
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
+from .search import SEARCH_RESOURCE, SearchFixtureState, build_search_fixture, render_search_view
 from .status import render_status_block
 
 

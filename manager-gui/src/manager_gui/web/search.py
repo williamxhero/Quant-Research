@@ -36,7 +36,8 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
-from .navigation import PageWindow, context_link, query_values
+from .locators import public_locator
+from .navigation import PageWindow, ViewId, context_link, query_values
 from .status import DisplayState, render_operational_state, render_status_block
 
 SEARCH_RESOURCE = "search"
@@ -221,6 +222,65 @@ def _record_type(item: Mapping[str, object], *, kind: str) -> str:
     return selected.casefold().replace("_", "-").replace(" ", "-")
 
 
+def _route_hint(item: Mapping[str, object]) -> str | None:
+    """Read an explicit target route without treating arbitrary payload as a route."""
+
+    value = _first_text(
+        item,
+        ("target_view", "targetView", "target_route", "targetRoute", "link_view", "linkView", "route", "view"),
+    )
+    if value is None:
+        return None
+    aliases = {
+        "record": ViewId.ATLAS.value,
+        "records": ViewId.ATLAS.value,
+        "atlas": ViewId.ATLAS.value,
+        "genome": ViewId.STRATEGIES.value,
+        "genomes": ViewId.STRATEGIES.value,
+        "strategy": ViewId.STRATEGIES.value,
+        "strategy-genome": ViewId.STRATEGIES.value,
+        "memory": ViewId.MEMORY.value,
+        "memory-entry": ViewId.MEMORY.value,
+        "evidence": ViewId.EVIDENCE.value,
+        "lineage": ViewId.LINEAGE.value,
+        "document": ViewId.SOURCE_DOCUMENTS.value,
+        "documents": ViewId.SOURCE_DOCUMENTS.value,
+        "source-document": ViewId.SOURCE_DOCUMENTS.value,
+        "source-documents": ViewId.SOURCE_DOCUMENTS.value,
+    }
+    normalized = value.casefold().replace("_", "-").replace(" ", "-")
+    return aliases.get(normalized, normalized if normalized in {view.value for view in ViewId} else None)
+
+
+def _target_route(item: Mapping[str, object], *, kind: str, record_type: str) -> tuple[str, str]:
+    """Resolve a Search hit to a mounted route and its stable selector key."""
+
+    route = _route_hint(item)
+    if route is None:
+        normalized = record_type.casefold().replace("_", "-").replace(" ", "-")
+        if kind == "document" or normalized in {"document", "report", "plan", "retrospective", "future-idea", "external-source", "raw-evidence"}:
+            route = ViewId.SOURCE_DOCUMENTS.value
+        elif normalized in {"genome", "genome-revision", "strategy-genome", "strategy-genome-revision"}:
+            route = ViewId.STRATEGIES.value
+        elif normalized in {"memory", "memory-entry", "memory-policy", "memory-family", "family-memory", "duplicate-decision"}:
+            route = ViewId.MEMORY.value
+        elif normalized in {"evidence", "evidence-record", "evidence-ledger"}:
+            route = ViewId.EVIDENCE.value
+        elif normalized in {"lineage", "lineage-node", "lineage-record"}:
+            route = ViewId.LINEAGE.value
+        else:
+            route = ViewId.ATLAS.value
+    selector = {
+        ViewId.SOURCE_DOCUMENTS.value: "document_id",
+        ViewId.STRATEGIES.value: "genome_id",
+        ViewId.MEMORY.value: "memory_id",
+        ViewId.EVIDENCE.value: "record_id",
+        ViewId.LINEAGE.value: "record_id",
+    }.get(route, "record_id")
+    target_id = _first_text(item, (selector, "target_id", "targetId", "record_id", "recordId", "document_id", "documentId"))
+    return route, target_id or ""
+
+
 def _iter_index_items(data: object) -> tuple[tuple[str, Mapping[str, object]], ...]:
     """Read only declared index containers, preserving record/document kind."""
 
@@ -397,6 +457,8 @@ class SearchHit:
     matched_fields: tuple[str, ...] = ()
     match_reasons: tuple[str, ...] = ()
     stable_url: str | None = None
+    target_view: str = ViewId.ATLAS.value
+    target_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.result_id.strip() or not self.record_id.strip():
@@ -477,6 +539,8 @@ class SearchHit:
             "reason": self.reason,
             "stable_url": self.stable_url,
             "url": self.url,
+            "target_view": self.target_view,
+            "target_id": self.target_id,
         }
 
 
@@ -568,6 +632,7 @@ class SearchViewModel:
                 continue
             seen.add(marker)
             refs = tuple(source_map[source_id] for source_id in source_ids if source_id in source_map)
+            target_view, target_id = _target_route(item, kind=kind, record_type=result_type)
             parsed.append(
                 SearchHit(
                     result_id=record_id,
@@ -592,6 +657,8 @@ class SearchViewModel:
                     source_locator=_source_locator(item, source_map, source_ids),
                     matched_fields=matched_fields,
                     match_reasons=reasons,
+                    target_view=target_view,
+                    target_id=target_id or record_id,
                 )
             )
         parsed.sort(key=lambda hit: _stable_key(
@@ -699,21 +766,13 @@ class SearchViewModel:
         return self.pagination.indexed_count if self.pagination.indexed_count is not None else len(self.hits)
 
     def with_context(self, context: str | Mapping[str, object] | None) -> SearchViewModel:
-        """Return a copy whose hit URLs preserve opaque shell context."""
+        """Return a copy whose hit URLs point at mounted detail routes."""
 
         if context is None:
             return self
         updated: list[SearchHit] = []
         for hit in self.hits:
-            updates: dict[str, object] = {
-                "result_id": hit.result_id,
-                "record_type": hit.record_type,
-            }
-            if hit.result_kind == "document":
-                updates["document_id"] = hit.record_id
-            else:
-                updates["record_id"] = hit.record_id
-            updated.append(replace(hit, stable_url=context_link(context, view="search", **updates)))
+            updated.append(replace(hit, stable_url=_hit_link(hit, context)))
         return replace(self, hits=tuple(updated))
 
     def to_dict(self) -> dict[str, object]:
@@ -744,6 +803,10 @@ class SearchViewModel:
         if self.query:
             values["q"] = self.query
         values["view"] = "search"
+        if self.record_type:
+            values["record_type"] = self.record_type
+        if self.source:
+            values["source"] = self.source
         context = values
         contextual = self.with_context(context)
         window = PageWindow(
@@ -822,22 +885,56 @@ class SearchViewModel:
                 + "</ol>"
             )
         pieces.append(window.render(context, view="search"))
+        if self.pagination.next_cursor and self.pagination.has_more:
+            next_context = query_values(context)
+            next_context.pop("page", None)
+            next_context.pop("cursor", None)
+            next_url = context_link(
+                next_context,
+                view="search",
+                cursor=self.pagination.next_cursor,
+                page=2,
+            )
+            pieces.append(
+                f'<p class="search-cursor-pagination" data-search-next-cursor="{escape(self.pagination.next_cursor, quote=True)}">'
+                f'<a class="search-next-cursor" rel="next" href="{escape(next_url, quote=True)}" '
+                'aria-label="Load next indexed Search page / 加载下一页搜索索引">'
+                'Next indexed page / <span lang="zh-CN">下一页索引</span></a></p>'
+            )
         pieces.append("</section>")
         return "".join(pieces)
 
 
 def _safe_source_link(source: SourceReference) -> str:
-    """Render approved public/fixture locators without dereferencing paths."""
+    """Render only public or fixture locators; never expose private paths as links."""
 
-    locator = source.locator
-    lowered = locator.casefold()
-    if lowered.startswith(("file:", "\\\\")) or (len(locator) > 2 and locator[1] == ":"):
-        return f'<span class="search-source-locator">{escape(locator)}</span>'
+    locator = public_locator(source.locator)
+    if locator is None:
+        return '<span class="search-source-locator">Missing / Unconfirmed</span>'
     return f'<a class="search-source-link" data-source-id="{escape(source.source_id, quote=True)}" href="{escape(locator, quote=True)}">{escape(locator)}</a>'
 
 
+def _hit_link(hit: SearchHit, context: str | Mapping[str, object]) -> str:
+    """Build a local link to the mounted route that owns a hit identity."""
+
+    values = query_values(context)
+    for key in ("page", "page_size", "cursor", "record_id", "document_id", "genome_id", "memory_id", "failure_id", "pattern_id", "artifact_id", "source_id"):
+        values.pop(key, None)
+    selector = {
+        ViewId.SOURCE_DOCUMENTS.value: "document_id",
+        ViewId.STRATEGIES.value: "genome_id",
+        ViewId.MEMORY.value: "memory_id",
+        ViewId.EVIDENCE.value: "record_id",
+        ViewId.LINEAGE.value: "record_id",
+    }.get(hit.target_view, "record_id")
+    updates: dict[str, object] = {key: None for key in ("record_id", "document_id", "genome_id", "memory_id")}
+    updates[selector] = hit.target_id or hit.record_id
+    updates["record_type"] = hit.record_type
+    return context_link(values, view=hit.target_view, **updates)
+
+
 def _render_hit(hit: SearchHit) -> str:
-    target = hit.stable_url or context_link(None, view="search", result_id=hit.result_id, record_type=hit.record_type)
+    target = hit.stable_url or context_link(None, view=hit.target_view, record_id=hit.target_id or hit.record_id)
     title = hit.title or hit.document_title or hit.record_id
     fields = ", ".join(hit.matched_fields) or "none (browse entry)"
     source_markup = (
