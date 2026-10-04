@@ -33,24 +33,13 @@ from .documents import (
     build_source_documents_fixture,
     render_source_documents_view,
 )
-from .evidence import (
-    EVIDENCE_RESOURCE,
-    EvidenceFixtureState,
-    build_evidence_fixture,
-    render_evidence_view,
-)
+from .evidence import EVIDENCE_RESOURCE, render_evidence_view
 from .evidence_comparison import (
     EVIDENCE_COMPARISON_RESOURCE,
-    EvidenceComparisonFixtureState,
-    build_evidence_comparison_fixture,
     render_evidence_comparison_view,
 )
-from .failure_grouping import (
-    FAILURE_GROUPING_RESOURCE,
-    GroupingFixtureState,
-    build_failure_grouping_fixture,
-    render_failure_grouping_view,
-)
+from .evidence_trace import render_evidence_trace
+from .failure_grouping import FAILURE_GROUPING_RESOURCE, render_failure_grouping_view
 from .failure_patterns import (
     FAILURE_PATTERNS_RESOURCE,
     render_failure_patterns_view,
@@ -70,12 +59,7 @@ from .interaction import (
     opaque_copy_button,
     render_export_control,
 )
-from .lineage import (
-    LINEAGE_RESOURCE,
-    LineageFixtureState,
-    build_lineage_fixture,
-    render_lineage_view,
-)
+from .lineage import LINEAGE_RESOURCE, render_lineage_view
 from .memory import render_memory_view
 from .methodology import (
     MethodologyFixtureState,
@@ -84,6 +68,7 @@ from .methodology import (
 )
 from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item, navigation_label_zh
 from .research_story import StoryMode, render_research_story
+from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .status import render_status_block
 
 
@@ -163,14 +148,11 @@ class _FixtureReadProvider:
         snapshot_token: str | None = None,
     ) -> ManagerReadModel:
         del snapshot_token
-        if resource == EVIDENCE_RESOURCE:
-            return build_evidence_fixture(self._evidence_fixture_state())
-        if resource == LINEAGE_RESOURCE:
-            return self._lineage_fixture()
-        if resource == EVIDENCE_COMPARISON_RESOURCE:
-            return build_evidence_comparison_fixture(self._evidence_comparison_fixture_state())
-        if resource == FAILURE_GROUPING_RESOURCE:
-            return build_failure_grouping_fixture(self._failure_grouping_fixture_state())
+        if resource in S4_RESOURCES:
+            return build_s4_fixture(resource, self.fixture)
+        if self.fixture in S4_FIXTURE_STATES:
+            # S4-only selector values: other routes keep the shared generic envelope.
+            return build_fixture(self.fixture, resource=resource)
         if resource == GENOME_RESOURCE:
             return build_genome_fixture(self._genome_fixture_state())
         if resource == CONDITIONS_RESOURCE:
@@ -186,125 +168,15 @@ class _FixtureReadProvider:
         return build_fixture(self.fixture, resource=resource)
 
     def _genome_fixture_state(self) -> GenomeFixtureState:
-        try:
-            return GenomeFixtureState(self.fixture.value)
-        except ValueError:
-            return GenomeFixtureState.PARTIAL
+        return GenomeFixtureState(self.fixture.value)
 
     def _conditions_fixture_state(self) -> ConditionFixtureState:
-        try:
-            return ConditionFixtureState(self.fixture.value)
-        except ValueError:
-            return ConditionFixtureState.PARTIAL
+        return ConditionFixtureState(self.fixture.value)
 
     def _comparison_fixture_state(self) -> ComparisonFixtureState:
-        if self.fixture is FixtureState.EMPTY or self.fixture.value in {
-            "not_evaluated",
-            "cursor_expired",
-            "snapshot_drift",
-        }:
+        if self.fixture is FixtureState.EMPTY:
             return ComparisonFixtureState.MISSING
-        try:
-            return ComparisonFixtureState(self.fixture.value)
-        except ValueError:
-            return ComparisonFixtureState.MISSING
-
-    def _evidence_fixture_state(self) -> EvidenceFixtureState:
-        value = self.fixture.value
-        if value in {"cursor_expired", "snapshot_drift"}:
-            return EvidenceFixtureState.STALE
-        try:
-            return EvidenceFixtureState(value)
-        except ValueError:
-            return EvidenceFixtureState.COMPLETE
-
-    def _evidence_comparison_fixture_state(self) -> EvidenceComparisonFixtureState:
-        value = self.fixture.value
-        if value in {"empty", "not_evaluated", "cursor_expired", "snapshot_drift"}:
-            return EvidenceComparisonFixtureState.MISSING
-        try:
-            return EvidenceComparisonFixtureState(value)
-        except ValueError:
-            return EvidenceComparisonFixtureState.COMPLETE
-
-    def _failure_grouping_fixture_state(self) -> GroupingFixtureState:
-        value = self.fixture.value
-        if value == "empty":
-            return GroupingFixtureState.MISSING
-        if value in {"not_evaluated", "cursor_expired", "snapshot_drift"}:
-            return GroupingFixtureState.STALE
-        try:
-            return GroupingFixtureState(value)
-        except ValueError:
-            return GroupingFixtureState.COMPLETE
-
-    def _lineage_fixture(self) -> ManagerReadModel:
-        value = self.fixture.value
-        if value in {"empty", "partial", "api_unavailable", "cursor_expired", "snapshot_drift"}:
-            model = build_lineage_fixture(LineageFixtureState(value))
-            if value == "snapshot_drift":
-                return replace(
-                    model,
-                    availability=Availability(
-                        status=ReadModelStatus.STALE,
-                        complete=False,
-                        reason="The lineage snapshot drifted during the read.",
-                    ),
-                )
-            return model
-        if value == "integrity_failure":
-            model = build_lineage_fixture(LineageFixtureState.HASH_MISMATCH)
-            return replace(
-                model,
-                availability=Availability(
-                    status=ReadModelStatus.INTEGRITY_FAILURE,
-                    complete=False,
-                    reason="The lineage page failed its integrity check.",
-                ),
-            )
-        if value == "blocked":
-            model = build_lineage_fixture(LineageFixtureState.COMPLETE)
-            return replace(
-                model,
-                data={},
-                availability=Availability(
-                    status=ReadModelStatus.BLOCKED,
-                    complete=False,
-                    reason="The approved lineage read seam is blocked.",
-                ),
-                errors=(ReadModelError("lineage_read_blocked", "The lineage source is blocked."),),
-            )
-        if value == "incomparable":
-            model = build_lineage_fixture(LineageFixtureState.COMPLETE)
-            return replace(
-                model,
-                data={},
-                availability=Availability(
-                    status=ReadModelStatus.INCOMPARABLE,
-                    complete=False,
-                    reason="The lineage inputs are not comparable.",
-                ),
-                errors=(
-                    ReadModelError(
-                        "lineage_incomparable", "The lineage inputs belong to incompatible snapshots."
-                    ),
-                ),
-            )
-        if value in {"stale", "not_evaluated"}:
-            model = build_lineage_fixture(LineageFixtureState.COMPLETE)
-            return replace(
-                model,
-                availability=Availability(
-                    status=ReadModelStatus.STALE if value == "stale" else ReadModelStatus.KNOWN,
-                    complete=value != "not_evaluated",
-                    reason=(
-                        "The lineage page is retained as a stale projection."
-                        if value == "stale"
-                        else "Lineage has not been evaluated in this scope."
-                    ),
-                ),
-            )
-        return build_lineage_fixture(LineageFixtureState.COMPLETE)
+        return ComparisonFixtureState(self.fixture.value)
 
     def _methodology(self) -> ManagerReadModel:
         selected = self.fixture
@@ -516,11 +388,12 @@ class ManagerGUIApp:
                 snapshot_token=model.snapshot_token,
             )
         if state.view is ViewId.EVIDENCE:
+            # The trace reuses the already-read envelope: still exactly one provider read.
             return render_evidence_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
-            )
+            ) + render_evidence_trace(model, query_context=url)
         if state.view is ViewId.LINEAGE:
             return render_lineage_view(
                 cached,
