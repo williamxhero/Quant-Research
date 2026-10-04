@@ -68,6 +68,7 @@ from .history import (
     HistoryViewModel,
     render_history_view,
 )
+from .i18n import DEFAULT_LOCALE, Locale, Translator, resolve_locale, with_lang
 from .interaction import (
     EXPORT_ENDPOINT,
     EXPORT_SCHEMA,
@@ -161,6 +162,7 @@ __all__ = [
     "COMPARISON_ROUTE",
     "CONDITIONS_INTEGRATION_HOOK",
     "CONDITIONS_ROUTE",
+    "DEFAULT_LOCALE",
     "DISPLAY_STATE_LABELS",
     "DISPLAY_STATE_LABELS_ZH",
     "EVIDENCE_COMPARISON_INTEGRATION_HOOK",
@@ -205,6 +207,7 @@ __all__ = [
     "HistoryEventType",
     "HistoryViewModel",
     "LineageFixtureState",
+    "Locale",
     "ManagerGUIApp",
     "MethodologyCategory",
     "MethodologyIndexState",
@@ -224,6 +227,7 @@ __all__ = [
     "SourceDocumentsViewModel",
     "StatusDescriptor",
     "StoryMode",
+    "Translator",
     "ViewId",
     "WebRequestState",
     "build_evidence_comparison_fixture",
@@ -278,7 +282,9 @@ __all__ = [
     "render_source_documents_view",
     "render_status_block",
     "render_view_mode_controls",
+    "resolve_locale",
     "run_server",
     "search_result_link",
     "status_label_zh",
+    "with_lang",
 ]
