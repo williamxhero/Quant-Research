@@ -30,6 +30,9 @@ class FixtureState(StrEnum):
     INCOMPARABLE = "incomparable"
     INTEGRITY_FAILURE = "integrity_failure"
     API_UNAVAILABLE = "api_unavailable"
+    NOT_EVALUATED = "not_evaluated"
+    CURSOR_EXPIRED = "cursor_expired"
+    SNAPSHOT_DRIFT = "snapshot_drift"
 
 
 FIXTURE_STATES = tuple(state.value for state in FixtureState)
@@ -277,6 +280,56 @@ def build_fixture(state: FixtureState | str, *, resource: str = "atlas") -> Mana
         raise ValueError("resource must be a non-empty string")
     if resource in {"memory", "failure_patterns"}:
         return _s3_fixture(selected, resource)
+
+    if selected is FixtureState.NOT_EVALUATED:
+        source = _source(
+            "fixture-not-evaluated-source",
+            owner="fixture-owner",
+            kind="public-read-model",
+            locator=f"fixture://manager-gui/{resource}/not-evaluated",
+        )
+        return ManagerReadModel(
+            data={},
+            source_refs=(source,),
+            as_of=None,
+            snapshot_token="fixture-not-evaluated-v0",
+            derivation=Derivation(kind="direct", inputs=(source.source_id,), version="v0"),
+            availability=Availability(
+                status=ReadModelStatus.KNOWN,
+                complete=False,
+                reason="The requested resource has not been evaluated in this scope.",
+            ),
+            errors=(
+                ReadModelError(
+                    code="not_evaluated",
+                    message="No evaluation result is published for this resource.",
+                    source_ref=source.source_id,
+                ),
+            ),
+        )
+
+    if selected in {FixtureState.CURSOR_EXPIRED, FixtureState.SNAPSHOT_DRIFT}:
+        source = _source(
+            "fixture-lineage-snapshot",
+            owner="fixture-owner",
+            kind="public-read-model",
+            locator=f"fixture://manager-gui/{resource}/lineage",
+        )
+        reason = (
+            "The requested lineage cursor expired."
+            if selected is FixtureState.CURSOR_EXPIRED
+            else "The requested lineage snapshot drifted."
+        )
+        code = "cursor_expired" if selected is FixtureState.CURSOR_EXPIRED else "snapshot_drift"
+        return ManagerReadModel(
+            data={},
+            source_refs=(source,),
+            as_of=None,
+            snapshot_token="fixture-lineage-snapshot-v0",
+            derivation=Derivation(kind="direct", inputs=(source.source_id,), version="v0"),
+            availability=Availability(status=ReadModelStatus.STALE, complete=False, reason=reason),
+            errors=(ReadModelError(code=code, message=reason, source_ref=source.source_id),),
+        )
 
     if selected is FixtureState.EMPTY:
         return ManagerReadModel(

@@ -133,6 +133,7 @@ class EvidenceFixtureState(StrEnum):
     UNAVAILABLE = "unavailable"
     PARTIAL = "partial"
     EMPTY = "empty"
+    STALE = "stale"
     API_UNAVAILABLE = "api_unavailable"
     INTEGRITY_FAILURE = "integrity_failure"
 
@@ -1489,6 +1490,17 @@ def build_evidence_fixture(state: EvidenceFixtureState | str = EvidenceFixtureSt
             ReadModelError(
                 code="artifact_missing",
                 message="The evidence record references an unavailable artifact.",
+                source_ref=source.source_id,
+            ),
+        )
+    elif selected is EvidenceFixtureState.STALE:
+        read_status = ReadModelStatus.STALE
+        complete = False
+        reason = "The Evidence Ledger source is stale."
+        errors = (
+            ReadModelError(
+                code="evidence_source_stale",
+                message="The published evidence is retained for historical inspection only.",
                 source_ref=source.source_id,
             ),
         )

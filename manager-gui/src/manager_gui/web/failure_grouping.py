@@ -58,6 +58,7 @@ class GroupingFixtureState(StrEnum):
     FAILURE_ONLY = "failure_only"
     PARTIAL = "partial"
     MISSING = "missing"
+    STALE = "stale"
     BLOCKED = "blocked"
     INCOMPARABLE = "incomparable"
     INTEGRITY_FAILURE = "integrity_failure"
@@ -780,6 +781,10 @@ def build_failure_grouping_fixture(
     elif selected is GroupingFixtureState.MISSING:
         data = {}
         status, complete, reason, as_of, snapshot = ReadModelStatus.MISSING, False, "No Derived grouping is published in this scope.", None, None
+    elif selected is GroupingFixtureState.STALE:
+        data = {"derived_groupings": [success, failure]}
+        status, complete, reason = ReadModelStatus.STALE, False, "The Derived grouping source is stale."
+        errors = (ReadModelError("grouping_source_stale", reason),)
     elif selected is GroupingFixtureState.BLOCKED:
         data = {}
         status, complete, reason, as_of = ReadModelStatus.BLOCKED, False, "The approved grouping read seam is blocked.", None

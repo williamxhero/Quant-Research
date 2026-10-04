@@ -21,6 +21,9 @@ class ViewId(StrEnum):
     MEMORY_FAILURES = "memory-failures"
     FAILURE_PATTERNS = "failure-patterns"
     EVIDENCE = "evidence"
+    LINEAGE = "lineage"
+    EVIDENCE_COMPARISON = "evidence-object-comparison"
+    FAILURE_GROUPING = "derived-failure-grouping"
     METHODOLOGY = "methodology"
     HISTORY = "history"
     SOURCE_DOCUMENTS = "source-documents"
@@ -103,6 +106,27 @@ NAVIGATION: tuple[NavigationItem, ...] = (
         "evidence-view",
     ),
     NavigationItem(
+        ViewId.LINEAGE,
+        "Lineage",
+        "LI",
+        "Bounded evidence lineage graph, table, and source path.",
+        "lineage-view",
+    ),
+    NavigationItem(
+        ViewId.EVIDENCE_COMPARISON,
+        "Evidence Comparison",
+        "EC",
+        "General object and evidence comparison by declared axes.",
+        "evidence-comparison-view",
+    ),
+    NavigationItem(
+        ViewId.FAILURE_GROUPING,
+        "Derived Failure Grouping",
+        "DG",
+        "Explicit Derived success and failure groupings.",
+        "failure-grouping-view",
+    ),
+    NavigationItem(
         ViewId.METHODOLOGY,
         "Methodology",
         "MO",
@@ -144,6 +168,9 @@ NAVIGATION_LABELS_ZH: Mapping[ViewId, str] = {
     ViewId.MEMORY_FAILURES: "记忆失败",
     ViewId.FAILURE_PATTERNS: "失败模式",
     ViewId.EVIDENCE: "证据",
+    ViewId.LINEAGE: "谱系",
+    ViewId.EVIDENCE_COMPARISON: "证据比较",
+    ViewId.FAILURE_GROUPING: "派生失败分组",
     ViewId.METHODOLOGY: "方法论",
     ViewId.HISTORY: "历史",
     ViewId.SOURCE_DOCUMENTS: "来源文档",

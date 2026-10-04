@@ -52,6 +52,9 @@ def test_fixtures_cover_every_first_slice_availability_state() -> None:
         "incomparable": ReadModelStatus.INCOMPARABLE,
         "integrity_failure": ReadModelStatus.INTEGRITY_FAILURE,
         "api_unavailable": ReadModelStatus.API_UNAVAILABLE,
+        "not_evaluated": ReadModelStatus.KNOWN,
+        "cursor_expired": ReadModelStatus.STALE,
+        "snapshot_drift": ReadModelStatus.STALE,
     }
 
     assert set(FIXTURE_STATES) == set(expected)
