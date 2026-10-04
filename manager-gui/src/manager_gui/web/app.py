@@ -15,30 +15,6 @@ from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelSt
 from ..provider import ManagerDataProvider
 from .assets import CSS, JS
 from .atlas import render_atlas_view
-from .evidence import (
-    EVIDENCE_RESOURCE,
-    EvidenceFixtureState,
-    build_evidence_fixture,
-    render_evidence_view,
-)
-from .evidence_comparison import (
-    EVIDENCE_COMPARISON_RESOURCE,
-    EvidenceComparisonFixtureState,
-    build_evidence_comparison_fixture,
-    render_evidence_comparison_view,
-)
-from .failure_grouping import (
-    FAILURE_GROUPING_RESOURCE,
-    GroupingFixtureState,
-    build_failure_grouping_fixture,
-    render_failure_grouping_view,
-)
-from .lineage import (
-    LINEAGE_RESOURCE,
-    LineageFixtureState,
-    build_lineage_fixture,
-    render_lineage_view,
-)
 from .comparison import (
     COMPARISON_RESOURCE,
     ComparisonFixtureState,
@@ -56,6 +32,24 @@ from .documents import (
     ApprovedDirectoryBoundary,
     build_source_documents_fixture,
     render_source_documents_view,
+)
+from .evidence import (
+    EVIDENCE_RESOURCE,
+    EvidenceFixtureState,
+    build_evidence_fixture,
+    render_evidence_view,
+)
+from .evidence_comparison import (
+    EVIDENCE_COMPARISON_RESOURCE,
+    EvidenceComparisonFixtureState,
+    build_evidence_comparison_fixture,
+    render_evidence_comparison_view,
+)
+from .failure_grouping import (
+    FAILURE_GROUPING_RESOURCE,
+    GroupingFixtureState,
+    build_failure_grouping_fixture,
+    render_failure_grouping_view,
 )
 from .failure_patterns import (
     FAILURE_PATTERNS_RESOURCE,
@@ -75,6 +69,12 @@ from .interaction import (
 from .interaction import (
     opaque_copy_button,
     render_export_control,
+)
+from .lineage import (
+    LINEAGE_RESOURCE,
+    LineageFixtureState,
+    build_lineage_fixture,
+    render_lineage_view,
 )
 from .memory import render_memory_view
 from .methodology import (
