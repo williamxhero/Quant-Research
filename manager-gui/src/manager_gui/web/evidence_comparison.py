@@ -30,6 +30,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .locators import public_locator
 from .status import render_status_block
 
 EVIDENCE_COMPARISON_RESOURCE = "evidence_comparison"
@@ -793,8 +794,8 @@ def _render_refs(refs: Sequence[ComparisonSourceRef]) -> str:
     values: list[str] = []
     for ref in refs:
         label = escape(ref.source_id)
-        if ref.locator:
-            values.append(f'<a class="comparison-source-link" href="{escape(ref.locator, quote=True)}">{label}</a>')
+        if target := public_locator(ref.locator):
+            values.append(f'<a class="comparison-source-link" href="{escape(target, quote=True)}">{label}</a>')
         else:
             values.append(f'<span class="comparison-source-unconfirmed">{label} — {NOT_RECORDED}</span>')
     return " · ".join(values)

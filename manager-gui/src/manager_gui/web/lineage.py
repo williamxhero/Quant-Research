@@ -54,6 +54,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .locators import public_locator
 from .navigation import PageWindow, context_link, query_values
 from .status import render_operational_state, render_status_block
 
@@ -1267,20 +1268,6 @@ def _link(context: QueryContext, route: str, **updates: object) -> str:
     return context_link(context, view=route, **updates)
 
 
-def _public_locator(value: str | None) -> str | None:
-    """Only public or fixture locators become links; local and private paths never do."""
-
-    if value is None or "\\" in value or any(ord(char) < 32 for char in value):
-        return None
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return None
-    if parsed.scheme in {"http", "https"}:
-        return value if parsed.netloc and not parsed.username and not parsed.password else None
-    return value if parsed.scheme in {"fixture", "workspace", "artifact"} else None
-
-
 def _truncate(text: str, limit: int = 26) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
@@ -1292,7 +1279,7 @@ def _render_sources(refs: Sequence[LineageSourceRef]) -> str:
     for ref in refs:
         origin = " · ".join(part for part in (ref.owner, ref.kind) if part)
         label = escape(ref.source_id) + (f" ({escape(origin)})" if origin else "")
-        target = _public_locator(ref.locator)
+        target = public_locator(ref.locator)
         if target is not None:
             parts.append(
                 f'<a class="lineage-source-link" data-source-id="{_attr(ref.source_id)}" '

@@ -46,6 +46,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .locators import public_locator
 from .navigation import PageWindow, context_link
 from .status import render_operational_state, render_status_block
 
@@ -1046,7 +1047,7 @@ def _render_source_refs(
     items: list[str] = []
     for ref in refs:
         label = escape(ref.source_id)
-        target = ref.locator
+        target = public_locator(ref.locator)
         if target:
             items.append(
                 f'<li><a class="evidence-source-link" data-source-id="{escape(ref.source_id, quote=True)}" '
@@ -1073,11 +1074,12 @@ def _render_artifact(
     artifact: EvidenceArtifact, *, query_context: QueryContext = None
 ) -> str:
     status = artifact.verification_status.value
-    link = artifact.locator or context_link(query_context, view=EVIDENCE_ROUTE, artifact_id=artifact.artifact_id)
+    public = public_locator(artifact.locator)
+    link = public or context_link(query_context, view=EVIDENCE_ROUTE, artifact_id=artifact.artifact_id)
     link_markup = (
         f'<a class="evidence-artifact-link" href="{escape(link, quote=True)}">'
         f"{escape(artifact.name)}</a>"
-        if artifact.locator
+        if public
         else f'<a class="evidence-artifact-context-link" href="{escape(link, quote=True)}">{escape(artifact.name)}</a>'
     )
     detail = artifact.verification_detail or NOT_RECORDED.title()

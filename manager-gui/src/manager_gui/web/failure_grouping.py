@@ -29,6 +29,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .locators import public_locator
 from .status import render_operational_state, render_status_block
 
 FAILURE_GROUPING_RESOURCE = "failure_grouping"
@@ -580,8 +581,8 @@ def _render_refs(refs: Sequence[GroupingSourceRef]) -> str:
     parts: list[str] = []
     for ref in refs:
         label = escape(ref.source_id)
-        if ref.locator:
-            parts.append(f'<a class="grouping-source-link" href="{escape(ref.locator, quote=True)}">{label}</a>')
+        if target := public_locator(ref.locator):
+            parts.append(f'<a class="grouping-source-link" href="{escape(target, quote=True)}">{label}</a>')
         else:
             parts.append(f'<span class="grouping-source-unconfirmed">{label} — {NOT_RECORDED}</span>')
     return " · ".join(parts)
