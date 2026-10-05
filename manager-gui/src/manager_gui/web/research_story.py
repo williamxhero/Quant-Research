@@ -19,6 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
 from .i18n import Translator
+from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog  # noqa: F401
 from .status import render_status_block
 
 
