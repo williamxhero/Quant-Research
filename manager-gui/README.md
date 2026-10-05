@@ -574,3 +574,20 @@ Evidence/lineage/comparison reads, S5 consumes Methodology/History/document-inde
 reads, and S6 composes those read seams for Search and Portal integration. S6-T4
 owns the shared-route mounts and final regression/accessibility exit gate without
 changing any domain repository or adding a mutation seam.
+
+## Locale-aware shared shell
+
+The shared shell defaults to Simplified Chinese (`zh-CN`). Add `?lang=en` to any
+HTML route for English; the locale is URL state, not a cookie or an
+`Accept-Language` negotiation. Supported aliases (`zh`, `zh-Hans`, `en-US`, and
+`en-GB`) are normalized to the canonical URL tokens.
+
+Shell and navigation labels are resolved through the per-request `Translator`.
+The no-JavaScript language switcher preserves the full query string, including
+repeated opaque parameters, and exposes `lang`, `hreflang`, and the current
+locale state. Internal navigation and GET controls retain explicit language state
+when it was requested; raw JSON and API/export payloads remain language-neutral.
+
+Page-specific prose is intentionally not translated by the shared shell slice.
+Its page hooks receive the same request translator so later route migrations can
+add catalog entries without introducing a second i18n layer.

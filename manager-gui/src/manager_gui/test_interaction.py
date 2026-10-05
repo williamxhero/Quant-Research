@@ -294,12 +294,11 @@ def test_shell_exposes_chinese_labels_and_keyboard_landmarks() -> None:
     assert "跳到工作区" in document
     assert "只读" in document
     assert "全局搜索" in document
-    assert 'aria-label="Manager GUI sections / 管理界面分区"' in document
+    assert 'aria-label="管理界面分区"' in document
     current = [values for values, _ in audit.links if values.get("aria-current") == "page"]
     assert len(current) == 1
     for item in NAVIGATION:
-        label = f"{item.label} / {navigation_label_zh(item.view_id)}"
-        assert f'aria-label="{label}"' in document
+        assert f'aria-label="{navigation_label_zh(item.view_id)}"' in document
     assert len({navigation_label_zh(item.view_id) for item in NAVIGATION}) == len(NAVIGATION)
     # panel buttons are linked to the panels they control and report their state
     assert 'aria-controls="event-drawer" aria-expanded="true"' in document
@@ -569,7 +568,7 @@ def test_mounted_pages_expose_only_read_only_controls(view: str) -> None:
     for fixture in FixtureState:
         document = app.render(_url(view, fixture.value))
         audit = _audit(document)
-        assert "READ ONLY" in document
+        assert "只读" in document
         for values, text in audit.buttons:
             if values.get("type") == "submit":
                 assert audit.forms, f"submit button outside a GET form: {text!r}"

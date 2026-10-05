@@ -28,7 +28,7 @@ from manager_gui.web import (
     render_status_block,
     with_lang,
 )
-from manager_gui.web.navigation import context_link
+from manager_gui.web.navigation import PageWindow, context_link
 from manager_gui.web.server import build_parser
 
 
@@ -65,7 +65,9 @@ def test_fixture_status_maps_to_distinct_display_states() -> None:
 
 
 def test_shell_preserves_navigation_context_and_read_only_surface() -> None:
-    document = ManagerGUIApp().render("/?view=evidence&fixture=partial&panel=events&q=campaign")
+    document = ManagerGUIApp().render(
+        "/?view=evidence&fixture=partial&panel=events&q=campaign&lang=en"
+    )
 
     for label in (
         "Atlas",
@@ -132,10 +134,36 @@ def test_shell_language_switcher_and_explicit_search_state() -> None:
     assert 'aria-label="语言"' in invalid
 
 
+def test_navigation_and_get_form_preserve_repeated_opaque_query_state() -> None:
+    raw_url = "/?view=search&fixture=complete&lang=en&tag=a&tag=b&tag="
+    document = ManagerGUIApp(default_fixture=FixtureState.COMPLETE).render(raw_url)
+    nav_hrefs = re.findall(r'class="nav-link"[^>]+href="([^"]+)"', document)
+    assert nav_hrefs
+    for href in nav_hrefs:
+        decoded = unescape(href)
+        assert decoded.count("tag=") == 3
+        assert "lang=en" in decoded
+    assert document.count('name="tag"') >= 3
+
+
 def test_language_context_preserves_page_and_api_exports_strip_lang() -> None:
     assert context_link("/?view=search&page=4&lang=en", view="search", lang="zh-CN") == (
         "/?lang=zh-CN&page=4&view=search"
     )
+    repeated = context_link(
+        "/?view=search&page=4&tag=b&tag=a&lang=en",
+        view="search",
+        page=3,
+    )
+    assert repeated.count("tag=") == 2
+    assert "tag=a" in repeated and "tag=b" in repeated
+
+    pagination = PageWindow(2, 2, 5).render(
+        "/?view=search&lang=en&tag=a&tag=b", view="search"
+    )
+    assert "Previous" in pagination and "Next" in pagination
+    assert "上一页" not in pagination and "下一页" not in pagination
+    assert pagination.count("tag=") >= 4
 
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     base = "/?view=atlas&fixture=complete&snapshot_token=s1&q=term"
@@ -324,7 +352,7 @@ def test_s1_mounts_atlas_and_story_hooks_as_one_read_only_flow() -> None:
     assert "fixture://strategy-workspace/stories/campaigns" in story
     assert 'id="inspector"' in story
     assert 'id="event-drawer"' in story
-    assert "READ ONLY" in story
+    assert "只读" in story
 
     for mode in ("narrative", "evidence", "timeline"):
         mode_document = app.render(
