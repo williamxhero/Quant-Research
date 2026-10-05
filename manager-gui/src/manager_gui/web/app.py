@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from html import escape, unescape
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 
 from ..fixtures import FixtureState, build_fixture
 from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
@@ -53,7 +53,7 @@ from .genome import (
     render_genome_view,
 )
 from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
-from .i18n import DEFAULT_LOCALE, Locale, resolve_locale, with_lang
+from .i18n import DEFAULT_LOCALE, Locale, Translator, resolve_locale, with_lang
 from .interaction import (
     export_json as render_current_view_export_json,
 )
@@ -68,7 +68,14 @@ from .methodology import (
     build_methodology_fixture,
     render_methodology_view,
 )
-from .navigation import NAVIGATION, NavigationItem, ViewId, navigation_item, navigation_label_zh
+from .navigation import (
+    NAVIGATION,
+    NavigationItem,
+    ViewId,
+    navigation_description,
+    navigation_item,
+    navigation_label,
+)
 from .portal import REPORT_SOURCE_RESOURCE, render_portal_view
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
@@ -365,9 +372,12 @@ class ManagerGUIApp:
         normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
         item = navigation_item(state.view)
+        translator = Translator(state.locale)
         page = self._render_page(state, model, normalized_url)
         page = self._localize_internal_links(page, state.lang)
-        return self._render_document(state, model, item, page, raw_url=url)
+        return self._render_document(
+            state, model, item, page, translator=translator, raw_url=url
+        )
 
     def render_json(self, url: str = "/") -> str:
         """Return the current envelope for a future client-side integration."""
@@ -380,7 +390,8 @@ class ManagerGUIApp:
 
         state = self.request_state(url)
         model = self.read_model(state)
-        export_context = with_lang(state.url(), None)
+        # Export data stays language-neutral but keeps every non-language query pair.
+        export_context = with_lang(url, None)
         return render_current_view_export_json(
             model,
             view=state.view.value,
@@ -528,9 +539,26 @@ class ManagerGUIApp:
         return None
 
     @staticmethod
-    def _render_source_refs(model: ManagerReadModel) -> str:
+    def _render_copy_button(value: str | None, translator: Translator) -> str:
+        """Render a localized copy affordance for an opaque, non-dereferenced value."""
+
+        if not value:
+            return ""
+        label = translator.t("shell.copy_reference")
+        safe_value = escape(value, quote=True)
+        return (
+            '<button class="copy-reference" type="button" '
+            f'data-copy-value="{safe_value}" aria-label="{escape(label, quote=True)}">'
+            f"{escape(label)}</button>"
+        )
+
+    @staticmethod
+    def _render_source_refs(model: ManagerReadModel, translator: Translator) -> str:
         if not model.source_refs:
-            return '<div class="inspector-item"><dt>Sources / 来源</dt><dd>None recorded / 未记录</dd></div>'
+            return (
+                f'<div class="inspector-item"><dt>{escape(translator.t("shell.sources"))}'
+                f'</dt><dd>{escape(translator.t("shell.none_recorded"))}</dd></div>'
+            )
         refs = []
         for source in model.source_refs:
             refs.append(
@@ -538,13 +566,13 @@ class ManagerGUIApp:
                 f"{escape(source.kind)}</dt><dd>"
                 f'<span data-opaque-ref="{escape(source.source_id, quote=True)}">'
                 f"{escape(source.locator)}</span>"
-                f"{opaque_copy_button(source.source_id)}"
+                f"{ManagerGUIApp._render_copy_button(source.source_id, translator)}"
                 f"</dd></div>"
             )
         return "".join(refs)
 
     @staticmethod
-    def _render_context_refs(state: WebRequestState) -> str:
+    def _render_context_refs(state: WebRequestState, translator: Translator) -> str:
         """Expose copy affordances without interpreting opaque query values."""
 
         candidates = tuple(
@@ -552,10 +580,11 @@ class ManagerGUIApp:
             for key, value in state.context
             if key == "snapshot_token" or key == "opaque_ref" or key.endswith("_id")
         )
+        opaque_label = translator.t("shell.opaque_reference")
         return "".join(
-            f'<div class="inspector-item"><dt>{escape(key)} / opaque reference</dt><dd>'
+            f'<div class="inspector-item"><dt>{escape(key)} · {escape(opaque_label)}</dt><dd>'
             f'<span data-opaque-ref="{escape(value, quote=True)}">{escape(value)}</span>'
-            f"{opaque_copy_button(value)}</dd></div>"
+            f"{ManagerGUIApp._render_copy_button(value, translator)}</dd></div>"
             for key, value in candidates
         )
 
@@ -566,19 +595,25 @@ class ManagerGUIApp:
         item: NavigationItem,
         page: str | None,
         *,
+        translator: Translator,
         raw_url: str,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
+        label = navigation_label(item.view_id, translator)
+        description = navigation_description(item.view_id, translator)
         inspector_hidden = " hidden" if state.panel == "events" else ""
         drawer_hidden = "" if state.panel == "events" else " hidden"
-        snapshot = model.snapshot_token or "No snapshot token"
-        as_of = model.as_of or "Unavailable"
+        snapshot = model.snapshot_token or translator.t("shell.snapshot_missing")
+        as_of = model.as_of or translator.t("shell.unavailable")
         query_value = escape(state.query, quote=True)
         state_value = escape(state.fixture.value, quote=True)
+        # Build GET controls from the original pair list so repeated opaque query
+        # parameters are not silently collapsed by the state model.
+        raw_pairs = parse_qsl(urlsplit(raw_url).query, keep_blank_values=True)
         context_hidden = "".join(
             f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
-            for key, value in state.context
-            if key not in {"q", "lang"}
+            for key, value in raw_pairs
+            if key not in {"q", "view", "fixture", "lang"}
         )
         lang_hidden = (
             f'<input type="hidden" name="lang" value="{escape(state.lang.value, quote=True)}">'
@@ -595,36 +630,36 @@ class ManagerGUIApp:
             if state.view is ViewId.STORIES
             else ""
         )
-        panel_text = "Events & raw JSON"
         if page is None:
             page_markup = f"""
-      <p class="eyebrow">Shared shell · fixture-backed</p>
-      <h1 class="page-title" data-page-title tabindex="-1">{escape(item.label)}</h1>
-      <p class="page-intro">{escape(item.description)} This slice provides orientation and provenance only;
-        domain pages attach through the public read-model hook.</p>
-      <p class="context-line"><span><strong>View</strong> {escape(state.view.value)}</span>
-        <span><strong>Fixture</strong> {escape(state.fixture.value)}</span>
-        <span><strong>Observed</strong> {escape(as_of)}</span></p>
+      <p class="eyebrow">{escape(translator.t("shell.shared_shell"))}</p>
+      <h1 class="page-title" data-page-title tabindex="-1">{escape(label)}</h1>
+      <p class="page-intro">{escape(description)} {escape(translator.t("shell.page_intro"))}</p>
+      <p class="context-line"><span><strong>{escape(translator.t("shell.view"))}</strong> {escape(state.view.value)}</span>
+        <span><strong>{escape(translator.t("shell.fixture"))}</strong> {escape(state.fixture.value)}</span>
+        <span><strong>{escape(translator.t("shell.observed"))}</strong> {escape(as_of)}</span></p>
       {render_status_block(model)}
       <section class="hook-surface" data-integration-hook="{escape(item.integration_hook)}">
-        <h2>Integration point ready</h2>
-        <p>This placeholder deliberately does not infer owner facts. A future view can consume the
-          same <code>ManagerReadModel v0</code> envelope and keep this shell, inspector, and event drawer.</p>
-        <span class="hook-label">hook: {escape(item.integration_hook)}</span>
+        <h2>{escape(translator.t("shell.integration_ready"))}</h2>
+        <p>{escape(translator.t("shell.placeholder_intro", schema="ManagerReadModel v0"))}</p>
+        <span class="hook-label">{escape(translator.t("shell.hook", hook=item.integration_hook))}</span>
       </section>"""
         else:
             page_markup = page
-        export_context = with_lang(state.url(), None)
-        export_control = render_export_control(
-            export_context,
-            view=state.view.value,
-            snapshot_token=model.snapshot_token,
-            model=model,
+        export_context = with_lang(raw_url, None)
+        export_control = ManagerGUIApp._localize_export_control(
+            render_export_control(
+                export_context,
+                view=state.view.value,
+                snapshot_token=model.snapshot_token,
+                model=model,
+            ),
+            translator,
         )
-        language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url)
+        language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
-            f"{opaque_copy_button(model.snapshot_token)}"
+            f"{ManagerGUIApp._render_copy_button(model.snapshot_token, translator)}"
             if model.snapshot_token
             else escape(snapshot)
         )
@@ -634,56 +669,56 @@ class ManagerGUIApp:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#18343a">
-  <title>{escape(item.label)} · Manager GUI</title>
+  <title>{escape(translator.t("shell.title", view=label))}</title>
   <style>{CSS}</style>
 </head>
 <body>
-<a class="skip-link" href="#main-content">Skip to workspace / <span lang="zh-CN">跳到工作区</span></a>
+<a class="skip-link" href="#main-content">{escape(translator.t("shell.skip_to_workspace"))}</a>
 <div class="app-shell">
   <header class="topbar">
-    <a class="brand" href="{escape(ManagerGUIApp._static_link(state), quote=True)}" aria-label="Manager GUI home / 管理界面首页">
-      <span class="brand-mark" aria-hidden="true">M</span><span class="brand-name">MANAGER GUI</span>
+    <a class="brand" href="{escape(ManagerGUIApp._static_link(state, raw_url), quote=True)}" aria-label="{escape(translator.t("shell.brand_home"), quote=True)}">
+      <span class="brand-mark" aria-hidden="true">M</span><span class="brand-name" translate="no">{escape(translator.t("shell.brand"))}</span>
     </a>
     <div class="topbar-meta">
-      <span class="workspace-note">Fixture workspace · snapshot {escape(snapshot)}</span>
-      <span class="read-only-badge" aria-label="Read only; mutations are disabled / 只读, 已禁用变更">READ ONLY · 只读</span>
+      <span class="workspace-note">{escape(translator.t("shell.workspace_snapshot", snapshot=snapshot))}</span>
+      <span class="read-only-badge" aria-label="{escape(translator.t("shell.read_only_aria"), quote=True)}">{escape(translator.t("shell.read_only"))}</span>
       {language_switcher}
     </div>
-    <form class="search-form" role="search" action="/" method="get" aria-label="Global search / 全局搜索">
-      <label class="sr-only" for="global-search">Global search / 全局搜索</label>
+    <form class="search-form" role="search" action="/" method="get" aria-label="{escape(translator.t("shell.global_search"), quote=True)}">
+      <label class="sr-only" for="global-search">{escape(translator.t("shell.global_search"))}</label>
       <input class="search-input" id="global-search" name="q" value="{query_value}"
-        placeholder="Search read models… / 搜索只读模型…" autocomplete="off">
+        placeholder="{escape(translator.t("shell.search_placeholder"), quote=True)}" autocomplete="off">
       <input type="hidden" name="view" value="{escape(state.view.value, quote=True)}">
       <input type="hidden" name="fixture" value="{state_value}">{lang_hidden}{context_hidden}{panel_hidden}{mode_hidden}
     </form>
   </header>
-  <nav class="nav-strip" aria-label="Manager GUI sections / 管理界面分区">{ManagerGUIApp._render_navigation_static(state)}</nav>
+  <nav class="nav-strip" aria-label="{escape(translator.t("nav.aria"), quote=True)}">{ManagerGUIApp._render_navigation_static(state, raw_url, translator)}</nav>
   <div class="workspace">
     <main id="main-content" class="main-column" tabindex="-1">
       {page_markup}
-      <div class="panel-actions" aria-label="Shared panels / 共享面板">
-        <button class="panel-button" type="button" data-panel-target="inspector" aria-controls="inspector" aria-expanded="{str(state.panel != 'events').lower()}">Open inspector / <span lang="zh-CN">打开检查器</span></button>
-        <button class="panel-button" type="button" data-panel-target="events" aria-controls="event-drawer" aria-expanded="{str(state.panel == 'events').lower()}">Open {panel_text.lower()} / <span lang="zh-CN">打开事件与原始 JSON</span></button>
+      <div class="panel-actions" aria-label="{escape(translator.t("shell.shared_panels"), quote=True)}">
+        <button class="panel-button" type="button" data-panel-target="inspector" aria-controls="inspector" aria-expanded="{str(state.panel != 'events').lower()}">{escape(translator.t("shell.open_inspector"))}</button>
+        <button class="panel-button" type="button" data-panel-target="events" aria-controls="event-drawer" aria-expanded="{str(state.panel == 'events').lower()}">{escape(translator.t("shell.open_events"))}</button>
         {export_control}
       </div>
       <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
     </main>
     <aside class="inspector" id="inspector" tabindex="-1"{inspector_hidden} aria-labelledby="inspector-title">
-      <div class="panel-heading"><h2 id="inspector-title">Inspector / <span lang="zh-CN">检查器</span></h2><span class="panel-kicker">read context / 读取上下文</span></div>
+      <div class="panel-heading"><h2 id="inspector-title">{escape(translator.t("shell.inspector"))}</h2><span class="panel-kicker">{escape(translator.t("shell.read_context"))}</span></div>
       <dl class="inspector-list">
-        <div class="inspector-item"><dt>Read model / 读取模型</dt><dd>manager-read-model.v0</dd></div>
-        <div class="inspector-item"><dt>Status / 状态</dt><dd>{escape(model.availability.status.value)}</dd></div>
-        <div class="inspector-item"><dt>Snapshot / 快照</dt><dd>{snapshot_markup}</dd></div>
-        <div class="inspector-item"><dt>Observed at / 观测时间</dt><dd>{escape(as_of)}</dd></div>
-        {ManagerGUIApp._render_context_refs(state)}
-        {ManagerGUIApp._render_source_refs(model)}
+        <div class="inspector-item"><dt>{escape(translator.t("shell.read_model"))}</dt><dd>manager-read-model.v0</dd></div>
+        <div class="inspector-item"><dt>{escape(translator.t("shell.status"))}</dt><dd>{escape(model.availability.status.value)}</dd></div>
+        <div class="inspector-item"><dt>{escape(translator.t("shell.snapshot"))}</dt><dd>{snapshot_markup}</dd></div>
+        <div class="inspector-item"><dt>{escape(translator.t("shell.observed_at"))}</dt><dd>{escape(as_of)}</dd></div>
+        {ManagerGUIApp._render_context_refs(state, translator)}
+        {ManagerGUIApp._render_source_refs(model, translator)}
       </dl>
-      <div class="panel-actions"><button class="panel-button" type="button" data-panel-target="events" aria-controls="event-drawer" aria-expanded="{str(state.panel == 'events').lower()}">View raw JSON / <span lang="zh-CN">查看原始 JSON</span></button></div>
+      <div class="panel-actions"><button class="panel-button" type="button" data-panel-target="events" aria-controls="event-drawer" aria-expanded="{str(state.panel == 'events').lower()}">{escape(translator.t("shell.view_raw_json"))}</button></div>
     </aside>
   </div>
   <aside class="event-drawer" id="event-drawer" tabindex="-1"{drawer_hidden} aria-labelledby="event-title">
-    <div class="panel-heading"><h2 id="event-title">{panel_text} / <span lang="zh-CN">事件与原始 JSON</span></h2><button class="panel-button drawer-close" type="button" data-close-panels aria-label="Close panels / 关闭面板">Close / <span lang="zh-CN">关闭</span></button></div>
-    <pre class="raw-json" aria-label="Raw ManagerReadModel v0 JSON / 原始 ManagerReadModel v0 JSON">{raw_json}</pre>
+    <div class="panel-heading"><h2 id="event-title">{escape(translator.t("shell.events_raw_json"))}</h2><button class="panel-button drawer-close" type="button" data-close-panels aria-label="{escape(translator.t("shell.close_panels"), quote=True)}">{escape(translator.t("shell.close"))}</button></div>
+    <pre class="raw-json" aria-label="{escape(translator.t("shell.raw_json_aria"), quote=True)}">{raw_json}</pre>
   </aside>
 </div>
 <script>{JS}</script>
