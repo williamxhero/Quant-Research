@@ -561,7 +561,7 @@ def test_failure_lineage_pages_offer_a_table_alternative_with_all_six_dimensions
         document = app.render(_url(view, **params))
         assert 'data-alternative-view="failure-lineage"' in document
         assert "谱系视图" in document
-        assert 'aria-label="Lineage graph / 谱系图"' in document
+        assert 'aria-label="谱系图"' in document
         for kind in ("campaign", "candidate", "run", "evidence", "artifact", "source_document"):
             assert f'data-graph-node-kind="{kind}"' in document
             assert f'data-association-kind="{kind}"' in document

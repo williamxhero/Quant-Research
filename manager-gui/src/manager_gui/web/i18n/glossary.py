@@ -883,6 +883,10 @@ def find_forbidden_translations(
     for key, entry in catalog.items():
         for field, text in _entry_texts(entry):
             for spelling in sorted(FORBIDDEN_ZH):
+                # "过期" is intentionally reserved for cursor_expired; Stale uses
+                # "已过时", but the approved cursor term is "游标已过期".
+                if spelling == "过期" and "cursor_expired" in str(key):
+                    continue
                 if spelling in text:
                     matches.append((str(key), field, spelling))
     return tuple(matches)

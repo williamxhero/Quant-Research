@@ -626,11 +626,11 @@ def test_private_locators_are_never_rendered_as_links_on_any_s4_route(locator: s
         "lineage": (build_lineage_fixture("complete"), "Missing / Unconfirmed"),
         "evidence-object-comparison": (
             build_evidence_comparison_fixture("complete"),
-            "not recorded",
+            "comparison-fixture-left",
         ),
         "derived-failure-grouping": (
             build_failure_grouping_fixture("complete"),
-            "not recorded",
+            "grouping-fixture-runs",
         ),
     }
     for view, (model, unlinked) in published.items():
