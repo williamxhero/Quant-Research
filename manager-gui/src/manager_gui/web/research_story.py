@@ -12,14 +12,15 @@ turns missing source metadata into a guessed URL.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from html import escape
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
 from .i18n import Translator
-from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog  # noqa: F401
+from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .status import render_status_block
 
 
@@ -195,7 +196,9 @@ _CHAPTERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "label.story.chapter.follow_up",
         ("follow_up", "followup", "evolution", "next_steps"),
     ),
-)_OUTCOME_ALIASES = {
+)
+
+_OUTCOME_ALIASES = {
     "success": StoryOutcome.SUCCESS,
     "succeeded": StoryOutcome.SUCCESS,
     "pass": StoryOutcome.SUCCESS,
@@ -686,7 +689,10 @@ class ResearchStoryViewModel:
             key: value for key, value in parse_qsl(parsed.query, keep_blank_values=True)
         }
         if isinstance(query, str):
-            values.update({key: value for key, value in parse_qsl(query, keep_blank_values=True)})
+            query_string = (
+                urlsplit(query).query if "?" in query or "://" in query else query.lstrip("?")
+            )
+            values.update({key: value for key, value in parse_qsl(query_string, keep_blank_values=True)})
         elif query is not None:
             for key, value in query.items():
                 if value is not None:
@@ -716,11 +722,10 @@ class ResearchStoryViewModel:
         """Render a mountable, accessible HTML fragment for the selected mode."""
 
         selected_translator = translator or Translator()
+        fixture = _is_fixture(self.model, "stories")
         root_label = _root_label(self.root)
-        heading = (
-            f'<span data-owner-text="true">{selected_translator.source_text(root_label)}</span>'
-            if root_label is not None
-            else escape(selected_translator.t("story.root_unavailable"))
+        heading = _display_text(
+            root_label, "story.root_unavailable", translator=selected_translator, fixture=fixture
         )
         mode_links = "".join(
             (
@@ -732,9 +737,9 @@ class ResearchStoryViewModel:
             for mode in StoryMode
         )
         sections = {
-            StoryMode.NARRATIVE: self._render_narrative(translator=selected_translator),
-            StoryMode.EVIDENCE: self._render_evidence(translator=selected_translator),
-            StoryMode.TIMELINE: self._render_timeline(translator=selected_translator),
+            StoryMode.NARRATIVE: self._render_narrative(translator=selected_translator, fixture=fixture),
+            StoryMode.EVIDENCE: self._render_evidence(translator=selected_translator, fixture=fixture),
+            StoryMode.TIMELINE: self._render_timeline(translator=selected_translator, fixture=fixture),
         }
         return (
             f'<section class="research-story" data-integration-hook="research-story-view" '
@@ -743,24 +748,27 @@ class ResearchStoryViewModel:
             f'<header class="research-story-header"><p class="eyebrow">'
             f'{escape(selected_translator.t("story.eyebrow"))}</p>'
             f'<h1 class="page-title" data-page-title tabindex="-1">{heading}</h1>'
-            f'{_render_root_context(self.root, translator=selected_translator)}'
+            f'{_render_root_context(self.root, translator=selected_translator, fixture=fixture)}'
             f'<nav class="story-mode-nav" '
             f'aria-label="{escape(selected_translator.t("story.mode.aria"), quote=True)}">'
             f'{mode_links}</nav></header>'
-            f"{render_status_block(self.model, translator=selected_translator)}"
+            f"{render_status_block(_fixture_status_copy(self.model, selected_translator) if fixture else self.model, translator=selected_translator)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'
             f"</section>"
         )
 
-    def _render_narrative(self, *, translator: Translator) -> str:
+    def _render_narrative(self, *, translator: Translator, fixture: bool) -> str:
         chapters = "".join(
-            _render_narrative_chapter(chapter, translator=translator)
+            _render_narrative_chapter(chapter, translator=translator, fixture=fixture)
             for chapter in self.chapters
         )
         return f'<div class="story-narrative" data-reading-mode="narrative">{chapters}</div>'
 
-    def _render_evidence(self, *, translator: Translator) -> str:
-        rows = "".join(_render_evidence_row(entry, translator=translator) for entry in self.entries)
+    def _render_evidence(self, *, translator: Translator, fixture: bool) -> str:
+        rows = "".join(
+            _render_evidence_row(entry, translator=translator, fixture=fixture)
+            for entry in self.entries
+        )
         if not rows:
             return (
                 '<div class="story-empty" data-evidence-state="missing">'
@@ -776,14 +784,15 @@ class ResearchStoryViewModel:
             f'<thead><tr>{headers}</tr></thead><tbody>{rows}</tbody></table></div>'
         )
 
-    def _render_timeline(self, *, translator: Translator) -> str:
+    def _render_timeline(self, *, translator: Translator, fixture: bool) -> str:
         if not self.timeline_events:
             return (
                 '<div class="story-empty" data-timeline-state="missing">'
                 f'{escape(translator.t("story.timeline.empty"))}</div>'
             )
         events = "".join(
-            _render_timeline_event(event, translator=translator) for event in self.timeline_events
+            _render_timeline_event(event, translator=translator, fixture=fixture)
+            for event in self.timeline_events
         )
         return (
             '<div class="story-timeline" data-reading-mode="timeline">'
@@ -807,7 +816,44 @@ def _root_label(root: StoryRoot) -> str | None:
     return None
 
 
-def _render_root_context(root: StoryRoot, *, translator: Translator) -> str:
+def _is_fixture(model: ManagerReadModel, resource: str) -> bool:
+    # Never translate owner prose merely because its ID, locator or text resembles
+    # a fixture. The entire immutable envelope must match the shipped builder.
+    if not (model.snapshot_token or "").startswith("fixture-") and model.data != {}:
+        return False
+    return any(model == build_fixture(state, resource=resource) for state in FixtureState)
+
+
+def _fixture_status_copy(model: ManagerReadModel, translator: Translator) -> ManagerReadModel:
+    def text(value: str | None) -> str | None:
+        key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value or "")
+        return translator.t(key) if key else value
+
+    return replace(
+        model,
+        availability=replace(model.availability, reason=text(model.availability.reason)),
+        errors=tuple(replace(error, message=text(error.message) or "") for error in model.errors),
+    )
+
+
+def _display_text(
+    value: str | None,
+    fallback_key: str,
+    *,
+    translator: Translator,
+    fixture: bool,
+) -> str:
+    if value is None:
+        return escape(translator.t(fallback_key))
+    fixture_key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value) if fixture else None
+    if fixture_key is not None:
+        return escape(translator.t(fixture_key))
+    return f'<span data-owner-text="true">{translator.source_text(value)}</span>'
+
+
+def _render_root_context(
+    root: StoryRoot, *, translator: Translator, fixture: bool
+) -> str:
     values = (
         ("campaign", root.campaign_id, root.campaign_label),
         ("study", root.study_id, root.study_label),
@@ -821,7 +867,7 @@ def _render_root_context(root: StoryRoot, *, translator: Translator) -> str:
             else escape(translator.t("story.missing"))
         )
         display_markup = (
-            f' · <span data-owner-text="true">{translator.source_text(display)}</span>'
+            " · " + _display_text(display, "story.missing", translator=translator, fixture=fixture)
             if display and display != identifier
             else ""
         )
@@ -847,78 +893,142 @@ def _render_evidence_state(state: str, *, translator: Translator) -> str:
     )
 
 
-def _render_links(links: Sequence[StoryLink]) -> str:
+def _render_link_label(link: StoryLink, *, translator: Translator) -> str:
+    if link.label is not None:
+        label = f'<span data-owner-text="true">{translator.source_text(link.label)}</span>'
+        kind = f'<span data-owner-text="true">{translator.source_text(link.kind)}</span>'
+    elif link.label_key == "story.source_reference":
+        label = translator.html(link.label_key, source_id=link.source_id or "")
+        kind = translator.label("story.link_kind", link.kind)
+    else:
+        key = link.label_key or _link_label_key(link.kind)
+        label = escape(translator.t(key, kind=link.kind))
+        kind = translator.label("story.link_kind", link.kind)
+    return f"{label} [{kind}]"
+
+
+def _render_links(links: Sequence[StoryLink], *, translator: Translator) -> str:
     if not links:
-        return '<span class="source-missing">Missing / Unconfirmed source</span>'
+        return f'<span class="source-missing">{escape(translator.t("story.source_missing"))}</span>'
     rendered: list[str] = []
     for link in links:
-        label = f"{link.label} [{link.kind}]"
+        label = _render_link_label(link, translator=translator)
         if link.target:
             rendered.append(
                 f'<a class="source-link" data-link-kind="{escape(link.kind, quote=True)}" '
-                f'href="{escape(link.target, quote=True)}">{escape(label)}</a>'
+                f'href="{escape(link.target, quote=True)}">{label}</a>'
             )
         else:
             rendered.append(
                 f'<span class="source-link-unconfirmed" data-link-kind="{escape(link.kind, quote=True)}">'
-                f"{escape(label)} — Missing / Unconfirmed</span>"
+                f'{label} — {escape(translator.t("story.link.missing"))}</span>'
             )
     return '<span class="story-links">' + " · ".join(rendered) + "</span>"
 
 
-def _render_narrative_chapter(chapter: StoryChapter) -> str:
+def _render_temporal(entry: StoryEntry, *, translator: Translator) -> str:
+    if entry.event_time and entry.known_at:
+        key = "story.temporal.both"
+    elif entry.event_time:
+        key = "story.temporal.event_only"
+    elif entry.known_at:
+        key = "story.temporal.known_only"
+    else:
+        return escape(translator.t("story.temporal.none"))
+    return translator.html(
+        key,
+        event_time=entry.event_time or "",
+        known_at=entry.known_at or "",
+    )
+
+
+def _owner_or_catalog(
+    value: str | None, key: str, *, translator: Translator, fixture: bool
+) -> str:
+    return _display_text(value, key, translator=translator, fixture=fixture)
+
+
+def _render_narrative_chapter(
+    chapter: StoryChapter, *, translator: Translator, fixture: bool
+) -> str:
     if not chapter.entries:
-        body = '<p class="chapter-empty">No research material recorded for this chapter.</p>'
+        body = f'<p class="chapter-empty">{escape(translator.t("story.chapter.empty"))}</p>'
     else:
         entries: list[str] = []
         for entry in chapter.entries:
-            record = escape(entry.record_id) if entry.record_id else "Missing / Unconfirmed"
             entries.append(
                 f'<article class="story-entry outcome-{entry.outcome.value}" data-entry-key="{escape(entry.entry_key, quote=True)}">'
-                f'<div class="story-entry-heading"><h3>{escape(entry.title)}</h3>{_render_outcome(entry.outcome)}'
-                f"</div><p>{escape(entry.summary)}</p>"
-                f'<p class="story-entry-meta"><span>Record ID: {record}</span> '
-                f"{_render_evidence_state(entry.evidence_state)}</p>"
-                f'<p class="story-entry-temporal">{escape(entry.temporal_boundary)}</p>'
-                f'<p class="story-entry-sources">{_render_links(entry.links)}</p></article>'
+                f'<div class="story-entry-heading"><h3>{_owner_or_catalog(entry.title, "story.entry.title_missing", translator=translator, fixture=fixture)}</h3>'
+                f'{_render_outcome(entry.outcome, translator=translator)}</div>'
+                f'<p>{_owner_or_catalog(entry.summary, "story.entry.summary_missing", translator=translator, fixture=fixture)}</p>'
+                f'<p class="story-entry-meta"><span>{translator.html("story.record_id", record_id=entry.record_id or translator.t("story.missing"))}</span> '
+                f'{_render_evidence_state(entry.evidence_state, translator=translator)}</p>'
+                f'<p class="story-entry-temporal">{_render_temporal(entry, translator=translator)}</p>'
+                f'<p class="story-entry-sources">{_render_links(entry.links, translator=translator)}</p></article>'
             )
         body = "".join(entries)
     return (
         f'<section class="story-chapter" data-chapter="{chapter.key}">'
-        f"<h2>{escape(chapter.label)}</h2>{body}</section>"
+        f'<h2>{escape(translator.t(chapter.label))}</h2>{body}</section>'
     )
 
 
-def _render_evidence_row(entry: StoryEntry) -> str:
-    record_id = escape(entry.record_id) if entry.record_id else "Missing / Unconfirmed"
-    source_links = _render_links(entry.links)
+def _render_evidence_row(
+    entry: StoryEntry, *, translator: Translator, fixture: bool
+) -> str:
+    record_id = (
+        f'<span translate="no">{translator.source_text(entry.record_id)}</span>'
+        if entry.record_id
+        else escape(translator.t("story.missing"))
+    )
+    event_time = (
+        f'<time translate="no">{translator.source_text(entry.event_time)}</time>'
+        if entry.event_time
+        else escape(translator.t("story.missing"))
+    )
+    known_at = (
+        f'<time translate="no">{translator.source_text(entry.known_at)}</time>'
+        if entry.known_at
+        else escape(translator.t("story.missing"))
+    )
+    source_links = _render_links(entry.links, translator=translator)
+    title = _owner_or_catalog(
+        entry.title, "story.entry.title_missing", translator=translator, fixture=fixture
+    )
     return (
         f'<tr data-entry-key="{escape(entry.entry_key, quote=True)}" data-outcome="{entry.outcome.value}">'
-        f'<th scope="row">{escape(entry.chapter_key)} / {escape(entry.title)}<br>{_render_outcome(entry.outcome)}</th>'
-        f"<td>{_render_evidence_state(entry.evidence_state)}</td>"
-        f"<td>{record_id}</td><td>{source_links}</td>"
-        f"<td>{escape(entry.event_time or 'Missing / Unconfirmed')}</td>"
-        f"<td>{escape(entry.known_at or 'Missing / Unconfirmed')}</td><td>{source_links}</td></tr>"
+        f'<th scope="row">{escape(translator.t(f"label.story.chapter.{entry.chapter_key}"))} / {title}<br>'
+        f'{_render_outcome(entry.outcome, translator=translator)}</th>'
+        f'<td>{_render_evidence_state(entry.evidence_state, translator=translator)}</td>'
+        f'<td>{record_id}</td><td>{source_links}</td>'
+        f'<td>{event_time}</td><td>{known_at}</td><td>{source_links}</td></tr>'
     )
 
 
-def _render_timeline_event(event: TimelineEvent) -> str:
+def _render_timeline_event(
+    event: TimelineEvent, *, translator: Translator, fixture: bool
+) -> str:
     entry = event.entry
+    category = (
+        f'<span data-owner-text="true">{translator.source_text(event.category)}</span>'
+        if event.category
+        else escape(translator.t("story.timeline.default_category"))
+    )
     return (
         f'<li class="timeline-event outcome-{entry.outcome.value}" data-event-time="{escape(event.event_time, quote=True)}" '
-        f'data-event-category="{escape(event.category, quote=True)}">'
-        f'<time datetime="{escape(event.event_time, quote=True)}">{escape(event.event_time)}</time> '
-        f'<span class="timeline-category">{escape(event.category)}</span> '
-        f"<strong>{escape(entry.title)}</strong> {_render_outcome(entry.outcome)}"
-        f"<p>{escape(entry.summary)}</p><p>{_render_links(entry.links)}</p></li>"
+        f'data-event-category="{escape(event.category or "source_event", quote=True)}">'
+        f'<time translate="no" datetime="{escape(event.event_time, quote=True)}">'
+        f'{translator.source_text(event.event_time)}</time> '
+        f'<span class="timeline-category">{category}</span> '
+        f'<strong>{_owner_or_catalog(entry.title, "story.entry.title_missing", translator=translator, fixture=fixture)}</strong> '
+        f'{_render_outcome(entry.outcome, translator=translator)}'
+        f'<p>{_owner_or_catalog(entry.summary, "story.entry.summary_missing", translator=translator, fixture=fixture)}</p>'
+        f'<p>{_render_links(entry.links, translator=translator)}</p></li>'
     )
 
 
-def _event_category(item: Mapping[str, object]) -> str:
-    return (
-        _first_text(item, ("event_category", "event_type", "category", "type", "kind"))
-        or "Source event"
-    )
+def _event_category(item: Mapping[str, object]) -> str | None:
+    return _first_text(item, ("event_category", "event_type", "category", "type", "kind"))
 
 
 def render_research_story(
