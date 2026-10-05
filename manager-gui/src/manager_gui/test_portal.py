@@ -7,6 +7,7 @@ from typing import cast
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.portal import (
     PORTAL_INTEGRATION_HOOK,
     REPORT_SOURCE_RESOURCE,
@@ -55,7 +56,9 @@ def test_complete_fixture_keeps_source_publication_and_generated_artifact_separa
     assert view.rebuild_status == "not_requested"
     assert view.is_canonical_research_state is False
 
-    rendered = render_portal(view, query_context={"fixture": "complete", "page": 2})
+    rendered = render_portal(
+        view, query_context={"fixture": "complete", "page": 2}, translator=Translator(Locale.EN)
+    )
     for marker in (
         'data-integration-hook="portal-view"',
         'data-portal-state="ready"',
@@ -63,8 +66,8 @@ def test_complete_fixture_keeps_source_publication_and_generated_artifact_separa
         "Generated artifact",
         "strategy-reporting-static",
         "renderer-v1",
-        "verified",
-        "not_requested",
+        "Verified",
+        "Not requested",
         "not canonical research state",
         "view=portal",
         "source_publication_id=source-publication-fixture-1",
@@ -72,6 +75,29 @@ def test_complete_fixture_keeps_source_publication_and_generated_artifact_separa
     ):
         assert marker in rendered
     assert "page=2" not in rendered
+
+
+def test_portal_page_copy_uses_requested_locale_and_keeps_owner_values() -> None:
+    model = build_portal_fixture(PortalFixtureState.COMPLETE)
+    chinese = render_portal(model)
+    english = render_portal(model, translator=Translator(Locale.EN))
+
+    assert "策略报告门户" in chinese
+    assert "来源发布记录" in chinese
+    assert "生成制品" in chinese
+    assert "核验状态" in chinese
+    assert "重建状态" in chinese
+    assert "摘要哈希" in chinese
+    assert "策略报告门户" not in english
+    assert "Source publication" in english
+    assert "Generated artifact" in english
+    assert "Verification status" in english
+    assert "Rebuild status" in english
+    assert "Digest" in english
+    assert "strategy-reporting-static" in chinese
+    assert "strategy-reporting-static" in english
+    assert "重建按钮" not in chinese
+    assert "run button" not in english.lower()
 
 
 def test_missing_and_not_generated_are_distinct() -> None:
@@ -83,8 +109,8 @@ def test_missing_and_not_generated_are_distinct() -> None:
     assert missing.source_publication is None
     assert not_generated.source_publication is not None
     assert not_generated.generated_artifact is None
-    assert 'data-portal-state="missing"' in render_portal(missing)
-    not_generated_html = render_portal(not_generated)
+    assert 'data-portal-state="missing"' in render_portal(missing, translator=Translator(Locale.EN))
+    not_generated_html = render_portal(not_generated, translator=Translator(Locale.EN))
     assert 'data-portal-state="not-generated"' in not_generated_html
     assert "has not been generated" in not_generated_html
 
@@ -98,9 +124,15 @@ def test_integrity_and_api_unavailable_states_are_explicit() -> None:
     assert integrity.generated_artifact.verify_status == "failed"
     assert unavailable.artifact_state is PortalArtifactState.API_UNAVAILABLE
     assert unavailable.generated_artifact is None
-    assert 'data-status="integrity_failure"' in render_portal(integrity)
-    assert 'data-status="api_unavailable"' in render_portal(unavailable)
-    assert "No private SQLite or filesystem fallback" in render_portal(unavailable)
+    assert 'data-status="integrity_failure"' in render_portal(
+        integrity, translator=Translator(Locale.EN)
+    )
+    assert 'data-status="api_unavailable"' in render_portal(
+        unavailable, translator=Translator(Locale.EN)
+    )
+    assert "No private SQLite or filesystem fallback" in render_portal(
+        unavailable, translator=Translator(Locale.EN)
+    )
 
 
 def test_adapter_parses_renderer_mapping_and_nested_verify_rebuild_status() -> None:
