@@ -675,6 +675,23 @@ def _render_related_links(genome_id: str | None, context: QueryContext, translat
     )
 
 
+_FIXTURE_COPY_KEYS = {
+    "liquidity threshold is met": "conditions.fixture_liquidity",
+    "data quality gate fails": "conditions.fixture_quality",
+    "high-volatility regime": "conditions.fixture_regime",
+    "fixture study window": "conditions.fixture_window",
+    "Synthetic fixture; no conclusion beyond the published record.": "conditions.fixture_limitation",
+}
+
+
+def _fixture_or_owner(value: object, translator: Translator) -> str:
+    if isinstance(value, str) and value in _FIXTURE_COPY_KEYS:
+        return translator.t(_FIXTURE_COPY_KEYS[value])
+    if isinstance(value, tuple) and len(value) == 1 and value[0] in _FIXTURE_COPY_KEYS:
+        return translator.t(_FIXTURE_COPY_KEYS[value[0]])
+    return _display(value, translator)
+
+
 def _render_card(record: ConditionEvidence, translator: Translator) -> str:
     outcome = record.outcome.value if record.outcome is not None else NOT_RECORDED
     rows = (
@@ -688,15 +705,23 @@ def _render_card(record: ConditionEvidence, translator: Translator) -> str:
         ("limitations", record.limitations),
         ("source_refs", _render_sources(record.source_refs, translator)),
     )
+    def render_value(key: str, value: object) -> str:
+        if key == "source_refs":
+            return str(value)
+        if key == "outcome":
+            return translator.t("conditions.not_recorded") if value == NOT_RECORDED else translator.label("condition_outcome", str(value))
+        if key == "evidence_level":
+            return translator.label("evidence_level", str(value))
+        return f'<span translate="no">{translator.source_text(_fixture_or_owner(value, translator))}</span>'
     body = "".join(
-        f'<div class="condition-field" data-field="{escape(key, quote=True)}"><dt>{translator.t("conditions." + key) if key != "source_refs" else escape(translator.t("conditions.source_refs"))}</dt><dd>{value if key == "source_refs" else (translator.label("condition_outcome", value) if key == "outcome" else translator.label("evidence_level", value) if key == "evidence_level" else translator.source_text(_display(value, translator)))}</dd></div>'
+        f'<div class="condition-field" data-field="{escape(key, quote=True)}"><dt>{translator.t("conditions." + key) if key != "source_refs" else escape(translator.t("conditions.source_refs"))}</dt><dd>{render_value(key, value)}</dd></div>'
         for key, value in rows
     )
-    condition = translator.source_text(record.condition or translator.t("conditions.not_recorded"))
+    condition = translator.source_text(_fixture_or_owner(record.condition, translator)) if record.condition else translator.t("conditions.not_recorded")
     return (
         f'<article class="condition-card" data-category="{record.category.value}" '
         f'data-outcome="{escape(outcome, quote=True)}" data-record-id="{escape(record.record_id or "", quote=True)}">'
-        f'<h4 translate="no">{condition}</h4><dl>{body}</dl></article>'
+        f'<h3 translate="no">{condition}</h3><dl>{body}</dl></article>'
     )
 
 

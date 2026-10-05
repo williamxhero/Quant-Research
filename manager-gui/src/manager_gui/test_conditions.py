@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from manager_gui.models import ReadModelStatus
-from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.conditions import (
     CONDITION_OUTCOMES,
     ConditionCategory,
@@ -17,6 +16,7 @@ from manager_gui.web.conditions import (
     render_genome_conditions,
     render_genome_conditions_view,
 )
+from manager_gui.web.i18n import Locale, Translator
 
 
 def test_complete_fixture_separates_applicability_invalidation_and_descriptors() -> None:
@@ -84,7 +84,9 @@ def test_missing_conditions_are_not_recorded_not_a_negative_conclusion() -> None
     document = render_genome_conditions_view(
         build_conditions_fixture(ConditionFixtureState.MISSING), translator=Translator(Locale.EN)
     )
-    chinese_document = render_genome_conditions_view(build_conditions_fixture(ConditionFixtureState.MISSING))
+    chinese_document = render_genome_conditions_view(
+        build_conditions_fixture(ConditionFixtureState.MISSING)
+    )
 
     assert 'data-status="missing"' in document
     assert document.count("not recorded") >= 2
@@ -158,6 +160,6 @@ def test_condition_context_links_are_stable_and_provider_is_read_only() -> None:
     assert "read-only" in document
     fixture_provider = conditions_fixture_provider("complete")
     assert fixture_provider.read().availability.status is ReadModelStatus.KNOWN
-    assert tuple(
-        name for name in dir(fixture_provider) if name in {"write", "update", "delete"}
-    ) == ()
+    assert (
+        tuple(name for name in dir(fixture_provider) if name in {"write", "update", "delete"}) == ()
+    )

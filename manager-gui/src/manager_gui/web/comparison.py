@@ -504,9 +504,9 @@ def _render_refs(refs: Sequence[ComparisonSourceRef], translator: Translator) ->
     for source in refs:
         label = translator.source_text(source.source_id)
         if source.locator:
-            values.append(f'<a class="comparison-source-link" href="{escape(source.locator, quote=True)}">{label}</a>')
+            values.append(f'<a class="comparison-source-link" href="{escape(source.locator, quote=True)}" translate="no">{label}</a>')
         else:
-            values.append(f'<span class="comparison-source-unconfirmed">{label} — {escape(translator.t("comparison.not_recorded"))}</span>')
+            values.append(f'<span class="comparison-source-unconfirmed" translate="no">{label} — {escape(translator.t("comparison.not_recorded"))}</span>')
     return " · ".join(values)
 
 
@@ -527,7 +527,7 @@ def _render_related_links(comparison: GenomeComparison | None, context: QueryCon
     if left_id is not None:
         links.append(
             f'<a class="comparison-left-genome-link" href="{escape(genome_link(left_id, query_context=context), quote=True)}">'
-            f'{escape(translator.t("comparison.left_genome_link", genome_id=left_id))}</a>'
+            f'{escape(translator.t("comparison.left_genome"))} <span translate="no">{translator.source_text(left_id)}</span></a>'
         )
         links.append(
             f'<a class="comparison-left-conditions-link" href="{escape(genome_conditions_link(left_id, query_context=context), quote=True)}">'
@@ -536,7 +536,7 @@ def _render_related_links(comparison: GenomeComparison | None, context: QueryCon
     if right_id is not None:
         links.append(
             f'<a class="comparison-right-genome-link" href="{escape(genome_link(right_id, query_context=context), quote=True)}">'
-            f'{escape(translator.t("comparison.right_genome_link", genome_id=right_id))}</a>'
+            f'{escape(translator.t("comparison.right_genome"))} <span translate="no">{translator.source_text(right_id)}</span></a>'
         )
     return f'<nav class="comparison-related-links" aria-label="{escape(translator.t("comparison.related_aria"))}">' + "".join(links) + "</nav>"
 
@@ -602,7 +602,7 @@ def render_genome_comparison(
         render_status_block(
             ReadModelStatus.INCOMPARABLE,
             translator=selected_translator,
-            reason=comparison.reason or selected_translator.t("comparison.axes_incompatible"),
+            reason=comparison.reason or selected_translator.t("comparison.generated_axes_reason"),
         )
         if comparison is not None
         and comparison.result is ComparisonResult.INCOMPARABLE
