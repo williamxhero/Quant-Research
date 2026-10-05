@@ -7,6 +7,7 @@ from typing import cast
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.web.i18n import Translator
 from manager_gui.web.portal import (
     PORTAL_INTEGRATION_HOOK,
     REPORT_SOURCE_RESOURCE,
@@ -55,7 +56,9 @@ def test_complete_fixture_keeps_source_publication_and_generated_artifact_separa
     assert view.rebuild_status == "not_requested"
     assert view.is_canonical_research_state is False
 
-    rendered = render_portal(view, query_context={"fixture": "complete", "page": 2})
+    rendered = render_portal(
+        view, query_context={"fixture": "complete", "page": 2}, translator=Translator("en")
+    )
     for marker in (
         'data-integration-hook="portal-view"',
         'data-portal-state="ready"',
@@ -84,7 +87,7 @@ def test_missing_and_not_generated_are_distinct() -> None:
     assert not_generated.source_publication is not None
     assert not_generated.generated_artifact is None
     assert 'data-portal-state="missing"' in render_portal(missing)
-    not_generated_html = render_portal(not_generated)
+    not_generated_html = render_portal(not_generated, translator=Translator("en"))
     assert 'data-portal-state="not-generated"' in not_generated_html
     assert "has not been generated" in not_generated_html
 
@@ -100,7 +103,8 @@ def test_integrity_and_api_unavailable_states_are_explicit() -> None:
     assert unavailable.generated_artifact is None
     assert 'data-status="integrity_failure"' in render_portal(integrity)
     assert 'data-status="api_unavailable"' in render_portal(unavailable)
-    assert "No private SQLite or filesystem fallback" in render_portal(unavailable)
+    unavailable_html = render_portal(unavailable, translator=Translator("en"))
+    assert "No private SQLite or filesystem fallback" in unavailable_html
 
 
 def test_adapter_parses_renderer_mapping_and_nested_verify_rebuild_status() -> None:
