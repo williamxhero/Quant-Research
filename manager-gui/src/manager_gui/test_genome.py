@@ -7,6 +7,7 @@ from typing import cast
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.genome import (
     BEHAVIOR_PROJECTION_FIELDS,
     LIFECYCLE_EVENT_KINDS,
@@ -42,7 +43,13 @@ def test_complete_fixture_exposes_catalog_detail_behavior_validation_lifecycle_a
     assert tuple(entry.kind for entry in view.detail.lineage) == LINEAGE_ENTRY_KINDS
     assert view.detail.source_refs[0].locator == "fixture://manager-gui/genomes"
 
-    document = render_genome(view, query_context="/?fixture=complete&panel=events&q=signal")
+    document = render_genome(
+        view, query_context="/?fixture=complete&panel=events&q=signal", translator=Translator(Locale.EN)
+    )
+    chinese_document = render_genome(view, query_context="/?fixture=complete&panel=events&q=signal")
+    assert "基因组目录" in chinese_document
+    assert "行为投影" in chinese_document
+    assert "验证绑定" in chinese_document
     for value in (
         "Genome catalog",
         "Genome detail",
@@ -80,9 +87,10 @@ def test_empty_fixture_has_distinct_empty_state_without_claiming_genomes_do_not_
 
     assert 'data-status="missing"' in document
     assert 'data-display-state="empty"' in document
-    assert "No Genome records are present in this scope." in document
+    assert "此范围中没有策略基因组记录。未记录。" in document
+    assert document.count("No Genome records are present in this scope.") == 1
     assert "research does not exist" not in document.lower()
-    assert "Genome catalog" in document
+    assert "基因组目录" in document
 
 
 def test_blocked_stale_and_integrity_failure_remain_explicit_and_do_not_become_empty() -> None:
@@ -120,9 +128,9 @@ def test_missing_fields_are_explicit_across_required_genome_axes() -> None:
 
     document = render_genome(view)
     assert 'data-display-state="partial"' in document
-    assert document.count("Missing") >= 20
-    assert "No explicit lifecycle events are recorded. Missing." in document
-    assert "No candidate lineage entry recorded. Missing." in document
+    assert document.count("未记录") >= 20
+    assert "没有记录明确的生命周期事件。未记录。" in document
+    assert "没有记录候选对象谱系入口。未记录。" in document
     assert 'data-value-state="empty"' in document
 
 
@@ -205,7 +213,7 @@ def test_lifecycle_timeline_does_not_infer_state_from_as_of_or_unrecognised_even
 
     assert view.detail is not None
     assert "active" not in view.detail.lifecycle_states
-    document = render_genome(view)
+    document = render_genome(view, translator=Translator(Locale.EN))
     timeline_start = document.index('<ol class="genome-event-timeline"')
     timeline_end = document.index("</ol>", timeline_start)
     timeline = document[timeline_start:timeline_end]
@@ -253,7 +261,7 @@ def test_raw_json_is_json_compatible_and_provider_hook_reads_once_without_mutati
 
 def test_render_hook_accepts_an_already_read_model_without_a_provider_call() -> None:
     document = render_genome_view(
-        build_genome_fixture("complete"), genome_id="genome-fixture-1", query_context="/?q=signal"
+        build_genome_fixture("complete"), genome_id="genome-fixture-1", query_context="/?q=signal", translator=Translator(Locale.EN)
     )
     assert 'data-genome-id="genome-fixture-1"' in document
     assert "q=signal" in document

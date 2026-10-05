@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from manager_gui.models import ReadModelStatus
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.conditions import (
     CONDITION_OUTCOMES,
     ConditionCategory,
@@ -33,7 +34,10 @@ def test_complete_fixture_separates_applicability_invalidation_and_descriptors()
     assert view.applicability[0].sample == {"n": 1280, "unit": "signals"}
     assert view.applicability[0].source_refs[0].locator == "fixture://manager-gui/genome-conditions"
 
-    document = render_genome_conditions(view)
+    document = render_genome_conditions(view, translator=Translator(Locale.EN))
+    chinese_document = render_genome_conditions(view)
+    assert "证据等级" in chinese_document
+    assert "描述只是观察，不是经过验证的条件。" in chinese_document
     assert 'data-integration-hook="strategy-genome-conditions-view"' in document
     assert 'class="conditions-context-link"' in document
     context_document = render_genome_conditions(
@@ -78,11 +82,13 @@ def test_descriptor_never_becomes_a_condition_and_uncategorised_records_are_igno
 
 def test_missing_conditions_are_not_recorded_not_a_negative_conclusion() -> None:
     document = render_genome_conditions_view(
-        build_conditions_fixture(ConditionFixtureState.MISSING)
+        build_conditions_fixture(ConditionFixtureState.MISSING), translator=Translator(Locale.EN)
     )
+    chinese_document = render_genome_conditions_view(build_conditions_fixture(ConditionFixtureState.MISSING))
 
     assert 'data-status="missing"' in document
     assert document.count("not recorded") >= 2
+    assert chinese_document.count("未记录") >= 2
     assert "no valid conditions" not in document.lower()
     assert "no applicability condition is valid" not in document.lower()
 
@@ -145,7 +151,9 @@ def test_condition_context_links_are_stable_and_provider_is_read_only() -> None:
             return build_conditions_fixture("complete")
 
     provider = CountingProvider()
-    document = render_genome_conditions_view(provider, snapshot_token="snapshot-request")
+    document = render_genome_conditions_view(
+        provider, snapshot_token="snapshot-request", translator=Translator(Locale.EN)
+    )
     assert provider.calls == [("genome_conditions", "snapshot-request")]
     assert "read-only" in document
     fixture_provider = conditions_fixture_provider("complete")

@@ -33,6 +33,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog import l3_genome as _l3_genome_catalog  # noqa: F401
 from .status import render_status_block
 
 COMPARISON_RESOURCE = "genome_comparison"
@@ -485,31 +486,31 @@ def genome_comparison_link(
 comparison_link = genome_comparison_link
 
 
-def _display(value: object) -> str:
+def _display(value: object, translator: Translator) -> str:
     if value is None or value == "" or value == [] or value == {}:
-        return NOT_RECORDED
+        return translator.t("comparison.not_recorded")
     if isinstance(value, str):
         return value
     try:
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
-        return NOT_RECORDED
+        return translator.t("comparison.not_recorded")
 
 
-def _render_refs(refs: Sequence[ComparisonSourceRef]) -> str:
+def _render_refs(refs: Sequence[ComparisonSourceRef], translator: Translator) -> str:
     if not refs:
-        return NOT_RECORDED
+        return translator.t("comparison.not_recorded")
     values: list[str] = []
     for source in refs:
-        label = escape(source.source_id)
+        label = translator.source_text(source.source_id)
         if source.locator:
             values.append(f'<a class="comparison-source-link" href="{escape(source.locator, quote=True)}">{label}</a>')
         else:
-            values.append(f'<span class="comparison-source-unconfirmed">{label} — {NOT_RECORDED}</span>')
+            values.append(f'<span class="comparison-source-unconfirmed">{label} — {escape(translator.t("comparison.not_recorded"))}</span>')
     return " · ".join(values)
 
 
-def _render_related_links(comparison: GenomeComparison | None, context: QueryContext) -> str:
+def _render_related_links(comparison: GenomeComparison | None, context: QueryContext, translator: Translator) -> str:
     """Expose stable paths back to each Genome and its condition evidence."""
 
     values = dict(_query_pairs(context))
@@ -526,25 +527,25 @@ def _render_related_links(comparison: GenomeComparison | None, context: QueryCon
     if left_id is not None:
         links.append(
             f'<a class="comparison-left-genome-link" href="{escape(genome_link(left_id, query_context=context), quote=True)}">'
-            f"Left Genome {escape(left_id)}</a>"
+            f'{escape(translator.t("comparison.left_genome_link", genome_id=left_id))}</a>'
         )
         links.append(
             f'<a class="comparison-left-conditions-link" href="{escape(genome_conditions_link(left_id, query_context=context), quote=True)}">'
-            "Left condition evidence</a>"
+            f'{escape(translator.t("comparison.left_condition"))}</a>'
         )
     if right_id is not None:
         links.append(
             f'<a class="comparison-right-genome-link" href="{escape(genome_link(right_id, query_context=context), quote=True)}">'
-            f"Right Genome {escape(right_id)}</a>"
+            f'{escape(translator.t("comparison.right_genome_link", genome_id=right_id))}</a>'
         )
-    return '<nav class="comparison-related-links" aria-label="Comparison related views">' + "".join(links) + "</nav>"
+    return f'<nav class="comparison-related-links" aria-label="{escape(translator.t("comparison.related_aria"))}">' + "".join(links) + "</nav>"
 
 
-def _list_section(title: str, values: Sequence[str], *, marker: str) -> str:
+def _list_section(title: str, values: Sequence[str], *, marker: str, translator: Translator) -> str:
     if not values:
-        body = f'<p class="comparison-not-recorded" data-axis-list="{marker}">{NOT_RECORDED}</p>'
+        body = f'<p class="comparison-not-recorded" data-axis-list="{marker}">{escape(translator.t("comparison.not_recorded"))}</p>'
     else:
-        body = "<ul>" + "".join(f"<li>{escape(value)}</li>" for value in values) + "</ul>"
+        body = "<ul>" + "".join(f'<li translate="no">{translator.source_text(value)}</li>' for value in values) + "</ul>"
     return f'<section class="comparison-list" data-axis-list="{marker}"><h3>{escape(title)}</h3>{body}</section>'
 
 
@@ -568,32 +569,32 @@ def render_genome_comparison(
     )
     fields: tuple[str, ...]
     if comparison is None:
-        detail = "No explicit Genome comparison is recorded in this scope."
         fields = (
-            f'<p class="comparison-not-recorded" data-comparison-result="{result}">{NOT_RECORDED}</p>',
-            '<p class="comparison-explanation">' + detail + "</p>",
-            _list_section("Changed paths", (), marker="changed_paths"),
-            _list_section("Missing axes", (), marker="missing_axes"),
-            _list_section("Incompatible axes", (), marker="incompatible_axes"),
+            f'<p class="comparison-not-recorded" data-comparison-result="{result}">{escape(selected_translator.t("comparison.not_recorded"))}</p>',
+            f'<p class="comparison-explanation">{escape(selected_translator.t("comparison.no_comparison_explanation"))}</p>',
+            _list_section(selected_translator.t("comparison.changed_paths"), (), marker="changed_paths", translator=selected_translator),
+            _list_section(selected_translator.t("comparison.missing_axes"), (), marker="missing_axes", translator=selected_translator),
+            _list_section(selected_translator.t("comparison.incompatible_axes"), (), marker="incompatible_axes", translator=selected_translator),
         )
     else:
+        result_label = selected_translator.label("comparison_result", result)
         fields = (
-            f'<p class="comparison-result" data-comparison-result="{escape(result, quote=True)}">Result: {escape(result)}</p>',
-            f'<p class="comparison-reason">{escape(comparison.reason or NOT_RECORDED)}</p>',
+            f'<p class="comparison-result" data-comparison-result="{escape(result, quote=True)}">{escape(selected_translator.t("comparison.result", result=result_label))}</p>',
+            f'<p class="comparison-reason" translate="no">{selected_translator.source_text(comparison.reason or selected_translator.t("comparison.not_recorded"))}</p>',
             '<dl class="comparison-provenance">'
-            f'<div><dt>Left Genome</dt><dd>{escape(comparison.left_genome_id or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Right Genome</dt><dd>{escape(comparison.right_genome_id or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Left provenance</dt><dd>{escape(_display(comparison.left_provenance))}</dd></div>'
-            f'<div><dt>Right provenance</dt><dd>{escape(_display(comparison.right_provenance))}</dd></div>'
-            f'<div><dt>Left as-of</dt><dd>{escape(comparison.left_as_of or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Right as-of</dt><dd>{escape(comparison.right_as_of or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Left snapshot</dt><dd>{escape(comparison.left_snapshot or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Right snapshot</dt><dd>{escape(comparison.right_snapshot or NOT_RECORDED)}</dd></div>'
-            f'<div><dt>Source refs</dt><dd>{_render_refs(comparison.source_refs)}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.left_genome"))}</dt><dd translate="no">{selected_translator.source_text(comparison.left_genome_id or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.right_genome"))}</dt><dd translate="no">{selected_translator.source_text(comparison.right_genome_id or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.left_provenance"))}</dt><dd translate="no">{selected_translator.source_text(_display(comparison.left_provenance, selected_translator))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.right_provenance"))}</dt><dd translate="no">{selected_translator.source_text(_display(comparison.right_provenance, selected_translator))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.left_as_of"))}</dt><dd translate="no">{selected_translator.source_text(comparison.left_as_of or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.right_as_of"))}</dt><dd translate="no">{selected_translator.source_text(comparison.right_as_of or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.left_snapshot"))}</dt><dd translate="no">{selected_translator.source_text(comparison.left_snapshot or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.right_snapshot"))}</dt><dd translate="no">{selected_translator.source_text(comparison.right_snapshot or selected_translator.t("comparison.not_recorded"))}</dd></div>'
+            f'<div><dt>{escape(selected_translator.t("comparison.source_refs"))}</dt><dd>{_render_refs(comparison.source_refs, selected_translator)}</dd></div>'
             '</dl>',
-            _list_section("Changed paths", comparison.changed_paths, marker="changed_paths"),
-            _list_section("Missing axes", comparison.missing_axes, marker="missing_axes"),
-            _list_section("Incompatible axes", comparison.incompatible_axes, marker="incompatible_axes"),
+            _list_section(selected_translator.t("comparison.changed_paths"), comparison.changed_paths, marker="changed_paths", translator=selected_translator),
+            _list_section(selected_translator.t("comparison.missing_axes"), comparison.missing_axes, marker="missing_axes", translator=selected_translator),
+            _list_section(selected_translator.t("comparison.incompatible_axes"), comparison.incompatible_axes, marker="incompatible_axes", translator=selected_translator),
         )
     # A derived comparison can legitimately be published with an ``incomparable``
     # result; surface the shared incomparable state beside the envelope provenance.
@@ -601,7 +602,7 @@ def render_genome_comparison(
         render_status_block(
             ReadModelStatus.INCOMPARABLE,
             translator=selected_translator,
-            reason=comparison.reason or "The declared comparison axes are not complete or compatible.",
+            reason=comparison.reason or selected_translator.t("comparison.axes_incompatible"),
         )
         if comparison is not None
         and comparison.result is ComparisonResult.INCOMPARABLE
@@ -611,12 +612,12 @@ def render_genome_comparison(
     return "".join(
         (
             f'<section class="genome-comparison-page" data-integration-hook="{COMPARISON_INTEGRATION_HOOK}">',
-            '<p class="eyebrow">Strategies / Genome comparison · read-only</p>',
-            '<h1 class="page-title" data-page-title tabindex="-1">Genome comparison</h1>',
-            '<p class="page-intro">Only explicit comparison axes are shown. Equal, different, and incomparable remain distinct outcomes.</p>',
-            f'<p class="context-line comparison-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span></p>',
-            f'<a class="comparison-context-link" href="{escape(comparison_href, quote=True)}">Stable comparison context</a>',
-            _render_related_links(comparison, query_context),
+            f'<p class="eyebrow">{escape(selected_translator.t("comparison.eyebrow"))}</p>',
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("comparison.title"))}</h1>',
+            f'<p class="page-intro">{escape(selected_translator.t("comparison.intro"))}</p>',
+            f'<p class="context-line comparison-context"><span><strong>{escape(selected_translator.t("comparison.observed"))}</strong> <span translate="no">{escape(model.as_of or selected_translator.t("comparison.not_recorded"))}</span></span><span><strong>{escape(selected_translator.t("comparison.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or selected_translator.t("comparison.not_recorded"))}</span></span></p>',
+            f'<a class="comparison-context-link" href="{escape(comparison_href, quote=True)}">{escape(selected_translator.t("comparison.stable_context"))}</a>',
+            _render_related_links(comparison, query_context, selected_translator),
             render_status_block(model, translator=selected_translator),
             incomparable_state,
             *fields,

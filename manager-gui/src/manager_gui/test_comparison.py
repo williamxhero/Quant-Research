@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from manager_gui.models import ReadModelStatus
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.comparison import (
     ComparisonFixtureState,
     ComparisonResult,
@@ -65,7 +66,10 @@ def test_comparison_fixture_preserves_provenance_as_of_snapshot_and_axis_lists()
     assert view.as_of == "2026-10-03T10:00:00Z"
     assert view.snapshot_token == "comparison-fixture-incomparable-v0"
 
-    document = render_genome_comparison(view)
+    document = render_genome_comparison(view, translator=Translator(Locale.EN))
+    chinese_document = render_genome_comparison(view)
+    assert "不兼容轴" in chinese_document
+    assert "不可比较" in chinese_document
     assert 'data-integration-hook="strategy-genome-comparison-view"' in document
     assert 'class="comparison-context-link"' in document
     assert 'data-comparison-result="incomparable"' in document
@@ -79,7 +83,9 @@ def test_comparison_missing_does_not_claim_equal_or_different() -> None:
     model = build_genome_comparison_fixture(ComparisonFixtureState.MISSING)
     view = ComparisonViewModel.from_read_model(model)
     assert view.comparison is None
-    document = render_genome_comparison(view)
+    document = render_genome_comparison(view, translator=Translator(Locale.EN))
+    chinese_document = render_genome_comparison(view)
+    assert "没有明确比较记录，不能声称相等或不同" in chinese_document
     assert 'data-status="missing"' in document
     assert 'data-comparison-result="not recorded"' in document
     assert "No explicit Genome comparison is recorded" in document
@@ -96,7 +102,7 @@ def test_blocked_stale_integrity_and_api_unavailable_are_not_comparison_results(
     }
     for fixture, status in expected.items():
         model = build_genome_comparison_fixture(fixture)
-        document = render_genome_comparison(model)
+        document = render_genome_comparison(model, translator=Translator(Locale.EN))
         assert model.availability.status is status
         assert f'data-status="{status.value}"' in document
         assert 'data-display-state="error"' in document
@@ -131,6 +137,7 @@ def test_comparison_context_link_and_provider_hook_are_stable_and_read_only() ->
         provider,
         snapshot_token="comparison-request",
         query_context="/?fixture=diff&panel=compare",
+        translator=Translator(Locale.EN),
     )
     assert provider.calls == [("genome_comparison", "comparison-request")]
     assert 'data-comparison-result="different"' in document

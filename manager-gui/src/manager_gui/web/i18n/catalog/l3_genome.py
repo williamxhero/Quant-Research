@@ -37,6 +37,7 @@ ENTRIES: Mapping[str, M] = {
         "No Genome records are present in this scope. Missing.",
     ),
     "genome.detail": M("基因组详情：{genome_id}", "Genome detail: {genome_id}"),
+    "genome.detail_prefix": M("基因组详情", "Genome detail"),
     "genome.back_catalog": M("返回目录", "Back to catalog"),
     "genome.detail_empty": M(
         "选择一个策略基因组查看详情；如果没有可用基因组，详情为{term:missing}。",
@@ -55,9 +56,11 @@ ENTRIES: Mapping[str, M] = {
         "Validation is a separate binding and does not change Genome content identity.",
     ),
     "genome.binding": M("绑定", "Binding"),
+    "genome.behavior_table": M("行为投影字段表", "Behavior projection fields"),
+    "genome.validation_table": M("验证绑定字段表", "Validation binding fields"),
     "genome.lifecycle_title": M("生命周期时间线", "Lifecycle timeline"),
     "genome.lifecycle_intro": M(
-        "这里只显示明确记录的 proposed、validated、published、revoked 和 tombstoned 来源事件；不会推断状态。",
+        "这里只显示明确记录的已提出、已验证、已发布、已撤销和已设为墓碑来源事件；不会推断状态。",
         "Only explicit proposed, validated, published, revoked, and tombstoned source events are shown; no state is inferred.",
     ),
     "genome.lifecycle_aria": M("基因组生命周期事件时间线", "Genome lifecycle event timeline"),
@@ -68,8 +71,8 @@ ENTRIES: Mapping[str, M] = {
     "genome.event_timeline": M("事件时间线", "Event timeline"),
     "genome.lineage_title": M("谱系入口", "Lineage entry points"),
     "genome.lineage_intro": M(
-        "这些候选对象、研究假设、策略族、上下文、软件包、运行和证据引用，都是有来源支持的入口。",
-        "These candidate, hypothesis, family, context, package, run, and evidence refs are source-backed entry points.",
+        "这些{term:candidate}、{term:hypothesis}、{term:strategy_family}、上下文、软件包、{term:run}和{term:evidence}引用，都是有来源支持的入口。",
+        "These {term:candidate}, {term:hypothesis}, {term:strategy_family}, context, package, {term:run}, and {term:evidence} refs are source-backed entry points.",
     ),
     "genome.lineage_empty": M(
         "没有记录{kind}谱系入口。{term:missing}。",
