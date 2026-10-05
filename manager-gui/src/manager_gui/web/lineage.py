@@ -55,7 +55,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
-from .i18n import Translator
+from .i18n import CatalogError, Translator, merge
 from .i18n.catalog import CATALOG
 from .i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from .locators import public_locator
@@ -412,7 +412,13 @@ def _bounded_int(
         display_notes.append(
             LineageQueryNote(
                 "lineage.note.clamped_integer",
-                (("name", param_name), ("value", value), ("low", low), ("high", high), ("clamped", clamped)),
+                (
+                    ("name", param_name),
+                    ("value", value),
+                    ("low", low),
+                    ("high", high),
+                    ("clamped", clamped),
+                ),
             )
         )
     return clamped
@@ -1353,13 +1359,15 @@ def _lineage_translator(translator: Translator | None) -> Translator:
     """Add this page's catalog without changing the shared registry."""
 
     selected = translator or Translator()
-    catalog = dict(CATALOG)
-    catalog.update(LINEAGE_CATALOG)
+    overlap = {key for key in LINEAGE_CATALOG if key in CATALOG}
+    if any(CATALOG[key] != LINEAGE_CATALOG[key] for key in overlap):
+        raise CatalogError("registered Lineage catalog entries differ from the page catalog")
+    additions = {key: value for key, value in LINEAGE_CATALOG.items() if key not in overlap}
     return Translator(
         selected.locale,
         strict=selected.strict,
         pseudo=selected.pseudo,
-        catalog=catalog,
+        catalog=merge(CATALOG, additions),
     )
 
 
@@ -1440,7 +1448,7 @@ def _render_sources(refs: Sequence[LineageSourceRef], *, translator: Translator)
         else:
             parts.append(
                 f'<span data-source-id="{_attr(ref.source_id)}"><span translate="no">{label}</span> — '
-                f'{escape(translator.t("lineage.not_recorded"))}</span>'
+                f"{escape(translator.t('lineage.not_recorded'))}</span>"
             )
     return " · ".join(parts)
 
@@ -1460,7 +1468,9 @@ def _describe_hash(node: LineageNode, *, translator: Translator) -> str:
     if node.hash is None:
         return translator.t("lineage.not_recorded_short")
     # A match is the only way a node reaches the renderer; absence of a check is never "verified".
-    key = "lineage.hash_verified" if node.verified_hash == node.hash else "lineage.hash_not_verified"
+    key = (
+        "lineage.hash_verified" if node.verified_hash == node.hash else "lineage.hash_not_verified"
+    )
     return f"{_owner(node.hash)} ({translator.t(key)})"
 
 
@@ -1483,6 +1493,46 @@ def _edge_sentence(
         relation=_relation(edge.relation.value, translator),
         target=label(edge.target_id),
     )
+
+
+def _edge_sentence_markup(
+    nodes: Mapping[str, LineageNode],
+    edge: LineageEdge,
+    *,
+    view: LineageViewModel,
+    translator: Translator,
+    context: QueryContext,
+    route: str,
+    link_node_id: str | None = None,
+) -> str:
+    def label(node_id: str) -> str:
+        node = nodes.get(node_id)
+        if node is None:
+            return f"{_owner(node_id)} ({escape(translator.t('lineage.no_owner_page'))})"
+        label_markup = (
+            escape(_node_label(node, view, translator))
+            if _is_fixture_model(view.read_model)
+            else _owner(node.label)
+        )
+        if node_id == link_node_id:
+            return f'<a href="{_attr(_link(context, route, node=node_id))}">{label_markup}</a>'
+        return label_markup
+
+    return translator.t(
+        "lineage.edge_sentence",
+        source=label(edge.source_id),
+        relation=_relation(edge.relation.value, translator),
+        target=label(edge.target_id),
+    )
+
+
+def _node_label_markup(
+    node: LineageNode, view: LineageViewModel, translator: Translator, *, truncate: bool = False
+) -> str:
+    label = _node_label(node, view, translator)
+    if truncate:
+        label = _truncate(label)
+    return escape(label) if _is_fixture_model(view.read_model) else _owner(label)
 
 
 def _layout(nodes: Sequence[LineageNode], depths: Mapping[str, int]) -> dict[str, tuple[int, int]]:
@@ -1544,7 +1594,7 @@ def _render_graph(
             f'<text x="{(x1 + x2) / 2:.1f}" y="{(y1 + y2) / 2 - 4:.1f}" text-anchor="middle" '
             'font-size="11" fill="currentColor" stroke="Canvas" stroke-width="3" paint-order="stroke">'
             f"{edge_label}</text>"
-            f"<title>{escape(_edge_sentence(by_id, edge, translator=translator, view=view))}</title></g>"
+            f'<title translate="no">{escape(_edge_sentence(by_id, edge, translator=translator, view=view))}</title></g>'
         )
     node_markup: list[str] = []
     for node in page_nodes:
@@ -1554,6 +1604,7 @@ def _render_graph(
         on_path = node.node_id in path_nodes
         depth = view.depths[node.node_id]
         node_label = _node_label(node, view, translator)
+        label_translate = "" if _is_fixture_model(view.read_model) else ' translate="no"'
         type_label = translator.label("lineage_record_type", node.record_type.value)
         spoken = translator.t(
             "lineage.node_accessible",
@@ -1568,16 +1619,15 @@ def _render_graph(
             f'<g class="lineage-node" data-node-id="{_attr(node.node_id)}" '
             f'data-record-type="{node.record_type.value}" data-depth="{depth}" '
             f'data-root="{_flag(is_root)}" data-on-path="{_flag(on_path)}">'
-            f'<a href="{_attr(_link(context, route, node=node.node_id))}" aria-label="{_attr(spoken)}"{current}>'
+            f'<a href="{_attr(_link(context, route, node=node.node_id))}" aria-label="{_attr(spoken)}"{current}{label_translate}>'
             f'<rect x="{x}" y="{y}" width="{_NODE_W}" height="{_NODE_H}" rx="6" fill="Canvas" '
             f'stroke="CanvasText" stroke-width="{3 if is_root or on_path else 1}"/>'
-            f'<text x="{x + 10}" y="{y + 19}" font-size="13" fill="CanvasText">{escape(_truncate(node_label))}</text>'
+            f'<text x="{x + 10}" y="{y + 19}" font-size="13" fill="CanvasText"{label_translate}>'
+            f"{escape(_truncate(node_label))}</text>"
             f'<text x="{x + 10}" y="{y + 36}" font-size="11" fill="GrayText">{type_label}</text>'
-            f"<title>{escape(translator.t('lineage.node_title', label=node_label, id=node.node_id))}</title></a></g>"
+            f'<title translate="no">{escape(translator.t("lineage.node_title", label=node_label, id=node.node_id))}</title></a></g>'
         )
-    caption = translator.t(
-        "lineage.graph_caption", nodes=len(page_nodes), edges=len(page_edges)
-    )
+    caption = translator.t("lineage.graph_caption", nodes=len(page_nodes), edges=len(page_edges))
     svg_title = translator.t("lineage.svg_title")
     svg_description = translator.t(
         "lineage.svg_description", nodes=len(page_nodes), edges=len(page_edges)
@@ -1606,7 +1656,7 @@ def _render_node_row(
     translator: Translator,
 ) -> str:
     step = path_steps.get(node.node_id)
-    label = _node_label(node, view, translator)
+    label = _node_label_markup(node, view, translator)
     type_label = _record_type(node.record_type.value, translator)
     status = _status(node.status, translator)
     as_of = node.as_of or view.as_of or translator.t("lineage.not_recorded")
@@ -1615,7 +1665,7 @@ def _render_node_row(
         f'<tr data-node-id="{_attr(node.node_id)}" data-record-type="{node.record_type.value}" '
         f'data-depth="{view.depths[node.node_id]}" data-root="{_flag(node.node_id == view.root_id)}" '
         f'data-on-path="{_flag(step is not None)}">'
-        f'<th scope="row"><a href="{_attr(_link(context, route, node=node.node_id))}">{escape(label)}</a>'
+        f'<th scope="row"><a href="{_attr(_link(context, route, node=node.node_id))}">{label}</a>'
         f'<br><small translate="no">{_attr(node.node_id)}</small></th>'
         f"<td>{type_label}</td><td>{status}</td>"
         f"<td>{view.depths[node.node_id]}</td>"
@@ -1641,8 +1691,8 @@ def _render_edge_row(
 ) -> str:
     def cell(node_id: str) -> str:
         node = by_id[node_id]
-        label = _node_label(node, view, translator)
-        return f'<a href="{_attr(_link(context, route, node=node_id))}">{escape(label)}</a>'
+        label = _node_label_markup(node, view, translator)
+        return f'<a href="{_attr(_link(context, route, node=node_id))}">{label}</a>'
 
     return (
         f'<tr data-edge-id="{_attr(edge.edge_id)}" data-relation="{edge.relation.value}" '
@@ -1690,7 +1740,7 @@ def _render_tables(
     edge_table = (
         f'<div role="region" aria-label="{_attr(translator.t("lineage.edges_region"))}" tabindex="0">'
         '<table class="lineage-table" data-lineage-table="edges">'
-        f'<caption>{escape(translator.t("lineage.edges_caption", count=len(page_edges)))}</caption>'
+        f"<caption>{escape(translator.t('lineage.edges_caption', count=len(page_edges)))}</caption>"
         f'<thead><tr><th scope="col">{escape(translator.t("lineage.col_from"))}</th>'
         f'<th scope="col">{escape(translator.t("lineage.col_relation"))}</th>'
         f'<th scope="col">{escape(translator.t("lineage.col_to"))}</th>'
@@ -1703,10 +1753,11 @@ def _render_tables(
     )
     texts = (
         "".join(
-            f'<li data-edge-id="{_attr(edge.edge_id)}">{escape(_edge_sentence(by_id, edge, translator=translator, view=view))}</li>'
+            f'<li data-edge-id="{_attr(edge.edge_id)}">'
+            f"{_edge_sentence_markup(by_id, edge, view=view, translator=translator, context=context, route=route)}</li>"
             for edge in page_edges
         )
-        or f'<li>{escape(translator.t("lineage.no_edges"))}</li>'
+        or f"<li>{escape(translator.t('lineage.no_edges'))}</li>"
     )
     off_page_note = (
         f'<p data-off-page-relations="{off_page}">{escape(translator.t("lineage.off_page", count=off_page))}</p>'
@@ -1716,10 +1767,10 @@ def _render_tables(
     return (
         '<section id="lineage-table" class="lineage-table-view" aria-labelledby="lineage-table-heading" tabindex="-1">'
         f'<h2 id="lineage-table-heading">{escape(translator.t("lineage.table_heading"))}</h2>'
-        f'<p>{escape(translator.t("lineage.table_intro"))}</p>{off_page_note}'
+        f"<p>{escape(translator.t('lineage.table_intro'))}</p>{off_page_note}"
         f'<div role="region" aria-label="{_attr(translator.t("lineage.records_region"))}" tabindex="0">'
         '<table class="lineage-table" data-lineage-table="nodes">'
-        f'<caption>{escape(translator.t("lineage.records_caption", count=len(page_nodes), total=total))}</caption>'
+        f"<caption>{escape(translator.t('lineage.records_caption', count=len(page_nodes), total=total))}</caption>"
         f'<thead><tr><th scope="col">{escape(translator.t("lineage.col_record"))}</th>'
         f'<th scope="col">{escape(translator.t("lineage.col_type"))}</th>'
         f'<th scope="col">{escape(translator.t("lineage.col_status"))}</th>'
@@ -1731,7 +1782,7 @@ def _render_tables(
         f'<th scope="col">{escape(translator.t("lineage.col_derivation"))}</th>'
         f'<th scope="col">{escape(translator.t("lineage.col_actions"))}</th></tr></thead>'
         f"<tbody>{node_rows}</tbody></table></div>{edge_table}"
-        f'<h3>{escape(translator.t("lineage.text_view"))}</h3>'
+        f"<h3>{escape(translator.t('lineage.text_view'))}</h3>"
         f'<ol class="lineage-text-view" aria-label="{_attr(translator.t("lineage.relations_text"))}">{texts}</ol>'
         "</section>"
     )
@@ -1748,15 +1799,17 @@ def _render_evidence_path(
         steps: list[str] = []
         for index, node_id in enumerate(path.node_ids):
             node = by_id[node_id]
-            label = _node_label(node, view, translator)
+            label = _node_label_markup(node, view, translator)
             steps.append(
                 f'<li data-node-id="{_attr(node_id)}"><a href="{_attr(_link(context, route, node=node_id))}">'
-                f"{escape(label)}</a> <small>{_record_type(node.record_type.value, translator)}</small>"
+                f"{label}</a> <small>{_record_type(node.record_type.value, translator)}</small>"
             )
             if index < len(path.edge_ids):
                 edge = edges[path.edge_ids[index]]
                 arrow = "→" if edge.source_id == node_id else "←"
-                steps[-1] += f' <span class="lineage-hop">{arrow} {_relation(edge.relation.value, translator)}</span>'
+                steps[-1] += (
+                    f' <span class="lineage-hop">{arrow} {_relation(edge.relation.value, translator)}</span>'
+                )
             steps[-1] += "</li>"
         body = (
             f"<p>{translator.html('lineage.shortest_path_summary', target=_node_label(by_id[path.target_id], view, translator), count=path.length)}</p>"
@@ -1802,19 +1855,16 @@ def _render_inspector(
         for edge in edges:
             other_id = edge.source_id if incoming else edge.target_id
             other = by_id.get(other_id)
-            label = (
-                escape(_node_label(other, view, translator))
-                if other is not None
-                else f"{_owner(other_id)} ({escape(translator.t('lineage.other_page'))})"
+            sentence = _edge_sentence_markup(
+                by_id,
+                edge,
+                view=view,
+                translator=translator,
+                context=context,
+                route=route,
+                link_node_id=other_id if other is not None else None,
             )
-            target = (
-                f'<a href="{_attr(_link(context, route, node=other_id))}">{label}</a>'
-                if other is not None
-                else label
-            )
-            relation = _relation(edge.relation.value, translator)
-            direction = translator.t("lineage.relation_from" if incoming else "lineage.relation_to")
-            items.append(f"<li>{relation} {direction} {target}</li>")
+            items.append(f"<li>{sentence}</li>")
         return (
             f"<ul>{''.join(items)}</ul>"
             if items
@@ -1831,7 +1881,7 @@ def _render_inspector(
         if node.node_id in view.depths
         else f"<p>{escape(translator.t('lineage.inspector_outside_bounds'))}</p>"
     )
-    label = _node_label(node, view, translator)
+    label = _node_label_markup(node, view, translator)
     as_of = node.as_of or view.as_of or translator.t("lineage.not_recorded")
     snapshot = node.snapshot_token or view.snapshot_token or translator.t("lineage.not_recorded")
     return (
@@ -1839,7 +1889,7 @@ def _render_inspector(
         f'aria-labelledby="lineage-inspector-heading">{heading}{bounds}'
         '<dl class="lineage-inspector-details">'
         f"<div><dt>{escape(translator.t('lineage.label_record_id'))}</dt><dd>{_owner(node.node_id)}</dd></div>"
-        f"<div><dt>{escape(translator.t('lineage.label'))}</dt><dd>{escape(label)}</dd></div>"
+        f"<div><dt>{escape(translator.t('lineage.label'))}</dt><dd>{label}</dd></div>"
         f"<div><dt>{escape(translator.t('lineage.col_type'))}</dt><dd>{_record_type(node.record_type.value, translator)}</dd></div>"
         f"<div><dt>{escape(translator.t('lineage.col_status'))}</dt><dd>{_status(node.status, translator)}</dd></div>"
         f"<div><dt>{escape(translator.t('lineage.col_hash'))}</dt><dd>{_describe_hash(node, translator=translator)}</dd></div>"
@@ -1862,7 +1912,7 @@ def _render_disconnected(
     if view.disconnected:
         items = "".join(
             f'<li data-node-id="{_attr(node.node_id)}"><a href="{_attr(_link(context, route, node=node.node_id))}">'
-            f"{escape(_node_label(node, view, translator))}</a> <small>{_owner(node.node_id)} · "
+            f"{_node_label_markup(node, view, translator)}</a> <small>{_owner(node.node_id)} · "
             f"{_record_type(node.record_type.value, translator)}</small></li>"
             for node in view.disconnected
         )
@@ -1929,10 +1979,12 @@ def _render_bounds(
         page_size=query.page_size,
         relations=translator.join(
             translator.t(f"label.lineage_relation.{item.value}") for item in query.relations
-        ) or translator.t("lineage.all"),
+        )
+        or translator.t("lineage.all"),
         record_types=translator.join(
             translator.t(f"label.lineage_record_type.{item.value}") for item in query.record_types
-        ) or translator.t("lineage.all"),
+        )
+        or translator.t("lineage.all"),
     )
     return (
         f'<section class="lineage-bounds" aria-labelledby="lineage-bounds-heading" data-depth="{query.depth}" '
@@ -2021,9 +2073,7 @@ def render_lineage(
     )
     model = view.read_model
     display_model = _display_model(view, selected_translator)
-    source_ids = selected_translator.join(
-        _owner(source.source_id) for source in model.source_refs
-    )
+    source_ids = selected_translator.join(_owner(source.source_id) for source in model.source_refs)
     sources = source_ids or selected_translator.t("lineage.none_recorded")
     derivation_parts = [
         _owner(part)
@@ -2031,8 +2081,14 @@ def render_lineage(
         if part
     ]
     derivation = " · ".join(derivation_parts) or selected_translator.t("lineage.not_recorded_short")
-    observed = _owner(model.as_of) if model.as_of else escape(selected_translator.t("lineage.unavailable"))
-    snapshot = _owner(model.snapshot_token) if model.snapshot_token else escape(selected_translator.t("lineage.unavailable"))
+    observed = (
+        _owner(model.as_of) if model.as_of else escape(selected_translator.t("lineage.unavailable"))
+    )
+    snapshot = (
+        _owner(model.snapshot_token)
+        if model.snapshot_token
+        else escape(selected_translator.t("lineage.unavailable"))
+    )
     pieces = [
         f'<section class="lineage-page" data-integration-hook="{LINEAGE_INTEGRATION_HOOK}" '
         f'data-lineage-state="{view.state.value}" data-read-status="{display_model.availability.status.value}">',
@@ -2040,14 +2096,16 @@ def render_lineage(
         f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("lineage.page_title"))}</h1>',
         f'<p class="page-intro">{escape(selected_translator.t("lineage.page_intro"))}</p>',
         f'<p class="context-line"><span><strong>{escape(selected_translator.t("lineage.observed"))}</strong> {observed}</span>'
-        f'<span><strong>{escape(selected_translator.t("lineage.snapshot"))}</strong> {snapshot}</span>'
-        f'<span><strong>{escape(selected_translator.t("lineage.derivation"))}</strong> {derivation}</span>'
-        f'<span><strong>{escape(selected_translator.t("lineage.sources"))}</strong> {sources}</span></p>',
+        f"<span><strong>{escape(selected_translator.t('lineage.snapshot'))}</strong> {snapshot}</span>"
+        f"<span><strong>{escape(selected_translator.t('lineage.derivation'))}</strong> {derivation}</span>"
+        f"<span><strong>{escape(selected_translator.t('lineage.sources'))}</strong> {sources}</span></p>",
         render_status_block(display_model, translator=selected_translator),
     ]
     if view.failure is not None:
         pieces.append(
-            _render_failure(view, context=query_context, route=route, translator=selected_translator)
+            _render_failure(
+                view, context=query_context, route=route, translator=selected_translator
+            )
         )
     elif view.state is LineageState.EMPTY:
         pieces.append(
@@ -2134,7 +2192,7 @@ def render_lineage(
             pieces.append(window.render(query_context, view=route, translator=selected_translator))
     if include_raw_json:
         pieces.append(
-            f'<details class="lineage-raw-json"><summary>{escape(selected_translator.t("lineage.raw_json"))}</summary>'
+            f'<details class="raw-json lineage-raw-json"><summary>{escape(selected_translator.t("lineage.raw_json"))}</summary>'
             f"<pre>{escape(view.raw_json)}</pre></details>"
         )
     pieces.append("</section>")
@@ -2180,9 +2238,7 @@ def render_lineage_view(
             snapshot_token=snapshot_token,
             record_id=record_id,
         )
-    return render_lineage(
-        view, query_context=query_context, route=route, translator=translator
-    )
+    return render_lineage(view, query_context=query_context, route=route, translator=translator)
 
 
 # --- deterministic fixtures and read-only provider -----------------------------

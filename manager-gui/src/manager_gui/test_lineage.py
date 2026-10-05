@@ -9,6 +9,7 @@ import sqlite3
 import time
 from dataclasses import replace
 from typing import cast
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -22,6 +23,13 @@ from manager_gui import (
 )
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.testing.i18n import (
+    assert_accessible,
+    assert_dom_equivalent,
+    assert_lang_propagation,
+    assert_language_text,
+    parse_html,
+)
 from manager_gui.web.i18n import CATALOG, Locale, Translator, merge
 from manager_gui.web.i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from manager_gui.web.lineage import (
@@ -33,6 +41,7 @@ from manager_gui.web.lineage import (
     MAX_NODES,
     LineageDirection,
     LineageFailure,
+    LineageFailureInfo,
     LineageFixtureState,
     LineageInspector,
     LineagePathState,
@@ -274,15 +283,18 @@ def test_inspector_exposes_metadata_relations_sources_and_derivation() -> None:
     inspector = out.split('data-lineage-inspector="run-1"', 1)[1].split("</aside>", 1)[0]
 
     assert "Formal run" in inspector
-    assert "direct · v1 (inputs: lineage-fixture-source)" in inspector
+    assert "direct" in inspector and "v1" in inspector and "inputs: " in inspector
+    assert 'translate="no">lineage-fixture-source</span>)' in inspector
     assert "2026-10-03T09:00:00Z" in inspector
     assert 'href="fixture://apex-research/lineage"' in inspector
-    assert "derives from" in inspector and "produces to" in inspector
+    assert "derives" in inspector and "produces" in inspector
+    assert "Candidate" in inspector and "Evidence report" in inspector
     assert "lineage-complete-v0" in inspector
     assert 'aria-current="true"' in out
 
     artifact = _render(context=CONTEXT + "&node=artifact-1")
-    assert "sha256:" + "a" * 64 + " (verified)" in artifact
+    assert "sha256:" + "a" * 64 in artifact and ")" in artifact
+    assert "verified" in artifact
     outside = _render(context=CONTEXT + "&node=document-orphan")
     assert "outside the current depth" in outside
     missing = _render(context=CONTEXT + "&node=nope")
@@ -311,16 +323,41 @@ def test_source_refs_as_of_and_derivation_are_visible_and_unresolved_refs_are_no
             SourceReference("src-1", "owner", "lineage", "https://example.invalid/l", "s", "r"),
         ),
     )
-    out = render_lineage_view(model, query_context="/?view=lineage&lang=en", translator=EN_TRANSLATOR)
+    out = render_lineage_view(
+        model, query_context="/?view=lineage&lang=en", translator=EN_TRANSLATOR
+    )
 
     assert "ghost-src" in out and "Missing / Unconfirmed" in out
     assert 'href="https://example.invalid/l"' in out
-    assert "private-src (owner · lineage) — Missing / Unconfirmed" in out
-    assert "file-src (owner · lineage) — Missing / Unconfirmed" in out
+    assert 'translate="no">private-src</span>' in out
+    assert 'translate="no">file-src</span>' in out
+    assert 'translate="no">owner · lineage</span>' in out
+    assert out.count("Missing / Unconfirmed") >= 2
     assert 'href="file:' not in out and 'href="C:' not in out
     assert "2026-01-01T00:00:00Z" in out
     assert "2026-10-03T12:00:00Z" in out  # node without as-of falls back to the envelope
-    assert "direct · v0" in out  # envelope derivation
+    assert "direct" in out and "v0" in out  # envelope derivation
+
+
+def test_owner_labels_are_escaped_once_and_open_statuses_stay_code() -> None:
+    label = 'Owner <Record> & "{x}'
+    node_id = 'owner<&"id'
+    model = _model(
+        [_n(node_id, "conclusion", label=label, status="external<&status")], [], root=node_id
+    )
+    before = model.to_json()
+    out = render_lineage_view(
+        model, query_context="/?view=lineage&lang=zh-CN", translator=ZH_TRANSLATOR
+    )
+
+    escaped_label = html.escape(label, quote=True)
+    assert label not in out
+    assert escaped_label in out
+    assert html.escape(escaped_label, quote=True) not in out
+    assert node_id not in out
+    assert html.escape(node_id, quote=True) in out
+    assert "<code>external&lt;&amp;status</code>" in out
+    assert model.to_json() == before
 
 
 def test_labels_are_escaped() -> None:
@@ -543,9 +580,12 @@ def test_table_and_graph_use_keyboard_friendly_semantics() -> None:
     assert '<a class="lineage-skip" href="#lineage-table">' in out
     assert 'id="lineage-table"' in out
     assert '<ol class="lineage-text-view"' in out
-    assert 'aria-label="Protocol conclusion, conclusion, depth 0, root' in out
+    assert 'aria-label="Protocol conclusion, Conclusion, depth 0, root' in out
     assert out.count('aria-current="true"') == 1
-    assert '<svg role="group" aria-labelledby="lineage-graph-caption"' in out
+    assert (
+        '<svg role="group" aria-labelledby="lineage-svg-title" aria-describedby="lineage-svg-desc"'
+        in out
+    )
     assert re.search(r'<g class="lineage-node"[^>]*><a href="[^"]+" aria-label="', out)
     assert 'data-integration-hook="lineage-view"' in out
     assert LINEAGE_INTEGRATION_HOOK == "lineage-view"
@@ -751,7 +791,9 @@ def test_hash_mismatch_fails_closed_for_nodes_and_page_content() -> None:
     tampered = _model([_n("a", "conclusion", label="Edited"), _n("b")], edges, content_hash=digest)
     assert _failure(LineageViewModel.from_read_model(tampered)) is LineageFailure.HASH_MISMATCH
     unverified = _model([_n("a", "conclusion", hash=declared)], [])
-    assert "(not verified)" in render_lineage(LineageViewModel.from_read_model(unverified))
+    assert "(not verified)" in render_lineage(
+        LineageViewModel.from_read_model(unverified), translator=EN_TRANSLATOR
+    )
     assert lineage_content_hash(nodes, edges) == digest  # stable across calls
 
 
@@ -895,9 +937,137 @@ def test_large_graph_is_bounded_by_depth_page_size_and_time() -> None:
 def test_wide_graph_page_is_capped_at_the_requested_page_size() -> None:
     nodes = [_n("hub", "conclusion"), *[_n(f"leaf-{i:03d}") for i in range(MAX_NODES - 1)]]
     edges = [_e(f"leaf-{i:03d}", "supports", "hub") for i in range(MAX_NODES - 1)]
-    out = render_lineage_view(_model(nodes, edges), query_context="/?page_size=25&lang=en")
+    out = render_lineage_view(
+        _model(nodes, edges), query_context="/?page_size=25&lang=en", translator=EN_TRANSLATOR
+    )
     assert len(_graph_nodes(out)) == len(_table_nodes(out)) == 25
     assert f"Page 1 of {-(-MAX_NODES // 25)}" in out
+
+
+def test_lineage_catalog_covers_closed_vocabularies_and_failure_titles() -> None:
+    assert (
+        len([key for key in LINEAGE_CATALOG if key.startswith("label.lineage_record_type.")]) == 20
+    )
+    assert len([key for key in LINEAGE_CATALOG if key.startswith("label.lineage_relation.")]) == 16
+    assert {f"lineage.failure.{failure.value}" for failure in LineageFailure} <= set(
+        LINEAGE_CATALOG
+    )
+    for translator in (ZH_TRANSLATOR, EN_TRANSLATOR):
+        assert translator.label("lineage_record_type", "conclusion")
+        assert translator.label("lineage_relation", "supports")
+        assert (
+            translator.label("lineage_record_type", "owner_extension")
+            == "<code>owner_extension</code>"
+        )
+
+
+def test_complete_fixture_is_localized_in_zh_and_en_with_equivalent_accessible_views() -> None:
+    source = "/?view=lineage&fixture=complete&panel=events&lang=zh-CN"
+    zh_markup = render_lineage_view(
+        build_lineage_fixture("complete"), query_context=source, translator=ZH_TRANSLATOR
+    )
+    en_markup = render_lineage_view(
+        build_lineage_fixture("complete"),
+        query_context=source.replace("zh-CN", "en"),
+        translator=EN_TRANSLATOR,
+    )
+    zh, en = parse_html(zh_markup), parse_html(en_markup)
+    assert_dom_equivalent(zh, en)
+    assert_language_text(zh, Locale.ZH_CN)
+    assert_language_text(en, Locale.EN)
+    assert_accessible(zh)
+    assert_accessible(en)
+    assert_lang_propagation(zh, Locale.ZH_CN, source_url=source)
+    assert_lang_propagation(en, Locale.EN, source_url=source.replace("zh-CN", "en"))
+    assert "谱系图" in zh_markup and "Lineage graph" in en_markup
+    assert "协议结论" in zh_markup and "Protocol conclusion" in en_markup
+    assert "支持" in zh_markup and "supports" in en_markup
+    assert '<table class="lineage-table" data-lineage-table="nodes">' in zh_markup
+    assert '<table class="lineage-table" data-lineage-table="nodes">' in en_markup
+
+
+def test_partial_page_boundary_copy_and_next_cursor_language_are_localized() -> None:
+    source = "/?view=lineage&fixture=partial&panel=events&lang=zh-CN"
+    for locale, translator in ((Locale.ZH_CN, ZH_TRANSLATOR), (Locale.EN, EN_TRANSLATOR)):
+        context = source.replace("zh-CN", locale.value)
+        markup = render_lineage_view(
+            build_lineage_fixture("partial"), query_context=context, translator=translator
+        )
+        document = parse_html(markup)
+        assert_language_text(document, locale)
+        assert_lang_propagation(document, locale, source_url=context)
+        assert translator.t("lineage.partial_heading") in markup
+        assert translator.t("lineage.partial_explanation") in markup
+        assert translator.t("lineage.next_page") in markup
+        next_page = next(
+            html.unescape(href)
+            for href in re.findall(r'class="lineage-next-cursor"[^>]*href="([^"]+)"', markup)
+        )
+        query = dict(parse_qsl(urlsplit(next_page).query))
+        assert query["lang"] == locale.value
+        assert query["snapshot_token"] == "lineage-partial-v0"
+        assert query["cursor"] == "cursor-2"
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        LineageFixtureState.CURSOR_EXPIRED,
+        LineageFixtureState.SNAPSHOT_DRIFT,
+        LineageFixtureState.UNKNOWN_SCHEMA,
+        LineageFixtureState.HASH_MISMATCH,
+        LineageFixtureState.API_UNAVAILABLE,
+    ],
+)
+def test_localized_failure_titles_keep_fail_closed_graph_boundary(
+    state: LineageFixtureState,
+) -> None:
+    zh = _render(state.value, translator=ZH_TRANSLATOR)
+    en = _render(state.value, translator=EN_TRANSLATOR)
+    assert 'data-graph="withheld"' in zh and 'data-graph="withheld"' in en
+    assert "<svg" not in zh and "<svg" not in en
+    assert "lineage-table" not in zh and "lineage-table" not in en
+    failure = _failure(_view(state.value))
+    translator_title = ZH_TRANSLATOR.t(f"lineage.failure.{failure.value}")
+    assert translator_title in zh
+    assert EN_TRANSLATOR.t(f"lineage.failure.{_failure(_view(state.value)).value}") in en
+
+
+@pytest.mark.parametrize("failure_code", tuple(LineageFailure))
+def test_all_failure_states_are_localized_and_remain_fail_closed(
+    failure_code: LineageFailure,
+) -> None:
+    base = _view()
+    failed = replace(
+        base,
+        state=LineageState.FAIL_CLOSED,
+        failure=LineageFailureInfo(failure_code, "Owner detail <&"),
+    )
+    restartable = {
+        LineageFailure.CURSOR_EXPIRED,
+        LineageFailure.CURSOR_MISMATCH,
+        LineageFailure.SNAPSHOT_DRIFT,
+    }
+    for locale, translator in (("zh-CN", ZH_TRANSLATOR), ("en", EN_TRANSLATOR)):
+        context = (
+            f"/?view=lineage&fixture=complete&lang={locale}&cursor=c1&snapshot_token=s1"
+            "&page=2&node=n&path_to=p"
+        )
+        out = render_lineage(failed, query_context=context, translator=translator)
+        assert translator.t(f"lineage.failure.{failure_code.value}") in out
+        assert 'data-graph="withheld"' in out and 'role="alert"' in out
+        assert "<svg" not in out and "data-lineage-table" not in out
+        assert "detail &lt;&amp;" in out
+        restart_links = [
+            html.unescape(link)
+            for link in re.findall(r'class="lineage-restart" href="([^"]+)"', out)
+        ]
+        assert bool(restart_links) is (failure_code in restartable)
+        if restart_links:
+            assert all(f"lang={locale}" in link for link in restart_links)
+            assert all(
+                "cursor=" not in link and "snapshot_token=" not in link for link in restart_links
+            )
 
 
 def test_pages_beyond_the_hard_bounds_fail_closed() -> None:
