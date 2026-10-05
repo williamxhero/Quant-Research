@@ -108,6 +108,15 @@ REGISTRY.register(l3_atlas_story.ENTRIES)
 REGISTRY.register(l3_genome.ENTRIES)
 REGISTRY.register(l3_method_history.ENTRIES)
 
+# L4 page namespaces are registered exactly once at the integration boundary.
+# Their page-local translators remain compatible with this process-wide registry,
+# while duplicate keys fail closed through CatalogRegistry.register().
+from . import l4_evidence, l4_lineage, l4_memory  # noqa: E402
+
+REGISTRY.register(l4_memory.ENTRIES)
+REGISTRY.register(l4_evidence.ENTRIES)
+REGISTRY.register(l4_lineage.ENTRIES)
+
 
 __all__ = [
     "CATALOG",
