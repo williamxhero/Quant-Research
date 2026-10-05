@@ -1,20 +1,4 @@
-"""Conclusion -> evidence -> source/artifact -> lineage trace for the Evidence route.
-
-The shell mounts :func:`render_evidence_trace` after the Evidence Ledger so a
-reader can walk from a published conclusion to its evidence records, their
-sources and artifacts, and on to the bounded lineage view.  It also gives the
-``record_id`` / ``artifact_id`` / ``source_id`` links that the ledger already
-emits a real target: a selected-detail panel.
-
-The trace reads only the public :class:`EvidenceViewModel` and two *explicit*
-published pointers: ``conclusion_id`` on the ledger and ``lineage_id`` on a
-record or artifact.  It never matches ids by similarity, never dereferences a
-locator, and never recomputes an owner fact.  Every hop that is not published
-stays ``Missing / Unconfirmed``; a missing hop is not a failure and not proof
-of absence.  Cross-resource links (Evidence to Lineage, comparison, grouping)
-do not forward ``snapshot_token`` or any page cursor: each resource owns its
-own snapshot and snapshots are never mixed.
-"""
+"""Conclusion -> evidence -> source/artifact -> lineage trace for the Evidence route."""
 
 from __future__ import annotations
 
@@ -24,12 +8,18 @@ from typing import TypeAlias
 
 from ..models import ManagerReadModel
 from .evidence import (
+    _FIXTURE_TEXT_KEYS,
+    ArtifactVerificationStatus,
     EvidenceArtifact,
     EvidenceKind,
+    EvidenceLevel,
+    EvidenceOutcome,
     EvidenceRecord,
     EvidenceSourceRef,
     EvidenceViewModel,
 )
+from .i18n import Translator
+from .i18n.catalog.l4_evidence import page_translator
 from .locators import public_locator
 from .navigation import ViewId, context_link, query_values
 
@@ -51,12 +41,6 @@ _PAGE_STATE: Mapping[str, None] = {
     "record_id": None,
     "artifact_id": None,
     "source_id": None,
-}
-
-_KIND_LABELS: Mapping[EvidenceKind, str] = {
-    EvidenceKind.CANDIDATE: "Candidate evidence",
-    EvidenceKind.PROTOCOL_CONFORMING: "Protocol-conforming evidence",
-    EvidenceKind.NOT_RECORDED: "Evidence class not recorded",
 }
 
 
@@ -84,236 +68,298 @@ def _detail_link(context: QueryContext, **updates: str | None) -> str:
     return context_link(context, view=ViewId.EVIDENCE, **{**cleared, **updates})
 
 
-def _missing(what: str, key: str) -> str:
-    return (
-        f'<span class="trace-missing" data-trace-missing="{_attr(key)}">{escape(what)} — '
-        f'{MISSING} / <span lang="zh-CN">{MISSING_ZH}</span></span>'
-    )
+def _owner(value: str | None, translator: Translator, *, is_fixture: bool) -> str:
+    if value is None:
+        return escape(translator.t("evidence.not_recorded"))
+    key = _FIXTURE_TEXT_KEYS.get(value) if is_fixture else None
+    if key is not None:
+        return escape(translator.t(key))
+    return f'<span data-owner-text="true">{escape(value)}</span>'
 
 
-def _lineage_link(context: QueryContext, lineage_id: str | None, label: str) -> str:
-    if lineage_id is None:
-        return _missing("Lineage", "lineage")
-    href = _cross_link(context, ViewId.LINEAGE, record_id=lineage_id)
-    return (
-        f'<a class="trace-lineage-link" data-lineage-id="{_attr(lineage_id)}" '
-        f'href="{_attr(href)}">{escape(label)}</a>'
-    )
+def _label(value: EvidenceKind | EvidenceLevel | EvidenceOutcome | ArtifactVerificationStatus,
+           translator: Translator) -> str:
+    if isinstance(value, EvidenceKind):
+        domain = "evidence_kind"
+    elif isinstance(value, EvidenceLevel):
+        domain = "evidence_level"
+    elif isinstance(value, EvidenceOutcome):
+        domain = "evidence_outcome"
+    else:
+        domain = "artifact_verification"
+    return translator.label(domain, value.value)
 
 
-def _source_item(source_id: str, locator: str | None) -> str:
-    target = public_locator(locator)
-    if target is not None:
+class _TraceRenderer:
+    def __init__(
+        self,
+        view: EvidenceViewModel,
+        *,
+        context: QueryContext,
+        translator: Translator,
+    ) -> None:
+        self.view = view
+        self.model = view.read_model
+        self.context = context
+        self.translator = translator
+        self.is_fixture = any(ref.source_id == "evidence-fixture-source" for ref in self.model.source_refs)
+
+    def missing(self, what: str, key: str) -> str:
         return (
-            f'<a class="trace-source-link" data-source-id="{_attr(source_id)}" '
-            f'href="{_attr(target)}">{escape(source_id)}</a>'
+            f'<span class="trace-missing" data-trace-missing="{_attr(key)}">{escape(what)} — '
+            f'{escape(self.translator.t("evidence.missing_unconfirmed"))}</span>'
         )
-    return f'<span data-source-id="{_attr(source_id)}">{_missing(source_id, "source")}</span>'
+
+    def lineage_link(self, lineage_id: str | None, label: str) -> str:
+        if lineage_id is None:
+            return self.missing(self.translator.t("trace.lineage"), "lineage")
+        href = _cross_link(self.context, ViewId.LINEAGE, record_id=lineage_id)
+        return (
+            f'<a class="trace-lineage-link" data-lineage-id="{_attr(lineage_id)}" '
+            f'href="{_attr(href)}">{escape(label)}</a>'
+        )
+
+    @staticmethod
+    def source_item(source_id: str, locator: str | None, translator: Translator) -> str:
+        target = public_locator(locator)
+        source = f'<span data-owner-text="true" translate="no">{escape(source_id)}</span>'
+        if target is not None:
+            return (
+                f'<a class="trace-source-link" data-source-id="{_attr(source_id)}" '
+                f'href="{_attr(target)}">{source}</a>'
+            )
+        return f'<span data-source-id="{_attr(source_id)}">{_missing_static(source, translator, "source")}</span>'
+
+    def sources(self, refs: Sequence[EvidenceSourceRef]) -> str:
+        if not refs:
+            return self.missing(self.translator.t("trace.sources"), "source")
+        items = "".join(
+            f"<li>{self.source_item(ref.source_id, ref.locator, self.translator)}</li>" for ref in refs
+        )
+        return f"<ul>{items}</ul>"
+
+    def artifact_name(self, artifact: EvidenceArtifact) -> str:
+        target = public_locator(artifact.locator)
+        name = _owner(artifact.name, self.translator, is_fixture=self.is_fixture)
+        if target is not None:
+            return f'<a class="trace-artifact-link" href="{_attr(target)}">{name}</a>'
+        return f"{name} — {self.missing(self.translator.t('trace.artifact_locator'), 'artifact')}"
+
+    def artifact_item(self, artifact: EvidenceArtifact) -> str:
+        status = artifact.verification_status.value
+        detail = _detail_link(self.context, artifact_id=artifact.artifact_id)
+        lineage_id = _pointer(artifact.raw, "lineage_id", "lineageId")
+        hash_value = (
+            _owner(artifact.hash, self.translator, is_fixture=self.is_fixture)
+            if artifact.hash
+            else self.missing(self.translator.t("trace.hash"), "artifact")
+        )
+        return (
+            f'<li data-trace-artifact="{_attr(artifact.artifact_id)}" '
+            f'data-verification-status="{_attr(status)}">{self.artifact_name(artifact)} · '
+            f'{escape(self.translator.t("trace.verification"))} {_label(artifact.verification_status, self.translator)} · '
+            f'{escape(self.translator.t("trace.hash"))} {hash_value} · '
+            f'<a class="trace-detail-link" href="{_attr(detail)}">{escape(self.translator.t("trace.details"))}</a> · '
+            f'{self.lineage_link(lineage_id, self.translator.t("trace.open_lineage_artifact"))}</li>'
+        )
+
+    def record_item(self, record: EvidenceRecord) -> str:
+        detail = _detail_link(self.context, record_id=record.record_id)
+        lineage_id = _pointer(record.raw, "lineage_id", "lineageId")
+        return (
+            f'<li data-trace-record="{_attr(record.record_id)}" '
+            f'data-evidence-kind="{record.evidence_kind.value}" '
+            f'data-evidence-status="{record.status.value}">'
+            f'<a class="trace-detail-link" href="{_attr(detail)}">'
+            f'{_owner(record.label, self.translator, is_fixture=self.is_fixture)}</a> · '
+            f'{_label(record.evidence_kind, self.translator)} · '
+            f'{escape(self.translator.t("trace.status"))} {_label(record.status, self.translator)} · '
+            f'{self.lineage_link(lineage_id, self.translator.t("trace.open_lineage_record"))}</li>'
+        )
+
+    def bounded(self, items: Sequence[str], total: int, noun_key: str) -> str:
+        noun = self.translator.t(noun_key)
+        if not items:
+            return self.missing(self.translator.t("trace.no_noun_published", noun=noun), noun_key)
+        more = ""
+        if total > len(items):
+            more_text = self.translator.t(
+                "trace.showing", shown=len(items), total=total, noun=noun
+            )
+            more = f"<p>{escape(more_text)}</p>"
+        return f"<ul>{''.join(items)}</ul>{more}"
+
+    def list_or_none(self, values: Sequence[str]) -> str:
+        if not values:
+            return escape(self.translator.t("trace.none_published"))
+        return "<ul>" + "".join(
+            f"<li>{_owner(value, self.translator, is_fixture=self.is_fixture)}</li>"
+            for value in values
+        ) + "</ul>"
+
+    def panel(self, kind: str, title: str, body: str, *, found: bool) -> str:
+        heading = f"trace-detail-{kind}-heading"
+        return (
+            f'<section class="evidence-trace-detail" data-trace-detail="{kind}" '
+            f'data-trace-found="{"true" if found else "false"}" aria-labelledby="{heading}">'
+            f'<h3 id="{heading}">{escape(title)}</h3>{body}</section>'
+        )
+
+    def not_published(self, kind: str, title: str, value: str) -> str:
+        body = f"<p>{self.translator.html('trace.not_published', value=value)}</p>"
+        return self.panel(kind, title, body, found=False)
+
+    @staticmethod
+    def fact(label: str, value: str) -> str:
+        return f"<div><dt>{escape(label)}</dt><dd>{value}</dd></div>"
+
+    def record_detail(self, record_id: str) -> str:
+        title = self.translator.t("trace.selected_record")
+        record = next((item for item in self.view.records if item.record_id == record_id), None)
+        if record is None:
+            return self.not_published("record", title, record_id)
+        lineage_id = _pointer(record.raw, "lineage_id", "lineageId")
+        artifacts = "".join(self.artifact_item(artifact) for artifact in record.artifacts)
+        artifact_cell = f"<ul>{artifacts}</ul>" if artifacts else self.missing(
+            self.translator.t("trace.artifacts"), "artifact"
+        )
+        body = (
+            "<dl>"
+            + self.fact(
+                self.translator.t("trace.record"),
+                f'{_owner(record.label, self.translator, is_fixture=self.is_fixture)} '
+                f'(<span data-owner-text="true" translate="no">{escape(record.record_id)}</span>)',
+            )
+            + self.fact(self.translator.t("trace.evidence_class"), _label(record.evidence_kind, self.translator))
+            + self.fact(self.translator.t("trace.status"), _label(record.status, self.translator))
+            + self.fact(self.translator.t("evidence.level"), _label(record.evidence_level, self.translator))
+            + self.fact(self.translator.t("trace.blockers"), self.list_or_none(record.blockers))
+            + self.fact(self.translator.t("trace.incompatibilities"), self.list_or_none(record.incompatibilities))
+            + self.fact(self.translator.t("trace.sources"), self.sources(record.source_refs))
+            + self.fact(self.translator.t("trace.artifacts"), artifact_cell)
+            + self.fact(
+                self.translator.t("trace.lineage"),
+                self.lineage_link(lineage_id, self.translator.t("trace.open_lineage_record")),
+            )
+            + "</dl>"
+        )
+        return self.panel("record", title, body, found=True)
+
+    def artifact_detail(self, artifact_id: str) -> str:
+        title = self.translator.t("trace.selected_artifact")
+        artifact = self.view.artifact(artifact_id)
+        if artifact is None:
+            return self.not_published("artifact", title, artifact_id)
+        lineage_id = _pointer(artifact.raw, "lineage_id", "lineageId")
+        body = (
+            "<dl>"
+            + self.fact(self.translator.t("trace.artifact"), self.artifact_name(artifact))
+            + self.fact(self.translator.t("evidence.verification_status"), _label(artifact.verification_status, self.translator))
+            + self.fact(self.translator.t("evidence.verification_detail"), _owner(artifact.verification_detail, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.hash"), _owner(artifact.hash, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.producer"), _owner(artifact.producer, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.runtime_version"), _owner(artifact.runtime_version, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.data_version"), _owner(artifact.data_version, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.sources"), self.sources(artifact.source_refs))
+            + self.fact(
+                self.translator.t("trace.lineage"),
+                self.lineage_link(lineage_id, self.translator.t("trace.open_lineage_artifact")),
+            )
+            + "</dl>"
+        )
+        return self.panel("artifact", title, body, found=True)
+
+    def source_detail(self, source_id: str) -> str:
+        title = self.translator.t("trace.selected_source")
+        ledger_ref = next((ref for ref in self.view.sources if ref.source_id == source_id), None)
+        envelope_ref = next((ref for ref in self.model.source_refs if ref.source_id == source_id), None)
+        if ledger_ref is None and envelope_ref is None:
+            return self.not_published("source", title, source_id)
+        refs = [ref for ref in (ledger_ref, envelope_ref) if ref is not None]
+        locator = next((ref.locator for ref in refs if ref.locator), None)
+        owner = next((ref.owner for ref in refs if ref.owner), None)
+        kind = next((ref.kind for ref in refs if ref.kind), None)
+        body = (
+            "<dl>"
+            + self.fact(self.translator.t("trace.source"), self.source_item(source_id, locator, self.translator))
+            + self.fact(self.translator.t("trace.owner"), _owner(owner, self.translator, is_fixture=self.is_fixture))
+            + self.fact(self.translator.t("trace.kind"), _owner(kind, self.translator, is_fixture=self.is_fixture))
+            + "</dl>"
+        )
+        return self.panel("source", title, body, found=True)
+
+    def selected_detail(self) -> str:
+        values = query_values(self.context)
+        panels: list[str] = []
+        if (record_id := _text(values.get("record_id"))) is not None:
+            panels.append(self.record_detail(record_id))
+        if (artifact_id := _text(values.get("artifact_id"))) is not None:
+            panels.append(self.artifact_detail(artifact_id))
+        if (source_id := _text(values.get("source_id"))) is not None:
+            panels.append(self.source_detail(source_id))
+        return "".join(panels)
+
+    def render(self) -> str:
+        ledger = self.view.ledger
+        conclusion_id = _pointer(ledger.raw, "conclusion_id", "conclusionId")
+        conclusion = (
+            _owner(ledger.conclusion, self.translator, is_fixture=self.is_fixture)
+            if ledger.conclusion
+            else self.missing(self.translator.t("trace.conclusion"), "conclusion")
+        )
+        records = [self.record_item(record) for record in ledger.records[:MAX_TRACE_ROWS]]
+        sources = [
+            f"<li>{self.source_item(ref.source_id, ref.locator, self.translator)}</li>"
+            for ref in ledger.sources[:MAX_TRACE_ROWS]
+        ]
+        artifacts = [self.artifact_item(item) for item in ledger.artifacts[:MAX_TRACE_ROWS]]
+        comparison = _cross_link(self.context, ViewId.EVIDENCE_COMPARISON)
+        grouping = _cross_link(self.context, ViewId.FAILURE_GROUPING)
+        t = self.translator.t
+        return (
+            f'<section class="evidence-trace" data-evidence-trace="{EVIDENCE_TRACE_HOOK}" '
+            'aria-labelledby="evidence-trace-heading">'
+            f'<h2 id="evidence-trace-heading">{escape(t("trace.title"))}</h2>'
+            f'<p>{escape(t("trace.intro"))}</p>'
+            '<ol class="trace-steps">'
+            f'<li data-trace-step="conclusion"><strong>{escape(t("trace.conclusion"))}</strong>: {conclusion} · '
+            f'{escape(t("trace.evidence_level"))} {_label(ledger.evidence_level, self.translator)} · '
+            f'{self.lineage_link(conclusion_id, t("trace.open_lineage_conclusion"))}</li>'
+            f'<li data-trace-step="evidence"><strong>{escape(t("trace.evidence_records"))}</strong>'
+            f'{self.bounded(records, len(ledger.records), "trace.evidence_records")}</li>'
+            f'<li data-trace-step="source"><strong>{escape(t("trace.sources"))}</strong>'
+            f'{self.bounded(sources, len(ledger.sources), "trace.sources")}</li>'
+            f'<li data-trace-step="artifact"><strong>{escape(t("trace.artifacts"))}</strong>'
+            f'{self.bounded(artifacts, len(ledger.artifacts), "trace.artifacts")}</li>'
+            '</ol>'
+            f'<p class="evidence-trace-related">{escape(t("trace.related_views"))}: '
+            f'<a href="{_attr(comparison)}">{escape(t("trace.evidence_comparison"))}</a> · '
+            f'<a href="{_attr(grouping)}">{escape(t("trace.derived_grouping"))}</a></p>'
+            f'{self.selected_detail()}</section>'
+        )
 
 
-def _sources(refs: Sequence[EvidenceSourceRef]) -> str:
-    if not refs:
-        return _missing("Sources", "source")
-    items = "".join(f"<li>{_source_item(ref.source_id, ref.locator)}</li>" for ref in refs)
-    return f"<ul>{items}</ul>"
-
-
-def _artifact_name(artifact: EvidenceArtifact) -> str:
-    target = public_locator(artifact.locator)
-    if target is not None:
-        return f'<a class="trace-artifact-link" href="{_attr(target)}">{escape(artifact.name)}</a>'
-    return f"{escape(artifact.name)} — {_missing('Artifact locator', 'artifact')}"
-
-
-def _artifact_item(artifact: EvidenceArtifact, context: QueryContext) -> str:
-    status = artifact.verification_status.value
-    detail = _detail_link(context, artifact_id=artifact.artifact_id)
-    lineage_id = _pointer(artifact.raw, "lineage_id", "lineageId")
+def _missing_static(value: str, translator: Translator, key: str) -> str:
     return (
-        f'<li data-trace-artifact="{_attr(artifact.artifact_id)}" '
-        f'data-verification-status="{_attr(status)}">{_artifact_name(artifact)} · '
-        f"verification {escape(status.replace('_', ' '))} · "
-        f"hash {escape(artifact.hash or MISSING)} · "
-        f'<a class="trace-detail-link" href="{_attr(detail)}">Details</a> · '
-        f"{_lineage_link(context, lineage_id, 'Open lineage for this artifact')}</li>"
+        f'<span class="trace-missing" data-trace-missing="{_attr(key)}">{value} — '
+        f'{escape(translator.t("evidence.missing_unconfirmed"))}</span>'
     )
 
 
-def _record_item(record: EvidenceRecord, context: QueryContext) -> str:
-    detail = _detail_link(context, record_id=record.record_id)
-    lineage_id = _pointer(record.raw, "lineage_id", "lineageId")
-    return (
-        f'<li data-trace-record="{_attr(record.record_id)}" '
-        f'data-evidence-kind="{record.evidence_kind.value}" '
-        f'data-evidence-status="{record.status.value}">'
-        f'<a class="trace-detail-link" href="{_attr(detail)}">{escape(record.label)}</a> · '
-        f"{escape(_KIND_LABELS[record.evidence_kind])} · "
-        f"status {escape(record.status.value.replace('_', ' '))} · "
-        f"{_lineage_link(context, lineage_id, 'Open lineage for this record')}</li>"
-    )
-
-
-def _bounded(items: Sequence[str], total: int, noun: str) -> str:
-    if not items:
-        return _missing(f"No {noun} published", noun)
-    more = (
-        f"<p>Showing {len(items)} of {total} {noun}; the Evidence Ledger lists the rest.</p>"
-        if total > len(items)
-        else ""
-    )
-    return f"<ul>{''.join(items)}</ul>{more}"
-
-
-def _list_or_none(values: Sequence[str]) -> str:
-    if not values:
-        return "None published"
-    return "<ul>" + "".join(f"<li>{escape(value)}</li>" for value in values) + "</ul>"
-
-
-def _detail_panel(kind: str, title: str, body: str, *, found: bool) -> str:
-    heading = f"trace-detail-{kind}-heading"
-    return (
-        f'<section class="evidence-trace-detail" data-trace-detail="{kind}" '
-        f'data-trace-found="{"true" if found else "false"}" aria-labelledby="{heading}">'
-        f'<h3 id="{heading}">{escape(title)}</h3>{body}</section>'
-    )
-
-
-def _not_published(kind: str, title: str, value: str) -> str:
-    body = (
-        f"<p>{escape(value)} is not published in this ledger scope — {MISSING}. This is not a "
-        "failure and not proof that the record does not exist.</p>"
-    )
-    return _detail_panel(kind, title, body, found=False)
-
-
-def _fact(label: str, value: str) -> str:
-    return f"<div><dt>{escape(label)}</dt><dd>{value}</dd></div>"
-
-
-def _record_detail(view: EvidenceViewModel, record_id: str, context: QueryContext) -> str:
-    title = "Selected evidence record"
-    record = next((item for item in view.records if item.record_id == record_id), None)
-    if record is None:
-        return _not_published("record", title, record_id)
-    lineage_id = _pointer(record.raw, "lineage_id", "lineageId")
-    artifacts = "".join(_artifact_item(artifact, context) for artifact in record.artifacts)
-    artifact_cell = f"<ul>{artifacts}</ul>" if artifacts else _missing("Artifacts", "artifact")
-    body = (
-        "<dl>"
-        + _fact("Record", f"{escape(record.label)} ({escape(record.record_id)})")
-        + _fact("Evidence class", escape(_KIND_LABELS[record.evidence_kind]))
-        + _fact("Status", escape(record.status.value.replace("_", " ")))
-        + _fact("Evidence level", escape(record.evidence_level.value.replace("_", " ")))
-        + _fact("Blockers", _list_or_none(record.blockers))
-        + _fact("Incompatibilities", _list_or_none(record.incompatibilities))
-        + _fact("Sources", _sources(record.source_refs))
-        + _fact("Artifacts", artifact_cell)
-        + _fact("Lineage", _lineage_link(context, lineage_id, "Open lineage for this record"))
-        + "</dl>"
-    )
-    return _detail_panel("record", title, body, found=True)
-
-
-def _artifact_detail(view: EvidenceViewModel, artifact_id: str, context: QueryContext) -> str:
-    title = "Selected artifact"
-    artifact = view.artifact(artifact_id)
-    if artifact is None:
-        return _not_published("artifact", title, artifact_id)
-    lineage_id = _pointer(artifact.raw, "lineage_id", "lineageId")
-    body = (
-        "<dl>"
-        + _fact("Artifact", _artifact_name(artifact))
-        + _fact("Verification status", escape(artifact.verification_status.value.replace("_", " ")))
-        + _fact("Verification detail", escape(artifact.verification_detail or MISSING))
-        + _fact("Hash", escape(artifact.hash or MISSING))
-        + _fact("Producer", escape(artifact.producer or MISSING))
-        + _fact("Runtime version", escape(artifact.runtime_version or MISSING))
-        + _fact("Data version", escape(artifact.data_version or MISSING))
-        + _fact("Sources", _sources(artifact.source_refs))
-        + _fact("Lineage", _lineage_link(context, lineage_id, "Open lineage for this artifact"))
-        + "</dl>"
-    )
-    return _detail_panel("artifact", title, body, found=True)
-
-
-def _source_detail(view: EvidenceViewModel, model: ManagerReadModel, source_id: str) -> str:
-    title = "Selected source"
-    ledger_ref = next((ref for ref in view.sources if ref.source_id == source_id), None)
-    envelope_ref = next((ref for ref in model.source_refs if ref.source_id == source_id), None)
-    if ledger_ref is None and envelope_ref is None:
-        return _not_published("source", title, source_id)
-    # The ledger's own reference wins; the envelope reference only fills what it left out.
-    refs = [ref for ref in (ledger_ref, envelope_ref) if ref is not None]
-    locator = next((ref.locator for ref in refs if ref.locator), None)
-    owner = next((ref.owner for ref in refs if ref.owner), None)
-    kind = next((ref.kind for ref in refs if ref.kind), None)
-    body = (
-        "<dl>"
-        + _fact("Source", _source_item(source_id, locator))
-        + _fact("Owner", escape(owner or MISSING))
-        + _fact("Kind", escape(kind or MISSING))
-        + "</dl>"
-    )
-    return _detail_panel("source", title, body, found=True)
-
-
-def _selected_detail(
-    view: EvidenceViewModel, model: ManagerReadModel, context: QueryContext
+def render_evidence_trace(
+    model: ManagerReadModel,
+    *,
+    query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
-    values = query_values(context)
-    panels: list[str] = []
-    if (record_id := _text(values.get("record_id"))) is not None:
-        panels.append(_record_detail(view, record_id, context))
-    if (artifact_id := _text(values.get("artifact_id"))) is not None:
-        panels.append(_artifact_detail(view, artifact_id, context))
-    if (source_id := _text(values.get("source_id"))) is not None:
-        panels.append(_source_detail(view, model, source_id))
-    return "".join(panels)
-
-
-def render_evidence_trace(model: ManagerReadModel, *, query_context: QueryContext = None) -> str:
-    """Render the trace and any selected-detail panel for one already-read Evidence envelope."""
+    """Render the trace and selected-detail panels from one Evidence envelope."""
 
     view = EvidenceViewModel.from_read_model(model)
-    ledger = view.ledger
-    conclusion_id = _pointer(ledger.raw, "conclusion_id", "conclusionId")
-    conclusion = (
-        escape(ledger.conclusion)
-        if ledger.conclusion
-        else _missing("Conclusion", "conclusion")
-    )
-    records = [_record_item(record, query_context) for record in ledger.records[:MAX_TRACE_ROWS]]
-    sources = [
-        f"<li>{_source_item(ref.source_id, ref.locator)}</li>"
-        for ref in ledger.sources[:MAX_TRACE_ROWS]
-    ]
-    artifacts = [_artifact_item(item, query_context) for item in ledger.artifacts[:MAX_TRACE_ROWS]]
-    comparison = _cross_link(query_context, ViewId.EVIDENCE_COMPARISON)
-    grouping = _cross_link(query_context, ViewId.FAILURE_GROUPING)
-    return (
-        f'<section class="evidence-trace" data-evidence-trace="{EVIDENCE_TRACE_HOOK}" '
-        'aria-labelledby="evidence-trace-heading">'
-        '<h2 id="evidence-trace-heading">Conclusion → evidence → source trace / '
-        '<span lang="zh-CN">结论 → 证据 → 来源追溯</span></h2>'
-        "<p>Each step links only to what the owner published. A step that is not published is "
-        f"shown as {MISSING}; that is not a failure and not proof of absence.</p>"
-        '<ol class="trace-steps">'
-        f'<li data-trace-step="conclusion"><strong>Conclusion</strong>: {conclusion} · '
-        f"evidence level {escape(ledger.evidence_level.value.replace('_', ' '))} · "
-        f"{_lineage_link(query_context, conclusion_id, 'Open lineage from this conclusion')}</li>"
-        '<li data-trace-step="evidence"><strong>Evidence records</strong>'
-        f"{_bounded(records, len(ledger.records), 'evidence records')}</li>"
-        '<li data-trace-step="source"><strong>Sources</strong>'
-        f"{_bounded(sources, len(ledger.sources), 'sources')}</li>"
-        '<li data-trace-step="artifact"><strong>Artifacts</strong>'
-        f"{_bounded(artifacts, len(ledger.artifacts), 'artifacts')}</li>"
-        "</ol>"
-        '<p class="evidence-trace-related">Related views: '
-        f'<a href="{_attr(comparison)}">Evidence comparison</a> · '
-        f'<a href="{_attr(grouping)}">Derived failure grouping</a></p>'
-        f"{_selected_detail(view, model, query_context)}</section>"
-    )
+    return _TraceRenderer(
+        view,
+        context=query_context,
+        translator=page_translator(translator),
+    ).render()
 
 
 __all__ = ["EVIDENCE_TRACE_HOOK", "MAX_TRACE_ROWS", "MISSING", "render_evidence_trace"]
