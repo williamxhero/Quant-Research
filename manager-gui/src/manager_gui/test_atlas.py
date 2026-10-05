@@ -13,6 +13,15 @@ from manager_gui import (
     fixture_provider,
 )
 from manager_gui.models import JSONValue
+from manager_gui.testing.i18n import (
+    assert_accessible,
+    assert_dom_equivalent,
+    assert_enum_vocabulary,
+    assert_lang_propagation,
+    assert_language_text,
+    assert_owner_text_escaped,
+    assert_pseudo_localized,
+)
 from manager_gui.web.atlas import (
     LIFECYCLE_SPINE,
     AtlasFilters,
@@ -20,9 +29,10 @@ from manager_gui.web.atlas import (
     atlas_link,
     render_atlas,
 )
+from manager_gui.web.i18n import Locale, Translator
 
 
-def _complete_model() -> ManagerReadModel:
+def _complete_model(locale: Locale | str = Locale.EN) -> ManagerReadModel:
     source = SourceReference(
         source_id="workspace-atlas",
         owner="strategy-workspace",
@@ -31,11 +41,32 @@ def _complete_model() -> ManagerReadModel:
         schema="workspace.atlas.v1",
         revision="r7",
     )
+    language = Locale(locale)
+    titles = {
+        Locale.EN: {
+            "campaign": "Campaign one",
+            "hypothesis": "Hypothesis one",
+            "candidate": "Candidate one",
+            "run": "Run one",
+            "gap": "Coverage gap",
+            "gap_detail": "More dates are needed.",
+            "research_gap": "Need replication evidence",
+        },
+        Locale.ZH_CN: {
+            "campaign": "研究活动一",
+            "hypothesis": "研究假设一",
+            "candidate": "候选对象一",
+            "run": "运行一",
+            "gap": "覆盖缺口",
+            "gap_detail": "需要更多日期。",
+            "research_gap": "需要复现证据",
+        },
+    }[language]
     records = [
         {
             "id": "campaign-1",
             "record_type": "campaign",
-            "title": "Campaign one",
+            "title": titles["campaign"],
             "state": "active",
             "changed_at": "2026-10-03T08:00:00Z",
             "source": "workspace-atlas",
@@ -43,17 +74,17 @@ def _complete_model() -> ManagerReadModel:
         {
             "id": "hypothesis-1",
             "record_type": "hypothesis",
-            "title": "Hypothesis one",
+            "title": titles["hypothesis"],
             "state": "open",
             "changed_at": "2026-10-02T08:00:00Z",
             "source": "workspace-atlas",
             "conclusion_state": "unresolved",
-            "research_gaps": ["Need replication evidence"],
+            "research_gaps": [titles["research_gap"]],
         },
         {
             "id": "candidate-1",
             "record_type": "candidate",
-            "title": "Candidate one",
+            "title": titles["candidate"],
             "state": "blocked",
             "changed_at": "2026-10-01T08:00:00Z",
             "source": "workspace-atlas",
@@ -63,7 +94,7 @@ def _complete_model() -> ManagerReadModel:
         {
             "id": "run-1",
             "record_type": "run",
-            "title": "Run one",
+            "title": titles["run"],
             "state": "completed",
             "changed_at": "2026-09-30T08:00:00Z",
             "source": "workspace-atlas",
@@ -79,7 +110,7 @@ def _complete_model() -> ManagerReadModel:
             {
                 "records": records,
                 "research_gaps": [
-                    {"id": "gap-1", "title": "Coverage gap", "detail": "More dates are needed."}
+                    {"id": "gap-1", "title": titles["gap"], "detail": titles["gap_detail"]}
                 ],
             },
         ),
@@ -114,7 +145,9 @@ def test_complete_atlas_preserves_lifecycle_and_explicit_sections() -> None:
     assert [record.record_id for record in view.frontier] == ["candidate-1"]
     assert len(view.research_gaps) == 2
 
-    document = render_atlas(view, query_context="/?fixture=partial&q=alpha")
+    document = render_atlas(
+        view, query_context="/?fixture=partial&q=alpha", translator=Translator(Locale.EN)
+    )
     for label in (
         "Campaign",
         "Hypothesis",
@@ -140,10 +173,10 @@ def test_empty_atlas_says_scope_has_no_records() -> None:
     view = AtlasViewModel.from_read_model(model)
 
     assert view.records == ()
-    document = render_atlas(view)
+    document = render_atlas(view, translator=Translator(Locale.EN))
     assert 'data-status="missing"' in document
     assert 'data-display-state="empty"' in document
-    assert "No records are present in this Atlas scope." in document
+    assert "No records are present in this scope." in document
     assert "research does not exist" not in document.lower()
 
 
@@ -153,7 +186,9 @@ def test_partial_atlas_keeps_available_records_and_context() -> None:
 
     assert view.read_model.availability.complete is False
     assert [record.record_id for record in view.records] == ["campaign-fixture-1"]
-    document = render_atlas(view, query_context="/?fixture=partial&q=campaign")
+    document = render_atlas(
+        view, query_context="/?fixture=partial&q=campaign", translator=Translator(Locale.EN)
+    )
     assert 'data-display-state="partial"' in document
     assert "Fixture campaign" in document
     assert "fixture-partial-v0" in document
@@ -162,7 +197,9 @@ def test_partial_atlas_keeps_available_records_and_context() -> None:
 
 def test_blocked_atlas_uses_shared_status_semantics_without_fake_empty_copy() -> None:
     model = fixture_provider("blocked").read("atlas")
-    document = render_atlas(AtlasViewModel.from_read_model(model))
+    document = render_atlas(
+        AtlasViewModel.from_read_model(model), translator=Translator(Locale.EN)
+    )
 
     assert 'data-status="blocked"' in document
     assert 'data-display-state="error"' in document
@@ -186,7 +223,9 @@ def test_filters_and_links_are_stable_and_preserve_query_context() -> None:
         query_context="/?q=alpha&fixture=partial",
     ) == atlas_link("candidate/1", query_context="/?fixture=partial&q=alpha")
 
-    document = render_atlas(view, query_context="/?fixture=partial&q=alpha")
+    document = render_atlas(
+        view, query_context="/?fixture=partial&q=alpha", translator=Translator(Locale.EN)
+    )
     assert 'name="record_type"' in document
     assert 'name="state"' in document
     assert 'name="date"' in document
@@ -196,3 +235,78 @@ def test_filters_and_links_are_stable_and_preserve_query_context() -> None:
         'href="/?view=atlas&amp;fixture=partial&amp;q=alpha&amp;record_type=candidate'
         '&amp;state=blocked&amp;date=2026-10-01&amp;record_id=candidate-1"' in document
     )
+
+
+def test_atlas_localizes_page_copy_and_preserves_language_query_state() -> None:
+    zh_context = "/?view=atlas&fixture=complete&panel=events&q=alpha"
+    en_context = zh_context + "&lang=en"
+    zh_model = AtlasViewModel.from_read_model(_complete_model(Locale.ZH_CN), recent_limit=None)
+    en_model = AtlasViewModel.from_read_model(_complete_model(Locale.EN), recent_limit=None)
+    zh = render_atlas(zh_model, query_context=zh_context, translator=Translator(strict=True))
+    en = render_atlas(
+        en_model, query_context=en_context, translator=Translator(Locale.EN, strict=True)
+    )
+
+    assert "研究总览" in zh
+    assert "研究活动一" in zh
+    assert "研究生命周期" in zh
+    assert "Recently changed" not in zh
+    assert "Atlas overview" in en
+    assert "Campaign one" in en
+    assert "Research lifecycle" in en
+    assert "研究总览" not in en
+    assert 'data-record-id="campaign-1"' in zh and 'data-record-id="campaign-1"' in en
+    assert 'data-record-type="campaign"' in zh and 'data-record-type="campaign"' in en
+    assert_enum_vocabulary("atlas.lifecycle", LIFECYCLE_SPINE)
+    assert_enum_vocabulary(
+        "atlas.state",
+        (
+            "active",
+            "open",
+            "blocked",
+            "ready",
+            "completed",
+            "recorded",
+            "pending",
+            "planned",
+            "unresolved",
+            "unknown",
+            "missing",
+            "unavailable",
+            "api_unavailable",
+        ),
+    )
+
+    assert_dom_equivalent(zh, en)
+    assert_language_text(zh, Locale.ZH_CN)
+    assert_language_text(en, Locale.EN)
+    assert_lang_propagation(zh, None, source_url=zh_context)
+    assert_lang_propagation(en, Locale.EN, source_url=en_context)
+    assert_accessible(zh)
+    assert_accessible(en)
+    assert_pseudo_localized(
+        render_atlas(
+            zh_model,
+            query_context=zh_context,
+            translator=Translator(pseudo=True, strict=True),
+        )
+    )
+
+
+def test_atlas_owner_title_is_escaped_once_and_remains_verbatim() -> None:
+    owner_title = 'Owner <title> & "quoted" {x} 中文'
+    model = ManagerReadModel(
+        data=cast(
+            JSONValue,
+            {"records": [{"id": "owner-record", "record_type": "campaign", "title": owner_title}]},
+        ),
+        source_refs=(),
+        as_of=None,
+        snapshot_token=None,
+        derivation=Derivation(kind="direct", version="v1"),
+        availability=Availability(status=ReadModelStatus.KNOWN, complete=True),
+    )
+    markup = render_atlas(model, translator=Translator(strict=True))
+
+    assert_owner_text_escaped(markup, owner_title)
+    assert 'data-record-id="owner-record"' in markup

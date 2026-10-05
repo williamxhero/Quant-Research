@@ -18,14 +18,14 @@ from collections.abc import Mapping
 from ..translator import M
 from . import register
 
-
 ENTRIES: Mapping[str, M] = {
     # Atlas page chrome and context.
     "atlas.eyebrow": M("研究总览 · 只读", "Atlas overview · read-only"),
     "atlas.title": M("{term:atlas}", "{term:atlas}"),
     "atlas.intro": M(
         "从 {start} 到 {end} 导航研究生命周期。计数只描述已记录对象，不表示成功、排名或建议。",
-        "Navigate the research lifecycle from {start} through {end}. Counts describe recorded objects only; they do not establish success, ranking, or advice.",
+        "Navigate the research lifecycle from {start} through {end}. "
+        "Counts describe recorded objects only; they do not establish success, ranking, or advice.",
     ),
     "atlas.observed": M("截至时间", "Observed"),
     "atlas.snapshot": M("快照", "Snapshot"),
@@ -36,7 +36,6 @@ ENTRIES: Mapping[str, M] = {
     "atlas.lifecycle.other": M("其他记录类型", "Other record types"),
     "atlas.lifecycle.empty": M("此生命周期范围中没有记录。", "No records in this lifecycle scope."),
     "atlas.count.records": M("{n} 条记录", {"one": "{n} record", "other": "{n} records"}),
-    "atlas.empty_scope": M("此研究总览范围中没有记录。", "No records are present in this Atlas scope."),
     "atlas.section.status_groups": M("状态分组", "Status groups"),
     "atlas.section.recently_changed": M("最近变更", "Recently changed"),
     "atlas.section.blocked_or_unavailable": M("已阻塞或不可用", "Blocked or unavailable"),
@@ -50,7 +49,7 @@ ENTRIES: Mapping[str, M] = {
     "atlas.filters.date": M("日期", "Date"),
     "atlas.filters.source": M("来源", "Source"),
     "atlas.filters.availability": M("可用性", "Availability"),
-    "atlas.filters.date_placeholder": M("YYYY-MM-DD", "YYYY-MM-DD"),
+    "atlas.filters.date_placeholder": M("年-月-日", "YYYY-MM-DD"),
     "atlas.filters.all": M("全部", "All"),
     "atlas.filters.apply": M("应用筛选", "Apply filters"),
     "atlas.filters.clear": M("清除", "Clear"),
@@ -63,6 +62,8 @@ ENTRIES: Mapping[str, M] = {
     "label.atlas.lifecycle.qualification": M("{term:qualification}", "{term:qualification}"),
     "label.atlas.lifecycle.replication": M("{term:replication}", "{term:replication}"),
     "label.atlas.lifecycle.revalidation": M("{term:revalidation}", "{term:revalidation}"),
+    "label.atlas.lifecycle.study": M("研究", "Study"),
+    "label.atlas.lifecycle.strategy_family": M("{term:strategy_family}", "{term:strategy_family}"),
     "label.atlas.state.active": M("活跃", "Active"),
     "label.atlas.state.open": M("开放", "Open"),
     "label.atlas.state.blocked": M("已阻塞", "Blocked"),
@@ -71,6 +72,11 @@ ENTRIES: Mapping[str, M] = {
     "label.atlas.state.recorded": M("已记录", "Recorded"),
     "label.atlas.state.pending": M("待处理", "Pending"),
     "label.atlas.state.planned": M("已计划", "Planned"),
+    "label.atlas.state.unresolved": M("未解决", "Unresolved"),
+    "label.atlas.state.unknown": M("未知", "Unknown"),
+    "label.atlas.state.missing": M("未记录", "Missing"),
+    "label.atlas.state.unavailable": M("不可用", "Unavailable"),
+    "label.atlas.state.api_unavailable": M("API 不可用", "API unavailable"),
     # Research Story chrome, modes, chapters and closed vocabularies.
     "story.eyebrow": M("研究故事", "Research Story"),
     "story.title": M("研究故事", "Research Story"),
@@ -92,7 +98,7 @@ ENTRIES: Mapping[str, M] = {
     "label.story.evidence_state.blocked": M("已阻塞", "Blocked"),
     "label.story.evidence_state.stale": M("已过时", "Stale"),
     "label.story.evidence_state.incomparable": M("不可比较", "Incomparable"),
-    "label.story.chapter.intent": M("意图 / 目的", "Intent / purpose"),
+    "label.story.chapter.intent": M("意图与目的", "Intent / purpose"),
     "label.story.chapter.initial_hypothesis": M("初始研究假设", "Initial hypothesis"),
     "label.story.chapter.research_design": M("研究设计", "Research design"),
     "label.story.chapter.attempts": M("尝试 / 运行", "Attempts / runs"),
@@ -130,12 +136,16 @@ ENTRIES: Mapping[str, M] = {
         "来源事件时间和系统获知时间均不可用。",
         "Source event time and known-at time unavailable.",
     ),
-    "story.chapter.empty": M("本章节未记录研究材料。", "No research material recorded for this chapter."),
+    "story.chapter.empty": M(
+        "本章节未记录研究材料。", "No research material recorded for this chapter."
+    ),
     "story.evidence.empty": M(
         "未记录研究事实或证据入口。未记录 / 未确认。",
         "No research facts or evidence entries are recorded. Missing / Unconfirmed.",
     ),
-    "story.evidence.caption": M("事实、证据状态和溯源信息", "Facts, evidence state, and provenance"),
+    "story.evidence.caption": M(
+        "事实、证据状态和溯源信息", "Facts, evidence state, and provenance"
+    ),
     "story.evidence.chapter_fact": M("章节 / 事实", "Chapter / fact"),
     "story.evidence.state": M("证据状态", "Evidence state"),
     "story.evidence.record_id": M("记录 ID", "Record ID"),
