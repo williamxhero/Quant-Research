@@ -13,6 +13,7 @@ from ..models import (
     ReadModelError,
     ReadModelStatus,
 )
+from .i18n import Translator, source_text
 
 
 class DisplayState(StrEnum):
@@ -70,18 +71,17 @@ _STATUS_LABELS = {
     ReadModelStatus.API_UNAVAILABLE: "API unavailable",
 }
 
-# Chinese labels are deliberately kept beside the machine status vocabulary.  They
-# are an accessibility aid, not a second status taxonomy or a translation of the
-# source envelope.
+# The Chinese vocabulary is frozen by #655/#662.  These values are retained for
+# compatibility helpers; localized rendering reads the same values from the catalog.
 _STATUS_LABELS_ZH = {
-    ReadModelStatus.KNOWN: "已确认",
-    ReadModelStatus.DERIVED: "已推导",
-    ReadModelStatus.INTERPRETED: "已解释",
+    ReadModelStatus.KNOWN: "已记录",
+    ReadModelStatus.DERIVED: "已派生",
+    ReadModelStatus.INTERPRETED: "已解读",
     ReadModelStatus.MISSING: "未记录",
-    ReadModelStatus.BLOCKED: "已阻断",
-    ReadModelStatus.STALE: "已过期",
+    ReadModelStatus.BLOCKED: "已阻塞",
+    ReadModelStatus.STALE: "已过时",
     ReadModelStatus.INCOMPARABLE: "不可比较",
-    ReadModelStatus.INTEGRITY_FAILURE: "完整性失败",
+    ReadModelStatus.INTEGRITY_FAILURE: "完整性校验失败",
     ReadModelStatus.API_UNAVAILABLE: "API 不可用",
 }
 
@@ -114,7 +114,33 @@ _OPERATIONAL_STATE_TONES = {
 }
 
 
-def describe_status(status: ReadModelStatus | str) -> StatusDescriptor:
+def _status_label(status: ReadModelStatus, translator: Translator | None) -> str:
+    if translator is None:
+        return _STATUS_LABELS[status]
+    return translator.t(f"label.status.{status.value}")
+
+
+def _status_explanation(status: ReadModelStatus, translator: Translator | None) -> str:
+    if translator is None:
+        return STATUS_SEMANTICS[status]
+    return translator.t(f"status.explanation.{status.value}")
+
+
+def _display_label(state: DisplayState, translator: Translator | None) -> str:
+    if translator is None:
+        return DISPLAY_STATE_LABELS[state]
+    return translator.t(f"label.display_state.{state.value}")
+
+
+def _display_copy(state: DisplayState, translator: Translator | None) -> str:
+    if translator is None:
+        return _OPERATIONAL_STATE_COPY[state]
+    return translator.t(f"status.operational.{state.value}")
+
+
+def describe_status(
+    status: ReadModelStatus | str, *, translator: Translator | None = None
+) -> StatusDescriptor:
     """Return stable copy suitable for both server HTML and future clients."""
 
     try:
@@ -123,9 +149,9 @@ def describe_status(status: ReadModelStatus | str) -> StatusDescriptor:
         raise ValueError(f"unknown Manager GUI status: {status!r}") from exc
     return StatusDescriptor(
         status=selected,
-        label=_STATUS_LABELS[selected],
+        label=_status_label(selected, translator),
         tone=_STATUS_TONES[selected],
-        explanation=STATUS_SEMANTICS[selected],
+        explanation=_status_explanation(selected, translator),
     )
 
 
@@ -164,22 +190,38 @@ def render_operational_state(
     state: DisplayState | str,
     *,
     detail: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
-    """Render loading/empty/partial/error states without inventing a source status."""
+    """Render an operational state, keeping optional owner detail as source text."""
 
     selected = DisplayState(state)
-    label = DISPLAY_STATE_LABELS[selected]
-    label_zh = DISPLAY_STATE_LABELS_ZH[selected]
     tone = _OPERATIONAL_STATE_TONES[selected]
-    copy = detail or _OPERATIONAL_STATE_COPY[selected]
+    label = _display_label(selected, translator)
+    copy = _display_copy(selected, translator)
     live = ' aria-live="polite"' if selected is DisplayState.LOADING else ""
+    if translator is None:
+        label_zh = DISPLAY_STATE_LABELS_ZH[selected]
+        return (
+            f'<section class="status-block tone-{tone} operational-state" '
+            f'data-display-state="{selected.value}" data-display-state-label-zh="{label_zh}"{live}>'
+            f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
+            f'<span class="status-label">{escape(label)}</span>'
+            f'<span class="status-label-zh" lang="zh-CN">{escape(label_zh)}</span></div>'
+            f"<h2>{escape(copy if detail is None else detail)}</h2>"
+            f"<p>{escape(copy)}</p></section>"
+        )
+    source = (
+        f'<p class="status-source-note"><strong>{escape(translator.t("status.source_note"))}:</strong> '
+        f"{source_text(detail)}</p>"
+        if detail is not None
+        else ""
+    )
     return (
         f'<section class="status-block tone-{tone} operational-state" '
-        f'data-display-state="{selected.value}" data-display-state-label-zh="{label_zh}"{live}>'
+        f'data-display-state="{selected.value}"{live}>'
         f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
-        f'<span class="status-label">{escape(label)}</span>'
-        f'<span class="status-label-zh" lang="zh-CN">{escape(label_zh)}</span></div>'
-        f"<h2>{escape(copy)}</h2></section>"
+        f'<span class="status-label">{escape(label)}</span></div>'
+        f"<h2>{escape(label)}</h2><p>{escape(copy)}</p>{source}</section>"
     )
 
 
@@ -189,14 +231,9 @@ def render_common_state(
     reason: str | None = None,
     complete: bool | None = None,
     errors: Sequence[ReadModelError] = (),
+    translator: Translator | None = None,
 ) -> str:
-    """Render the shared state vocabulary used by every page hook.
-
-    ``DisplayState`` values (including ``loading``) use the operational renderer;
-    read-model statuses and envelopes use the provenance-preserving renderer.
-    The helper gives future S6 integrations one seam without introducing a
-    page-specific state component.
-    """
+    """Render the shared state vocabulary used by every page hook."""
 
     if isinstance(state_or_model, ManagerReadModel):
         return render_status_block(
@@ -204,17 +241,21 @@ def render_common_state(
             reason=reason,
             complete=complete,
             errors=errors,
+            translator=translator,
         )
     if isinstance(state_or_model, DisplayState):
-        return render_operational_state(state_or_model, detail=reason)
+        return render_operational_state(state_or_model, detail=reason, translator=translator)
     try:
-        return render_operational_state(DisplayState(state_or_model), detail=reason)
+        return render_operational_state(
+            DisplayState(state_or_model), detail=reason, translator=translator
+        )
     except ValueError:
         return render_status_block(
             ReadModelStatus(state_or_model),
             reason=reason,
             complete=complete,
             errors=errors,
+            translator=translator,
         )
 
 
@@ -224,12 +265,9 @@ def render_status_block(
     reason: str | None = None,
     complete: bool | None = None,
     errors: Sequence[ReadModelError] = (),
+    translator: Translator | None = None,
 ) -> str:
-    """Render one accessible status block for any read-model surface.
-
-    Passing a ``ManagerReadModel`` is the common path.  Passing a status keeps
-    the renderer useful for loading placeholders and future page-local states.
-    """
+    """Render one accessible status block while preserving owner reason verbatim."""
 
     if isinstance(status_or_model, ManagerReadModel):
         model = status_or_model
@@ -250,7 +288,7 @@ def render_status_block(
                 ReadModelStatus.API_UNAVAILABLE,
             }
 
-    descriptor = describe_status(status)
+    descriptor = describe_status(status, translator=translator)
     if model is not None:
         state = display_state_for(model)
     elif status is ReadModelStatus.MISSING:
@@ -267,39 +305,59 @@ def render_status_block(
         state = DisplayState.ERROR
     else:
         state = DisplayState.READY
-    reason_text = reason or descriptor.explanation
-    rendered_errors = "".join(
-        "".join(
-            (
-                "<li><strong>",
-                escape(error.code),
-                "</strong> ",
-                escape(error.message),
-                "</li>",
-            )
+
+    if translator is None:
+        reason_text = reason or descriptor.explanation
+        rendered_errors = "".join(
+            f"<li><strong>{escape(error.code)}</strong> {escape(error.message)}</li>"
+            for error in errors
         )
+        errors_markup = (
+            f'<ul class="status-errors" aria-label="Read-model limitations">{rendered_errors}</ul>'
+            if rendered_errors
+            else ""
+        )
+        return (
+            f'<section class="status-block tone-{descriptor.tone}" '
+            f'data-status="{descriptor.status.value}" '
+            f'data-status-label-zh="{escape(descriptor.label_zh, quote=True)}" '
+            f'data-display-state="{state.value}" '
+            f'data-display-state-label-zh="{escape(DISPLAY_STATE_LABELS_ZH[state], quote=True)}" '
+            f'aria-labelledby="status-heading-{descriptor.status.value}">'
+            f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
+            f'<span class="status-label">{escape(descriptor.label)}</span>'
+            f'<span class="status-label-zh" lang="zh-CN">{escape(descriptor.label_zh)}</span>'
+            f'<span class="display-state">{escape(DISPLAY_STATE_LABELS[state])} · '
+            f'<span lang="zh-CN">{escape(DISPLAY_STATE_LABELS_ZH[state])}</span></span></div>'
+            f'<h2 id="status-heading-{descriptor.status.value}">{escape(reason_text)}</h2>'
+            f"<p>{escape(descriptor.explanation)}</p>{errors_markup}</section>"
+        )
+
+    rendered_errors = "".join(
+        f"<li><strong>{escape(error.code)}</strong> {source_text(error.message)}</li>"
         for error in errors
     )
     errors_markup = (
-        f'<ul class="status-errors" aria-label="Read-model limitations">{rendered_errors}</ul>'
+        f'<ul class="status-errors" aria-label="{escape(translator.t("status.limitations"))}">'
+        f"{rendered_errors}</ul>"
         if rendered_errors
+        else ""
+    )
+    source_note = (
+        f'<p class="status-source-note"><strong>{escape(translator.t("status.source_note"))}:</strong> '
+        f"{source_text(reason)}</p>"
+        if reason is not None
         else ""
     )
     return (
         f'<section class="status-block tone-{descriptor.tone}" '
-        f'data-status="{descriptor.status.value}" '
-        f'data-status-label-zh="{escape(descriptor.label_zh, quote=True)}" '
-        f'data-display-state="{state.value}" '
-        f'data-display-state-label-zh="{escape(DISPLAY_STATE_LABELS_ZH[state], quote=True)}" '
+        f'data-status="{descriptor.status.value}" data-display-state="{state.value}" '
         f'aria-labelledby="status-heading-{descriptor.status.value}">'
         f'<div class="status-line"><span class="status-mark" aria-hidden="true"></span>'
         f'<span class="status-label">{escape(descriptor.label)}</span>'
-        f'<span class="status-label-zh" lang="zh-CN">{escape(descriptor.label_zh)}</span>'
-        f'<span class="display-state">{escape(DISPLAY_STATE_LABELS[state])} · '
-        f'<span lang="zh-CN">{escape(DISPLAY_STATE_LABELS_ZH[state])}</span></span></div>'
-        f'<h2 id="status-heading-{descriptor.status.value}">{escape(reason_text)}</h2>'
-        f"<p>{escape(descriptor.explanation)}</p>{errors_markup}"
-        "</section>"
+        f'<span class="display-state">{escape(_display_label(state, translator))}</span></div>'
+        f'<h2 id="status-heading-{descriptor.status.value}">{escape(descriptor.label)}</h2>'
+        f"<p>{escape(descriptor.explanation)}</p>{source_note}{errors_markup}</section>"
     )
 
 

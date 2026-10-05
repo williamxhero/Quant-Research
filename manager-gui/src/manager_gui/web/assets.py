@@ -6,6 +6,11 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
+
+from .i18n import Translator
+
 CSS = r"""
 :root {
   color-scheme: light;
@@ -26,6 +31,22 @@ CSS = r"""
   --shadow: 0 18px 42px rgb(28 48 52 / 8%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+
+:lang(zh-CN) {
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Inter, ui-sans-serif,
+    system-ui, sans-serif;
+}
+
+:lang(zh-CN) .eyebrow,
+:lang(zh-CN) .status-label,
+:lang(zh-CN) .display-state,
+:lang(zh-CN) .panel-kicker,
+:lang(zh-CN) .nav-short,
+:lang(zh-CN) .page-title,
+:lang(zh-CN) .panel-heading h2 {
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 * { box-sizing: border-box; }
@@ -113,6 +134,8 @@ a { color: inherit; }
 }
 .status-block h2 { max-width: 720px; margin: 0 0 7px; font-size: 18px; letter-spacing: -.02em; line-height: 1.35; }
 .status-block p { max-width: 760px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.status-source-note { margin-top: 12px !important; }
+.status-source-note strong { color: var(--ink); }
 .status-errors { margin: 14px 0 0; padding: 12px 12px 12px 28px; color: var(--danger); font-size: 12px;
   background: var(--danger-soft); border-radius: 4px; line-height: 1.55; }
 .tone-positive { border-left-color: var(--positive); }
@@ -202,8 +225,9 @@ a { color: inherit; }
 }
 """
 
-JS = r"""
+JS_TEMPLATE = r"""
 (() => {
+  const messages = __MANAGER_GUI_MESSAGES__;
   const links = [...document.querySelectorAll("[data-nav-link]")];
   const inspector = document.querySelector("#inspector");
   const drawer = document.querySelector("#event-drawer");
@@ -291,16 +315,20 @@ JS = r"""
     area.select();
     const copied = document.execCommand("copy");
     area.remove();
-    if (!copied) throw new Error("copy unavailable");
+    if (!copied) throw new Error();
+  }
+
+  function announce(key) {
+    if (copyStatus) copyStatus.textContent = messages[key] || "";
   }
 
   document.querySelectorAll("[data-copy-value]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
         await copyValue(button.dataset.copyValue || "");
-        if (copyStatus) copyStatus.textContent = "Copied opaque reference / 已复制不透明引用";
+        announce("copy_success");
       } catch (error) {
-        if (copyStatus) copyStatus.textContent = "Copy unavailable / 无法复制引用";
+        announce("copy_unavailable");
       }
     });
   });
@@ -342,7 +370,7 @@ JS = r"""
     button.addEventListener("click", () => {
       const payload = button.dataset.exportPayload;
       if (!payload) {
-        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+        announce("export_unavailable");
         return;
       }
       try {
@@ -354,9 +382,9 @@ JS = r"""
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
-        if (copyStatus) copyStatus.textContent = "Current view exported locally / 当前视图已导出到本地";
+        announce("export_success");
       } catch (error) {
-        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+        announce("export_unavailable");
       }
     });
   });
@@ -371,4 +399,45 @@ JS = r"""
 })();
 """
 
-__all__ = ["CSS", "JS"]
+JS_MESSAGE_KEYS = {
+    "copy_success": "client.copy_success",
+    "copy_unavailable": "client.copy_unavailable",
+    "export_success": "client.export_success",
+    "export_unavailable": "client.export_unavailable",
+}
+
+
+def js_messages(translator: Translator) -> dict[str, str]:
+    """Return the explicit client-message map for one request locale."""
+
+    return {name: translator.t(key) for name, key in JS_MESSAGE_KEYS.items()}
+
+
+def render_js(
+    messages: Mapping[str, str] | None = None, *, translator: Translator | None = None
+) -> str:
+    """Inject a JSON message map into static JS without interpolating user data.
+
+    ``app.py`` currently mounts the legacy ``JS`` constant.  T1 can call this
+    seam with ``js_messages(translator)`` when it mounts the per-request locale.
+    """
+
+    if messages is not None and translator is not None:
+        raise TypeError("pass messages or translator, not both")
+    selected = js_messages(translator) if translator is not None else dict(messages or {})
+    payload = json.dumps(selected, ensure_ascii=False, separators=(",", ":"))
+    payload = (
+        payload.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\\u2028", "\\u2028")
+        .replace("\\u2029", "\\u2029")
+    )
+    return JS_TEMPLATE.replace("__MANAGER_GUI_MESSAGES__", payload)
+
+
+# Keep the current shell contract static and safe; a locale-aware shell can use
+# ``render_js(translator=...)`` without changing the JavaScript source.
+JS = render_js()
+
+__all__ = ["CSS", "JS", "JS_MESSAGE_KEYS", "js_messages", "render_js"]

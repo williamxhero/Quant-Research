@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -1269,7 +1270,26 @@ def _link(context: QueryContext, route: str, **updates: object) -> str:
 
 
 def _truncate(text: str, limit: int = 26) -> str:
-    return text if len(text) <= limit else text[: limit - 1] + "…"
+    """Truncate by terminal display columns, not Python code-point count."""
+
+    if limit <= 0:
+        return ""
+
+    def width(value: str) -> int:
+        return sum(2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1 for char in value)
+
+    if width(text) <= limit:
+        return text
+    remaining = max(0, limit - 1)  # the ellipsis occupies one display column
+    result: list[str] = []
+    used = 0
+    for char in text:
+        char_width = 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+        if used + char_width > remaining:
+            break
+        result.append(char)
+        used += char_width
+    return "".join(result) + "…"
 
 
 def _render_sources(refs: Sequence[LineageSourceRef]) -> str:

@@ -76,6 +76,14 @@ class CatalogRegistry:
 
 
 REGISTRY = CatalogRegistry()
+# Shared shell catalogs are imported only after the registry exists.  Each module
+# owns one namespace and registration remains append-only and collision-checked.
+from . import client, interaction, status  # noqa: E402
+
+REGISTRY.register(status.ENTRIES)
+REGISTRY.register(interaction.ENTRIES)
+REGISTRY.register(client.ENTRIES)
+
 # A short public alias for callers that only need the read-only catalog mapping.
 CATALOG = REGISTRY.entries
 
