@@ -45,7 +45,7 @@ def test_complete_fixture_keeps_five_categories_and_required_entries_separate() 
     assert view.as_of == "2026-10-03T09:00:00Z"
     assert view.snapshot_token == "methodology-complete-v0"
 
-    document = render_methodology(view)
+    document = render_methodology(view, translator=Translator(Locale.EN))
     for label in (
         "Workflow / process",
         "Statistical protocol",
@@ -75,7 +75,7 @@ def test_superseded_method_is_explicit_and_not_collapsed_into_usage_or_validity(
     assert method.superseded_label == "Superseded"
     assert method.usage_count == 4
     assert method.validity_evidence == ()
-    rendered = render_methodology(view)
+    rendered = render_methodology(view, translator=Translator(Locale.EN))
     assert 'data-method-id="golden-genome-flow"' in rendered
     assert 'data-superseded="true"' in rendered
     assert "Superseded" in rendered
@@ -124,7 +124,7 @@ def test_missing_source_document_and_record_refs_are_not_invented() -> None:
     assert method.document_refs[0].available is False
     assert method.record_refs[0].available is False
 
-    rendered = render_methodology(model)
+    rendered = render_methodology(model, translator=Translator(Locale.EN))
     assert "unknown-source — Missing / Unconfirmed" in rendered
     assert "missing-document — Missing / Unconfirmed" in rendered
     assert "missing-record — Missing / Unconfirmed" in rendered
@@ -142,15 +142,17 @@ def test_empty_partial_stale_and_not_indexed_states_remain_distinct() -> None:
         ),
     }
     for state, markers in expected.items():
-        rendered = render_methodology(build_methodology_fixture(state))
+        rendered = render_methodology(
+            build_methodology_fixture(state), translator=Translator(Locale.EN)
+        )
         for marker in markers:
             assert marker in rendered
 
     assert "No methodology methods are recorded in this scope." in render_methodology(
-        build_methodology_fixture("empty")
+        build_methodology_fixture("empty"), translator=Translator(Locale.EN)
     )
     assert "The approved methodology document index is not indexed." in render_methodology(
-        build_methodology_fixture("not_indexed")
+        build_methodology_fixture("not_indexed"), translator=Translator(Locale.EN)
     )
     partial = MethodologyViewModel.from_read_model(build_methodology_fixture("partial"))
     assert partial.read_model.availability.complete is False
@@ -175,7 +177,9 @@ def test_provider_hook_reads_only_methodology_resource_and_preserves_snapshot() 
             return build_methodology_fixture("complete")
 
     provider = CountingProvider()
-    document = render_methodology_view(provider, snapshot_token="requested-snapshot")
+    document = render_methodology_view(
+        provider, snapshot_token="requested-snapshot", translator=Translator(Locale.EN)
+    )
 
     assert provider.calls == [("methodology", "requested-snapshot")]
     assert "G0" in document
@@ -187,7 +191,10 @@ def test_methodology_catalog_has_bilingual_entries_and_localizes_page_chrome() -
     zh = render_methodology(model, translator=Translator(Locale.ZH_CN))
     en = render_methodology(model, translator=Translator(Locale.EN))
 
-    assert Translator(Locale.ZH_CN, strict=True, catalog=ENTRIES).t("methodology.title") == "研究方法库"
+    assert (
+        Translator(Locale.ZH_CN, strict=True, catalog=ENTRIES).t("methodology.title")
+        == "研究方法库"
+    )
     assert "研究方法库" in zh
     assert "Methodology" in en
     assert "研究方法库 · 只读" in zh

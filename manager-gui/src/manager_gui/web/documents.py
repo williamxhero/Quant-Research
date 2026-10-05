@@ -42,6 +42,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog import l3_method_history as _l3_method_history_catalog
 from .navigation import PageWindow, context_link
 from .status import DisplayState, render_operational_state, render_status_block
 
@@ -430,10 +431,11 @@ class SourceDocumentsViewModel:
         translator: Translator | None = None,
     ) -> str:
         selected_translator = translator or Translator()
-        scope = self.scope or "All approved scopes"
+        fixture = _is_documents_fixture(self.read_model)
+        scope = self.scope or selected_translator.t("method_history.all_scopes")
         nav = "".join(
             f'<a class="document-scope-link" data-document-scope="{escape(selected, quote=True)}" '
-            f'href="{escape(_scope_url(base_path, query, selected), quote=True)}">{escape(selected)}</a>'
+            f'href="{escape(_scope_url(base_path, query, selected), quote=True)}">{escape(selected_translator.label("method_history.scope", selected))}</a>'
             for selected in DOCUMENT_SCOPES
         )
         window = PageWindow.from_query(query if query is not None else base_path, total=len(self.documents))
@@ -448,7 +450,7 @@ class SourceDocumentsViewModel:
             body = render_operational_state(
                 DisplayState.EMPTY if self.state is DocumentIndexState.MISSING else DisplayState.ERROR,
                 translator=selected_translator,
-                detail=_state_detail(self.state),
+                detail=_state_detail(self.state, selected_translator),
             )
         else:
             sections: list[str] = []
@@ -456,12 +458,18 @@ class SourceDocumentsViewModel:
                 documents = paged_categories[document_type]
                 if documents:
                     rows = "".join(
-                        _render_document(document, base_path=base_path, query=query)
+                        _render_document(
+                            document,
+                            base_path=base_path,
+                            query=query,
+                            translator=selected_translator,
+                            fixture=fixture,
+                        )
                         for document in documents
                     )
                     sections.append(
                         f'<section class="document-category" data-document-type="{document_type.value}" '
-                        f'aria-labelledby="documents-{document_type.value}"><h2 id="documents-{document_type.value}">{escape(document_type.value)}</h2>'
+                        f'aria-labelledby="documents-{document_type.value}"><h2 id="documents-{document_type.value}">{escape(selected_translator.label("documents.type", document_type.value))}</h2>'
                         f'<ul class="document-list">{rows}</ul></section>'
                     )
             body = "".join(sections)
@@ -476,37 +484,50 @@ class SourceDocumentsViewModel:
             for record_id, document_ids in self.reverse_citations.items()
         )
         reverse = (
-            f'<section class="document-reverse-citations"><h2>Reverse citations</h2><ul>{reverse_rows}</ul></section>'
+            f'<section class="document-reverse-citations"><h2>{escape(selected_translator.t("documents.reverse_title"))}</h2><ul>{reverse_rows}</ul></section>'
             if reverse_rows
             else ""
         )
         return (
             f'<section class="source-documents-page" data-integration-hook="source-documents-view" '
             f'data-document-index-state="{self.state.value}" data-document-scope="{escape(scope, quote=True)}">'
-            '<p class="eyebrow">Source Documents · approved index</p>'
-            '<h1 class="page-title" data-page-title tabindex="-1">Source Documents</h1>'
-            '<p class="page-intro">Index metadata and citations are shown without interpreting a document as an owner fact.</p>'
-            '<p class="boundary-note" data-boundary="document-interpretation"><strong>Document interpretation</strong> '
-            "includes plans, reports, retrospectives, future ideas, and external sources. These entries "
-            "remain distinct from canonical records and are never silently promoted.</p>"
-            f'<p class="context-line document-context"><strong>Scope</strong> {escape(scope)} · '
-            f'<strong>Index state</strong> {escape(self.state.value)}</p>'
-            f'<nav class="document-scope-nav" aria-label="Source Document fixture scopes">{nav}</nav>'
+            f'<p class="eyebrow">{escape(selected_translator.t("documents.eyebrow"))}</p>'
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("documents.title"))}</h1>'
+            f'<p class="page-intro">{escape(selected_translator.t("documents.intro"))}</p>'
+            f'<p class="boundary-note" data-boundary="document-interpretation">{selected_translator.html("documents.boundary")}</p>'
+            f'<p class="context-line document-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> {escape(scope)} · '
+            f'<strong>{escape(selected_translator.t("documents.index_state"))}</strong> {escape(selected_translator.label("documents.index_state", self.state.value))}</p>'
+            f'<nav class="document-scope-nav" aria-label="{escape(selected_translator.t("documents.scopes_aria"))}">{nav}</nav>'
             f"{render_status_block(self.read_model, translator=selected_translator)}"
-            f'<div class="document-index-state" data-state="{self.state.value}">{escape(_state_detail(self.state))}</div>'
-            f'{body}{reverse}{window.render(query if query is not None else base_path, view="source-documents")}</section>'
+            f'<div class="document-index-state" data-state="{self.state.value}">{escape(_state_detail(self.state, selected_translator))}</div>'
+            f'{body}{reverse}{window.render(query if query is not None else base_path, view="source-documents", translator=selected_translator)}</section>'
         )
 
 
-def _state_detail(state: DocumentIndexState) -> str:
-    return {
-        DocumentIndexState.READY: "The approved Source Document index is available.",
-        DocumentIndexState.MISSING: "The requested Source Document index is missing.",
-        DocumentIndexState.VERSION_CONFLICT: "Multiple versions share a document_id; no version is silently selected.",
-        DocumentIndexState.NOT_INDEXED: "No approved Source Document index entry is available for this scope.",
-        DocumentIndexState.API_UNAVAILABLE: "The approved Source Document API is unavailable; no private fallback is used.",
-        DocumentIndexState.BOUNDARY_BLOCKED: "A source locator is outside the approved directory boundary.",
-    }[state]
+def _is_documents_fixture(model: ManagerReadModel) -> bool:
+    return any(
+        source.owner == "manager-gui-fixture"
+        and source.kind == "source-document-index"
+        and source.schema == "manager-gui.source-documents-fixture.v0"
+        and source.revision == "v0"
+        and source.locator.startswith("fixture://manager-gui/source-documents/")
+        for source in model.source_refs
+    )
+
+
+def _document_fixture_text(translator: Translator, document: SourceDocument, field: str, *, fixture: bool) -> str:
+    if field == "title":
+        key = f"documents.fixture.{document.document_type.value.replace('-', '_')}.title"
+    else:
+        key = ""
+    if fixture and key in _l3_method_history_catalog.ENTRIES:
+        return translator.t(key, scope=document.scope or "")
+    value = document.title if field == "title" else None
+    return translator.source_text(value or document.document_id)
+
+
+def _state_detail(state: DocumentIndexState, translator: Translator) -> str:
+    return translator.t(f"documents.state.{state.value}")
 
 
 def _context_url(
@@ -524,34 +545,39 @@ def _render_document(
     *,
     base_path: str,
     query: Mapping[str, object] | str | None,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     locator = (
         f'<a class="document-source-link" href="{escape(document.source_locator, quote=True)}">{escape(document.source_locator)}</a>'
         if document.approved and document.source_locator
-        else '<span class="document-source-missing">Missing / Boundary blocked</span>'
+        else f'<span class="document-source-missing">{escape(translator.t("documents.boundary_blocked"))}</span>'
         if not document.approved
-        else '<span class="document-source-missing">Missing / Unconfirmed</span>'
+        else f'<span class="document-source-missing">{escape(translator.t("method_history.missing"))}</span>'
     )
     citations = " · ".join(
         f'<a class="document-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=record_id), quote=True)}">'
         f"{escape(record_id)}</a>"
         for record_id in document.record_citations
-    ) or "None recorded"
+    ) or translator.t("method_history.missing")
     reverse = " · ".join(
         f'<a class="document-reverse-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
         f"{escape(document_id)}</a>"
         for document_id in document.reverse_citations
-    ) or "None recorded"
+    ) or translator.t("method_history.missing")
+    missing = translator.t("method_history.missing")
+    title = _document_fixture_text(translator, document, "title", fixture=fixture)
+    document_type = translator.label("documents.type", document.document_type.value)
     return (
         f'<li class="source-document" data-document-id="{escape(document.document_id, quote=True)}">'
-        f'<h3>{escape(document.title or document.document_id)}</h3>'
-        f'<dl><div><dt>document_id</dt><dd>{escape(document.document_id)}</dd></div>'
-        f'<div><dt>type</dt><dd>{escape(document.document_type.value)}</dd></div>'
-        f'<div><dt>version</dt><dd>{escape(document.version or "Missing / Unconfirmed")}</dd></div>'
-        f'<div><dt>source locator</dt><dd>{locator}</dd></div>'
-        f'<div><dt>updated</dt><dd>{escape(document.updated_at or "Missing / Unconfirmed")}</dd></div>'
-        f'<div><dt>record citations</dt><dd>{citations}</dd></div>'
-        f'<div><dt>reverse citations</dt><dd>{reverse}</dd></div></dl></li>'
+        f'<h3>{title}</h3>'
+        f'<dl><div><dt>{escape(translator.t("documents.document_id"))}</dt><dd>{escape(document.document_id)}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.type"))}</dt><dd>{document_type}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.version"))}</dt><dd>{escape(document.version or missing)}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.locator"))}</dt><dd>{locator}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.updated"))}</dt><dd>{escape(document.updated_at or missing)}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.citations"))}</dt><dd>{citations}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.reverse_citations"))}</dt><dd>{reverse}</dd></div></dl></li>'
     )
 
 
