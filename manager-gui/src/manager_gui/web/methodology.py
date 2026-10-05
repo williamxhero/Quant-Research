@@ -32,6 +32,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog import l3_method_history as _l3_method_history_catalog  # noqa: F401
 from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -778,14 +779,54 @@ def _context_url(
     return context_link(query_context, view=view, **updates)
 
 
+def _is_methodology_fixture(model: ManagerReadModel) -> bool:
+    """Recognize only the deterministic fixture provenance for display localization."""
+
+    return any(
+        source.owner == "methodology-catalog"
+        and source.kind == "public-methodology-record"
+        and source.locator == "fixture://methodology/catalog"
+        and source.schema == "methodology.v0"
+        and source.revision == "fixture-v0"
+        for source in model.source_refs
+    )
+
+
+def _methodology_value(
+    translator: Translator,
+    key: str,
+    value: str | None,
+    *,
+    fixture: bool,
+) -> str:
+    """Translate an authored fixture value, otherwise preserve owner text."""
+
+    if value is None:
+        return translator.t("methodology.missing")
+    return translator.t(key) if fixture else translator.source_text(value)
+
+
+def _methodology_status(
+    translator: Translator, value: str | None, *, fixture: bool
+) -> str:
+    if value is None:
+        return translator.t("methodology.missing")
+    if fixture and value == "recorded":
+        return translator.t("label.methodology.evidence_status.recorded")
+    if fixture and value == "known":
+        return translator.t("label.methodology.evidence_status.known")
+    return translator.source_text(value)
+
+
 def _render_ref_list(
     title: str,
     refs: Sequence[MethodologySourceRef | MethodologyDocumentRef | MethodologyRecordRef],
     *,
+    translator: Translator,
     query_context: str | Mapping[str, object] | None = None,
 ) -> str:
     if not refs:
-        return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd>Missing / Unconfirmed</dd></div>'
+        return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd>{escape(translator.t("methodology.missing"))}</dd></div>'
     items: list[str] = []
     for ref in refs:
         if isinstance(ref, MethodologySourceRef):
