@@ -18,6 +18,7 @@ from html import escape
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
+from .i18n import Translator
 from .status import render_status_block
 
 
@@ -693,10 +694,15 @@ class ResearchStoryViewModel:
         )
 
     def render(
-        self, *, base_path: str = "/?view=stories", query: Mapping[str, object] | str | None = None
+        self,
+        *,
+        base_path: str = "/?view=stories",
+        query: Mapping[str, object] | str | None = None,
+        translator: Translator | None = None,
     ) -> str:
         """Render a mountable, accessible HTML fragment for the selected mode."""
 
+        selected_translator = translator or Translator()
         root_label = _root_label(self.root)
         mode_links = "".join(
             (
@@ -718,7 +724,7 @@ class ResearchStoryViewModel:
             f'<header class="research-story-header"><p class="eyebrow">Research Story</p>'
             f'<h1 class="page-title" data-page-title tabindex="-1">{escape(root_label)}</h1>{_render_root_context(self.root)}'
             f'<nav class="story-mode-nav" aria-label="Research Story reading mode">{mode_links}</nav></header>'
-            f"{render_status_block(self.model)}"
+            f"{render_status_block(self.model, translator=selected_translator)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'
             f"</section>"
         )
@@ -881,6 +887,7 @@ def render_research_story(
     mode: StoryMode | str = StoryMode.NARRATIVE,
     base_path: str = "/?view=stories",
     query: Mapping[str, object] | str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Integration hook for ``app.py`` and future shells.
 
@@ -891,7 +898,7 @@ def render_research_story(
     """
 
     return ResearchStoryViewModel.from_read_model(model, mode=mode).render(
-        base_path=base_path, query=query
+        base_path=base_path, query=query, translator=translator
     )
 
 

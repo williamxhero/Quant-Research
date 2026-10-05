@@ -31,6 +31,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import clear_filters_link
 from .status import (
     DisplayState,
@@ -1662,9 +1663,11 @@ def render_memory(
     *,
     query_context: QueryContext = None,
     memory_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a Memory catalog/detail fragment; the shared shell owns document chrome."""
 
+    selected_translator = translator or Translator()
     if isinstance(view_or_model, MemoryViewModel):
         view = view_or_model
     else:
@@ -1689,7 +1692,7 @@ def render_memory(
         f'<p class="memory-authority" data-memory-authority-label="{view.authority.value}"><strong>{escape("GUI Derived" if view.is_derived else "Formal Research Memory")}</strong> {escape(authority_copy)}</p>',
         f'<p class="context-line memory-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span>'
         f"<span><strong>Snapshot</strong> {escape(model.snapshot_token or 'Unavailable')}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>",
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     if view.is_derived:
         pieces.append(_render_derivation(model, sample_count=len(view.entries)))
@@ -1700,7 +1703,13 @@ def render_memory(
             else "No Research Memory entries are recorded in this scope. No published Research Memory entries are available in this snapshot."
         )
         if model.availability.status in {ReadModelStatus.MISSING, ReadModelStatus.KNOWN}:
-            pieces.append(render_operational_state(DisplayState.EMPTY, detail=detail))
+            pieces.append(
+                render_operational_state(
+                    DisplayState.EMPTY,
+                    translator=selected_translator,
+                    detail=detail,
+                )
+            )
         else:
             pieces.append(
                 f'<p class="memory-empty-not-determined" data-memory-empty-state="not-determined">'
@@ -1764,6 +1773,7 @@ def render_memory_view(
     query_context: QueryContext = None,
     memory_id: str | None = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """T3 integration hook: read and render Memory without shell logic."""
 
@@ -1776,6 +1786,7 @@ def render_memory_view(
             snapshot_token=snapshot_token,
         ),
         query_context=query_context,
+        translator=translator,
     )
 
 

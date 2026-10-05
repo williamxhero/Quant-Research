@@ -32,6 +32,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .status import render_status_block
 
 COMPARISON_RESOURCE = "genome_comparison"
@@ -551,9 +552,11 @@ def render_genome_comparison(
     view_or_model: ComparisonViewModel | ManagerReadModel,
     *,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a comparison result without replacing missing axes with defaults."""
 
+    selected_translator = translator or Translator()
     view = view_or_model if isinstance(view_or_model, ComparisonViewModel) else ComparisonViewModel.from_read_model(view_or_model)
     model = view.read_model
     comparison = view.comparison
@@ -597,6 +600,7 @@ def render_genome_comparison(
     incomparable_state = (
         render_status_block(
             ReadModelStatus.INCOMPARABLE,
+            translator=selected_translator,
             reason=comparison.reason or "The declared comparison axes are not complete or compatible.",
         )
         if comparison is not None
@@ -613,7 +617,7 @@ def render_genome_comparison(
             f'<p class="context-line comparison-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span></p>',
             f'<a class="comparison-context-link" href="{escape(comparison_href, quote=True)}">Stable comparison context</a>',
             _render_related_links(comparison, query_context),
-            render_status_block(model),
+            render_status_block(model, translator=selected_translator),
             incomparable_state,
             *fields,
             '</section>',
@@ -632,6 +636,7 @@ def render_genome_comparison_view(
     *,
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S2-T3 hook accepting either an approved provider or a read envelope."""
 
@@ -640,7 +645,9 @@ def render_genome_comparison_view(
         if isinstance(provider_or_model, ManagerReadModel)
         else comparison_view(provider_or_model, snapshot_token=snapshot_token)
     )
-    return render_genome_comparison(view, query_context=query_context)
+    return render_genome_comparison(
+        view, query_context=query_context, translator=translator
+    )
 
 
 render_comparison_view = render_genome_comparison_view

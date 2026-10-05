@@ -22,6 +22,7 @@ from manager_gui.web import (
     DisplayState,
     Locale,
     ManagerGUIApp,
+    Translator,
     create_server,
     display_state_for,
     render_operational_state,
@@ -31,10 +32,14 @@ from manager_gui.web import (
 from manager_gui.web.navigation import PageWindow, context_link
 from manager_gui.web.server import build_parser
 
+TRANSLATOR = Translator()
+
 
 def test_status_renderer_covers_every_read_model_status() -> None:
     for status in ReadModelStatus:
-        rendered = render_status_block(status, reason=f"reason-{status.value}")
+        rendered = render_status_block(
+            status, translator=TRANSLATOR, reason=f"reason-{status.value}"
+        )
 
         assert f'data-status="{status.value}"' in rendered
         assert f"reason-{status.value}" in rendered
@@ -43,11 +48,13 @@ def test_status_renderer_covers_every_read_model_status() -> None:
 
 def test_operational_renderer_keeps_loading_empty_partial_and_error_distinct() -> None:
     for state in DisplayState:
-        rendered = render_operational_state(state)
+        rendered = render_operational_state(state, translator=TRANSLATOR)
 
         assert f'data-display-state="{state.value}"' in rendered
-        assert state.value.title() in rendered
-    assert 'aria-live="polite"' in render_operational_state(DisplayState.LOADING)
+        assert 'class="status-label"' in rendered
+    assert 'aria-live="polite"' in render_operational_state(
+        DisplayState.LOADING, translator=TRANSLATOR
+    )
 
 
 def test_fixture_status_maps_to_distinct_display_states() -> None:

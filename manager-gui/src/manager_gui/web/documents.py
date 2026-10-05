@@ -41,6 +41,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import PageWindow, context_link
 from .status import DisplayState, render_operational_state, render_status_block
 
@@ -426,7 +427,9 @@ class SourceDocumentsViewModel:
         *,
         base_path: str = "/?view=source-documents",
         query: Mapping[str, object] | str | None = None,
+        translator: Translator | None = None,
     ) -> str:
+        selected_translator = translator or Translator()
         scope = self.scope or "All approved scopes"
         nav = "".join(
             f'<a class="document-scope-link" data-document-scope="{escape(selected, quote=True)}" '
@@ -444,6 +447,7 @@ class SourceDocumentsViewModel:
         if not paged_documents:
             body = render_operational_state(
                 DisplayState.EMPTY if self.state is DocumentIndexState.MISSING else DisplayState.ERROR,
+                translator=selected_translator,
                 detail=_state_detail(self.state),
             )
         else:
@@ -488,7 +492,7 @@ class SourceDocumentsViewModel:
             f'<p class="context-line document-context"><strong>Scope</strong> {escape(scope)} · '
             f'<strong>Index state</strong> {escape(self.state.value)}</p>'
             f'<nav class="document-scope-nav" aria-label="Source Document fixture scopes">{nav}</nav>'
-            f"{render_status_block(self.read_model)}"
+            f"{render_status_block(self.read_model, translator=selected_translator)}"
             f'<div class="document-index-state" data-state="{self.state.value}">{escape(_state_detail(self.state))}</div>'
             f'{body}{reverse}{window.render(query if query is not None else base_path, view="source-documents")}</section>'
         )
@@ -582,6 +586,7 @@ def render_source_documents(
     boundary: ApprovedDirectoryBoundary | None = None,
     base_path: str = "/?view=source-documents",
     query: Mapping[str, object] | str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render an already-read Source Document envelope without a second read."""
 
@@ -590,7 +595,7 @@ def render_source_documents(
         scope=scope,
         approved_directories=approved_directories,
         boundary=boundary,
-    ).render(base_path=base_path, query=query)
+    ).render(base_path=base_path, query=query, translator=translator)
 
 
 def render_source_documents_view(
@@ -602,6 +607,7 @@ def render_source_documents_view(
     base_path: str = "/?view=source-documents",
     query: Mapping[str, object] | str | None = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S5-T3 hook accepting a provider seam or a cached read model."""
 
@@ -617,6 +623,7 @@ def render_source_documents_view(
         boundary=boundary,
         base_path=base_path,
         query=query,
+        translator=translator,
     )
 
 

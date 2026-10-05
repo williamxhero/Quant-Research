@@ -25,14 +25,16 @@ from manager_gui import (
 )
 from manager_gui.web import (
     DisplayState,
+    Locale,
     ManagerGUIApp,
+    Translator,
     create_server,
     display_state_for,
     render_common_state,
     render_operational_state,
     render_status_block,
 )
-from manager_gui.web.assets import JS
+from manager_gui.web.assets import JS, js_messages, render_js
 from manager_gui.web.interaction import (
     EXPORT_SCHEMA,
     current_view_export,
@@ -42,6 +44,7 @@ from manager_gui.web.interaction import (
     render_alternative_view,
     render_export_control,
 )
+from manager_gui.web.lineage import _truncate
 from manager_gui.web.navigation import NAVIGATION, ViewId, navigation_label_zh
 from manager_gui.web.status import (
     DISPLAY_STATE_LABELS_ZH,
@@ -77,6 +80,8 @@ UNUSABLE = (
 )
 
 MUTATING_VERBS = ("POST", "PUT", "PATCH", "DELETE")
+TRANSLATOR = Translator()
+EN_TRANSLATOR = Translator(Locale.EN)
 
 
 def _url(view: str, fixture: str = "complete", **extra: str) -> str:
@@ -179,32 +184,43 @@ def served_app() -> Iterator[str]:
 def test_every_status_and_display_state_has_a_stable_chinese_label() -> None:
     for status in ReadModelStatus:
         label = status_label_zh(status)
-        rendered = render_status_block(status, reason=f"reason-{status.value}")
+        rendered = render_status_block(
+            status, translator=TRANSLATOR, reason=f"reason-{status.value}"
+        )
         assert label.strip()
-        assert f'data-status-label-zh="{label}"' in rendered
-        assert f'<span class="status-label-zh" lang="zh-CN">{label}</span>' in rendered
+        assert f'<span class="status-label">{label}</span>' in rendered
+        assert 'data-status-label-zh=' not in rendered
+        assert 'status-label-zh' not in rendered
     assert len({status_label_zh(status) for status in ReadModelStatus}) == len(ReadModelStatus)
     for state in DisplayState:
         label = display_state_label_zh(state)
-        rendered = render_operational_state(state)
+        rendered = render_operational_state(state, translator=TRANSLATOR)
         assert label == DISPLAY_STATE_LABELS_ZH[state]
-        assert f'data-display-state-label-zh="{label}"' in rendered
-        assert 'lang="zh-CN"' in rendered
+        assert f'<span class="status-label">{label}</span>' in rendered
+        assert 'data-display-state-label-zh=' not in rendered
 
 
 def test_common_state_dispatches_loading_status_and_envelope_without_a_second_taxonomy() -> None:
-    loading = render_common_state(DisplayState.LOADING, reason="Reading the approved source")
+    loading = render_common_state(
+        DisplayState.LOADING, translator=TRANSLATOR, reason="Reading the approved source"
+    )
     assert 'data-display-state="loading"' in loading
     assert 'aria-live="polite"' in loading
     assert "加载中" in loading
-    assert render_common_state("loading") == render_common_state(DisplayState.LOADING)
-    blocked = render_common_state(ReadModelStatus.BLOCKED, reason="Policy gate")
+    assert render_common_state(
+        "loading", translator=TRANSLATOR
+    ) == render_common_state(DisplayState.LOADING, translator=TRANSLATOR)
+    blocked = render_common_state(
+        ReadModelStatus.BLOCKED, translator=TRANSLATOR, reason="Policy gate"
+    )
     assert 'data-status="blocked"' in blocked
     assert 'data-display-state="error"' in blocked
     model = fixture_provider(FixtureState.STALE).read("atlas")
-    assert render_common_state(model) == render_status_block(model)
+    assert render_common_state(model, translator=TRANSLATOR) == render_status_block(
+        model, translator=TRANSLATOR
+    )
     with pytest.raises(ValueError, match="not a valid"):
-        render_common_state("not-a-state")
+        render_common_state("not-a-state", translator=TRANSLATOR)
 
 
 @pytest.mark.parametrize("view", sorted(MOUNTED_VIEWS))
@@ -222,8 +238,7 @@ def test_status_vocabulary_is_identical_on_every_mounted_page(
     status = model.availability.status.value
     expected_display = display_state_for(model).value
     assert (
-        f'data-status="{status}" data-status-label-zh="{status_label_zh(status)}" '
-        f'data-display-state="{expected_display}"'
+        f'data-status="{status}" data-display-state="{expected_display}"'
     ) in main
     assert 'lang="zh-CN"' in main
     if fixture in UNUSABLE:
@@ -374,7 +389,7 @@ def test_export_control_is_a_get_download_with_full_context_on_every_page() -> N
         assert query["q"] == "gate"
     assert export_url(None) == "/api/export"
     assert 'data-export-filename="manager-gui-atlas-snap.json"' in render_export_control(
-        "/?view=atlas", view="atlas", snapshot_token="snap"
+        "/?view=atlas", translator=TRANSLATOR, view="atlas", snapshot_token="snap"
     )
 
 
@@ -484,11 +499,11 @@ def test_copy_buttons_carry_escaped_opaque_values_and_never_link_to_them() -> No
         assert "复制引用" in (values.get("aria-label") or "")
     assert 'id="copy-status"' in document and 'role="status"' in document
 
-    hostile = opaque_copy_button('"><script>alert(1)</script>')
+    hostile = opaque_copy_button('"><script>alert(1)</script>', translator=TRANSLATOR)
     assert "<script>" not in hostile
     assert "&quot;&gt;&lt;script&gt;" in hostile
-    assert opaque_copy_button(None) == ""
-    assert opaque_copy_button("") == ""
+    assert opaque_copy_button(None, translator=TRANSLATOR) == ""
+    assert opaque_copy_button("", translator=TRANSLATOR) == ""
     empty = _audit(ManagerGUIApp().render(_url("atlas", "empty")))
     assert not [values for values, _ in empty.buttons if "data-copy-value" in values]
 
@@ -499,7 +514,10 @@ def test_copy_buttons_carry_escaped_opaque_values_and_never_link_to_them() -> No
 def test_alternative_view_keeps_a_visible_table_and_a_reachable_graph() -> None:
     table = "<table><tr><th scope='col'>A</th></tr><tr><td>1</td></tr></table>"
     default = render_alternative_view(
-        target="t", graph_markup="<ol><li>g</li></ol>", table_markup=table
+        translator=EN_TRANSLATOR,
+        target="t",
+        graph_markup="<ol><li>g</li></ol>",
+        table_markup=table,
     )
 
     assert 'data-view-mode="table"' in default
@@ -507,17 +525,25 @@ def test_alternative_view_keeps_a_visible_table_and_a_reachable_graph() -> None:
     assert 'aria-pressed="false">Graph' in default
     graph_marker = (
         'data-view-panel="graph" data-view-for="t" '
-        'aria-label="Lineage view / 谱系视图" hidden'
+        'aria-label="Lineage view" hidden'
     )
     assert graph_marker in default
     assert 'data-view-panel="table"' in default
     assert "hidden>" not in default.split('data-view-panel="table"', 1)[1][:80]
     graph = render_alternative_view(
-        target="t", graph_markup="<ol><li>g</li></ol>", table_markup=table, selected="graph"
+        translator=EN_TRANSLATOR,
+        target="t",
+        graph_markup="<ol><li>g</li></ol>",
+        table_markup=table,
+        selected="graph",
     )
     assert 'aria-pressed="true">Graph' in graph
     assert render_alternative_view(
-        target="t", graph_markup="g", table_markup=table, selected="bogus"
+        translator=EN_TRANSLATOR,
+        target="t",
+        graph_markup="g",
+        table_markup=table,
+        selected="bogus",
     ) == default.replace("<ol><li>g</li></ol>", "g")
 
 
@@ -620,3 +646,40 @@ def test_pagination_links_keep_context_and_have_chinese_labels() -> None:
         assert query["opaque_ref"] == "keep"
         assert "页" in (values.get("aria-label") or "")
     assert "上一页" in document or "下一页" in document
+
+
+def test_status_localization_uses_source_text_for_owner_reason() -> None:
+    english = render_status_block(
+        ReadModelStatus.BLOCKED,
+        translator=EN_TRANSLATOR,
+        reason='owner <reason> "verbatim"',
+    )
+    assert '<span class="status-label">Blocked</span>' in english
+    assert "Source note" in english
+    assert "owner &lt;reason&gt; &quot;verbatim&quot;" in english
+    assert 'lang="zh-CN"' not in english
+    chinese = render_status_block(
+        ReadModelStatus.BLOCKED, translator=TRANSLATOR, reason="属主说明"
+    )
+    assert '<span class="status-label">已阻塞</span>' in chinese
+    assert "已阻塞" in chinese and "已阻塞" not in english
+
+
+def test_static_client_script_has_explicit_locale_message_injection_hook() -> None:
+    messages = js_messages(EN_TRANSLATOR)
+    assert set(messages) == {
+        "copy_success",
+        "copy_unavailable",
+        "export_success",
+        "export_unavailable",
+    }
+    rendered = render_js(translator=EN_TRANSLATOR)
+    assert "__MANAGER_GUI_MESSAGES__" not in rendered
+    assert '"copy_success":"Copied opaque reference"' in rendered
+    assert "Copied opaque reference / 已复制不透明引用" not in JS
+
+
+def test_lineage_truncation_uses_cjk_display_width() -> None:
+    assert _truncate("中文中文abc", 7) == "中文中…"
+    assert _truncate("中文a", 4) == "中…"
+    assert _truncate("short", 26) == "short"

@@ -55,6 +55,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .navigation import PageWindow, context_link, query_values
 from .status import render_operational_state, render_status_block
@@ -1781,9 +1782,11 @@ def render_lineage(
     query_context: QueryContext = None,
     route: str = LINEAGE_ROUTE,
     include_raw_json: bool = True,
+    translator: Translator | None = None,
 ) -> str:
     """Render a Lineage fragment for a shared shell to mount."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, LineageViewModel)
@@ -1808,14 +1811,16 @@ def render_lineage(
         f"<span><strong>Snapshot</strong> {escape(model.snapshot_token or 'Unavailable')}</span>"
         f"<span><strong>Derivation</strong> {escape(derivation)}</span>"
         f"<span><strong>Sources</strong> {escape(sources)}</span></p>",
-        render_status_block(display_model),
+        render_status_block(display_model, translator=selected_translator),
     ]
     if view.failure is not None:
         pieces.append(_render_failure(view, context=query_context, route=route))
     elif view.state is LineageState.EMPTY:
         pieces.append(
             render_operational_state(
-                "empty", detail="No lineage records are published in this scope."
+                "empty",
+                translator=selected_translator,
+                detail="No lineage records are published in this scope.",
             )
         )
     else:
@@ -1825,7 +1830,9 @@ def render_lineage(
         if not view.nodes:
             pieces.append(
                 render_operational_state(
-                    "partial", detail="No lineage records are on this owner page yet."
+                    "partial",
+                    translator=selected_translator,
+                    detail="No lineage records are on this owner page yet.",
                 )
             )
         else:
@@ -1899,6 +1906,7 @@ def render_lineage_view(
     snapshot_token: str | None = None,
     record_id: str | None = None,
     route: str = LINEAGE_ROUTE,
+    translator: Translator | None = None,
 ) -> str:
     """Read and render the public Lineage resource, or render a cached envelope."""
 
@@ -1914,7 +1922,9 @@ def render_lineage_view(
             snapshot_token=snapshot_token,
             record_id=record_id,
         )
-    return render_lineage(view, query_context=query_context, route=route)
+    return render_lineage(
+        view, query_context=query_context, route=route, translator=translator
+    )
 
 
 # --- deterministic fixtures and read-only provider -----------------------------

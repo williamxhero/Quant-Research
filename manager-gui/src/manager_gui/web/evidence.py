@@ -46,6 +46,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .navigation import PageWindow, context_link
 from .status import render_operational_state, render_status_block
@@ -1148,9 +1149,11 @@ def render_evidence(
     *,
     query_context: QueryContext = None,
     include_raw_json: bool = True,
+    translator: Translator | None = None,
 ) -> str:
     """Render an Evidence Ledger fragment for a shared shell to mount."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, EvidenceViewModel)
@@ -1176,7 +1179,7 @@ def render_evidence(
         "are shown exactly as published. Candidate evidence is not protocol-conforming evidence.</p>",
         f'<p class="context-line evidence-context"><span><strong>Observed</strong> {escape(observed)}</span>'
         f'<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(sources)}</span></p>',
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
         '<section class="evidence-ledger-summary" data-ledger-summary="true"><h2>Ledger summary</h2>'
         '<dl class="evidence-details">'
         f'<div class="evidence-detail"><dt>Conclusion</dt><dd>{escape(_display(ledger.conclusion))}</dd></div>'
@@ -1196,7 +1199,9 @@ def render_evidence(
             if state == "empty"
             else "The Evidence Ledger is available only in part of this scope."
         )
-        pieces.append(render_operational_state(state, detail=detail))
+        pieces.append(
+            render_operational_state(state, translator=selected_translator, detail=detail)
+        )
     if candidate:
         pieces.append(
             '<section class="evidence-group" data-evidence-group="candidate" '
@@ -1254,6 +1259,7 @@ def render_evidence_view(
     *,
     snapshot_token: str | None = None,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """Read and render the public Evidence resource, or render a cached envelope."""
 
@@ -1262,7 +1268,7 @@ def render_evidence_view(
         if isinstance(source, ManagerReadModel)
         else evidence_view(source, snapshot_token=snapshot_token).read_model
     )
-    return render_evidence(model, query_context=query_context)
+    return render_evidence(model, query_context=query_context, translator=translator)
 
 
 # --- deterministic fixtures and read-only provider ----------------------------

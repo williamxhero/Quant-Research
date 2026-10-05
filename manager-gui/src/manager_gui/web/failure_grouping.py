@@ -29,6 +29,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .status import render_operational_state, render_status_block
 
@@ -619,10 +620,12 @@ def render_failure_grouping(
     *,
     query_context: QueryContext = None,
     include_raw_json: bool = True,
+    translator: Translator | None = None,
 ) -> str:
     """Render explicitly named Derived success/failure groups."""
 
     del query_context
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, FailureGroupingViewModel)
@@ -637,7 +640,7 @@ def render_failure_grouping(
         '<p class="page-intro">Groups are structural, named, and source-linked. They are Derived GUI projections, not owner facts or formal Research Memory.</p>',
         f'<p class="context-line grouping-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span>'
         f'<span><strong>Snapshot</strong> {escape(model.snapshot_token or "Unavailable")}</span></p>',
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     if view.empty:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "error"
@@ -646,7 +649,9 @@ def render_failure_grouping(
             if state == "empty"
             else f"Derived grouping is not determined while read-model status is {model.availability.status.value}."
         )
-        pieces.append(render_operational_state(state, detail=detail))
+        pieces.append(
+            render_operational_state(state, translator=selected_translator, detail=detail)
+        )
     else:
         pieces.append(
             '<section class="derived-grouping-boundary" data-statistics="not-generated">'
@@ -682,6 +687,7 @@ def render_failure_grouping_view(
     *,
     snapshot_token: str | None = None,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """S4-T3 integration hook accepting a provider or cached envelope."""
 
@@ -690,7 +696,9 @@ def render_failure_grouping_view(
         if isinstance(provider_or_model, ManagerReadModel)
         else failure_grouping_view(provider_or_model, snapshot_token=snapshot_token)
     )
-    return render_failure_grouping(view, query_context=query_context)
+    return render_failure_grouping(
+        view, query_context=query_context, translator=translator
+    )
 
 
 render_derived_failure_grouping = render_failure_grouping
