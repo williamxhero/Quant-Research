@@ -177,14 +177,14 @@ def test_with_lang_requires_a_canonical_locale() -> None:
 # --- glossary --------------------------------------------------------------------------
 
 
-def test_seed_terms_are_present_and_immutable() -> None:
+def test_frozen_terms_are_present_and_immutable() -> None:
     assert {"artifact", "lineage", "evidence_ledger", "known", "fixture"} <= set(TERMS)
-    assert 3 <= len(TERMS) <= 5
+    assert len(TERMS) >= 60
     assert TERMS["artifact"].zh == "制品"
     assert TERMS["artifact"].forbidden_zh == ("产物",)
     assert TERMS["known"].zh == "已记录"
     for term in TERMS.values():
-        assert term.id and term.en and term.zh
+        assert term.id and term.en and term.zh and term.zh_short and term.note
         assert isinstance(term.forbidden_zh, tuple)
         assert all(spelling not in term.zh for spelling in term.forbidden_zh)
     with pytest.raises(TypeError):

@@ -35,6 +35,14 @@ uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
 uv run --directory manager-gui python -m manager_gui.web --fixture complete --port 8765
 ```
 
+## 中文排版与术语规范
+
+- 中文文案使用全角标点；不得写成 ASCII 逗号紧跟汉字。并列项目使用「、」，句内连接使用「和」或「与」，不以斜线代替连接词。
+- 中文与拉丁词之间保留一个半角空格，例如「原始 JSON」「API 不可用」；`ID`、`JSON`、`API`、`URL`、`SHA-256`、`Schema`、`GUI` 和 `ManagerReadModel v0` 是允许保留的拉丁词。
+- 术语统一从 `manager_gui.web.i18n.glossary.TERMS` 取值：`artifact` 为「制品」，`lineage` 为「谱系」，`Evidence Ledger` 为「证据账本」，`Candidate` 为「候选对象」，`Known` 为「已记录」，`Blocked` 为「已阻塞」，`Stale` 为「已过时」，`fixture` 为「样例数据」，`reverse citations` 为「被引用于」，`Portal` 为「报告门户」。
+- `Candidate` 是 Factor、Model、Strategy 的共同总称；「候选策略」只用于明确的 Strategy 子类。`Qualification` 暂定为「资格评定」，其关口语义仍待 owner 确认。
+- 术语禁用译法由 glossary 的 `forbidden_zh` 冻结并由测试审计；页面目录不得自行创造同义译法。
+
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
 Genome, Genome Conditions, Genome Comparison, Memory, Memory Failures,
 Failure Patterns, Evidence, Lineage, Evidence Comparison, Derived Failure

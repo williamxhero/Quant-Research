@@ -882,7 +882,7 @@ def find_forbidden_translations(
     matches: list[tuple[str, str, str]] = []
     for key, entry in catalog.items():
         for field, text in _entry_texts(entry):
-            for spelling in FORBIDDEN_ZH:
+            for spelling in sorted(FORBIDDEN_ZH):
                 if spelling in text:
                     matches.append((str(key), field, spelling))
     return tuple(matches)
