@@ -1444,13 +1444,14 @@ def _render_policy(policy: MemoryPolicy | None, *, translator: Translator, model
     )
     notes = f'<p class="memory-policy-notes">{render_memory_text(policy.notes, translator, model)}</p>' if policy.notes else ""
     version = f' · {translator.html("l4_memory.version")} {render_memory_value(policy.policy_version, translator)}' if policy.policy_version else ""
+    section_prefix = "memory-active-policy" if heading == "l4_memory.active_policy_context" else "memory-entry-policy"
     return (
         f'<section class="memory-policy" data-memory-object="memory-policy"><h2>{translator.html(heading)}</h2>'
         f'<p class="memory-policy-id"><strong>{translator.html("l4_memory.policy")}</strong> {render_memory_value(policy.policy_id, translator)}{version}</p>'
         f'<p class="memory-snapshot"><strong>{translator.html("l4_memory.snapshot")}</strong> {snapshot_text}</p>'
         f'<dl class="memory-policy-rules">{rules}</dl>'
-        f'{_render_facts("l4_memory.bounds", policy.bounds, section_id="memory-bounds", translator=translator)}'
-        f'{_render_facts("l4_memory.source_trust", policy.source_trust, section_id="memory-source-trust", translator=translator)}'
+        f'{_render_facts("l4_memory.bounds", policy.bounds, section_id=f"{section_prefix}-bounds", translator=translator)}'
+        f'{_render_facts("l4_memory.source_trust", policy.source_trust, section_id=f"{section_prefix}-source-trust", translator=translator)}'
         f'{notes}</section>'
     )
 

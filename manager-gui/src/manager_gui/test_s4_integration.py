@@ -23,7 +23,7 @@ from manager_gui import (
     public_provider_methods,
 )
 from manager_gui.__main__ import main as cli_main
-from manager_gui.web import ManagerGUIApp, create_server
+from manager_gui.web import ManagerGUIApp, Translator, create_server
 from manager_gui.web.evidence import build_evidence_fixture
 from manager_gui.web.evidence_comparison import build_evidence_comparison_fixture
 from manager_gui.web.evidence_trace import MAX_TRACE_ROWS, render_evidence_trace
@@ -171,12 +171,13 @@ def test_navigation_adds_the_s4_items_without_reordering_existing_ones() -> None
 
 
 def test_s4_general_comparison_is_separate_from_the_s2_genome_comparison() -> None:
-    s4 = _render("evidence-object-comparison")
-    s2 = _render("strategy-genome-comparison")
+    s4 = _render("evidence-object-comparison", lang="en")
+    s2 = _render("strategy-genome-comparison", lang="en")
 
     assert 'data-integration-hook="evidence-comparison-view"' in s4
     assert 'data-integration-hook="strategy-genome-comparison-view"' not in s4
     assert "not the S2 Strategy Genome comparison" in s4
+    assert "不是策略基因组比较" in _render("evidence-object-comparison")
     assert 'data-integration-hook="strategy-genome-comparison-view"' in s2
     assert 'data-integration-hook="evidence-comparison-view"' not in s2
     assert ViewId.EVIDENCE_COMPARISON.value != ViewId.COMPARISON.value
@@ -239,14 +240,14 @@ def test_empty_fixture_is_a_recorded_absence_not_a_failure() -> None:
         assert 'data-status="missing"' in main
         assert 'data-display-state="empty"' in main
         assert 'data-display-state="error"' not in main
-    evidence = _render("evidence", "empty")
+    evidence = _render("evidence", "empty", lang="en")
     assert "No Evidence Ledger records are published in this scope." in evidence
     assert 'data-evidence-status="fail"' not in evidence
     assert 'data-trace-missing="conclusion"' in evidence
 
 
 def test_blocked_is_never_shown_as_a_failure_or_as_empty() -> None:
-    evidence = _render("evidence", "blocked")
+    evidence = _render("evidence", "blocked", lang="en")
     assert 'data-status="blocked"' in evidence
     assert 'data-evidence-status="blocked"' in evidence
     assert 'data-evidence-status="fail"' not in evidence
@@ -264,7 +265,7 @@ def test_blocked_is_never_shown_as_a_failure_or_as_empty() -> None:
 
 
 def test_not_evaluated_stays_distinct_from_failure_on_every_route() -> None:
-    evidence = _render("evidence", "not_evaluated")
+    evidence = _render("evidence", "not_evaluated", lang="en")
     assert 'data-evidence-status="not_evaluated"' in evidence
     assert "Not evaluated" in evidence
     assert 'data-evidence-status="fail"' not in evidence
@@ -284,7 +285,7 @@ def test_not_evaluated_stays_distinct_from_failure_on_every_route() -> None:
     node_statuses = re.findall(r"</th><td>[\w_]+</td><td>([^<]*)</td>", lineage)
     assert not {"fail", "failed", "failure"} & set(node_statuses)
 
-    grouping = _render("derived-failure-grouping", "not_evaluated")
+    grouping = _render("derived-failure-grouping", "not_evaluated", lang="en")
     groups = grouping.split('data-grouping-state="ready"', 1)[1].split("</section>", 1)[0]
     failure_group = groups.split('data-group-outcome="failure"', 1)[1].split("</article>", 1)[0]
     assert "run-failure-1" in failure_group
@@ -294,14 +295,14 @@ def test_not_evaluated_stays_distinct_from_failure_on_every_route() -> None:
     assert "run-not-evaluated-1" in grouping.split('class="raw-json"', 1)[1]
     assert "joins neither group" in grouping
 
-    comparison = _render("evidence-object-comparison", "not_evaluated")
+    comparison = _render("evidence-object-comparison", "not_evaluated", lang="en")
     assert "has not been evaluated" in comparison
     assert 'data-comparison-result="different"' not in comparison
     assert 'data-display-state="error"' not in _main(comparison)
 
 
 def test_stale_is_labelled_stale_and_never_current() -> None:
-    evidence = _render("evidence", "stale")
+    evidence = _render("evidence", "stale", lang="en")
     assert 'data-status="stale"' in evidence
     assert "The Evidence Ledger source is stale." in evidence
 
@@ -325,7 +326,7 @@ def test_incomparable_keeps_the_per_axis_reason_and_is_never_ranked() -> None:
     assert 'data-statistics="not-generated"' in comparison
     assert "success rate" not in comparison.lower()
 
-    evidence = _render("evidence", "incomparable")
+    evidence = _render("evidence", "incomparable", lang="en")
     assert 'data-evidence-status="incomparable"' in evidence
     assert "Data snapshots are not comparable." in evidence
 
@@ -335,7 +336,7 @@ def test_incomparable_keeps_the_per_axis_reason_and_is_never_ranked() -> None:
 
 
 def test_integrity_failure_keeps_the_specific_artifact_reason() -> None:
-    evidence = _render("evidence", "integrity_failure")
+    evidence = _render("evidence", "integrity_failure", lang="en")
     assert 'data-status="integrity_failure"' in evidence
     assert 'data-verification-status="hash_mismatch"' in evidence
     assert "Declared hash does not match the observed bytes." in evidence
@@ -351,7 +352,7 @@ def test_integrity_failure_keeps_the_specific_artifact_reason() -> None:
 
 
 def test_api_unavailable_publishes_nothing_and_is_never_empty() -> None:
-    evidence = _render("evidence", "api_unavailable")
+    evidence = _render("evidence", "api_unavailable", lang="en")
     assert 'data-status="api_unavailable"' in evidence
     assert "The protocol result is inspectable." not in evidence  # no conclusion beside an outage
     assert 'data-trace-missing="conclusion"' in evidence
@@ -493,7 +494,7 @@ def test_hostile_context_values_are_escaped_on_the_s4_routes() -> None:
 
 def test_conclusion_leads_to_evidence_sources_artifacts_and_lineage() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
-    evidence = app.render(_url("evidence", q="gate", panel="events"))
+    evidence = app.render(_url("evidence", q="gate", panel="events", lang="en"))
     trace = _trace(evidence)
 
     assert re.findall(r'data-trace-step="(\w+)"', trace) == [
@@ -503,7 +504,7 @@ def test_conclusion_leads_to_evidence_sources_artifacts_and_lineage() -> None:
         "artifact",
     ]
     assert "The protocol result is inspectable." in trace
-    assert "evidence level high" in trace
+    assert "Evidence level High" in trace
 
     # conclusion -> lineage rooted at the published conclusion id
     links = _hrefs(trace, "trace-lineage-link")
@@ -529,7 +530,7 @@ def test_conclusion_leads_to_evidence_sources_artifacts_and_lineage() -> None:
 
 
 def test_unpublished_hops_stay_missing_and_are_not_guessed() -> None:
-    trace = _trace(_render("evidence"))
+    trace = _trace(_render("evidence", lang="en"))
     # the candidate record publishes no lineage id, so exactly that hop is missing
     candidate = trace.split('data-trace-record="candidate-evidence-1"', 1)[1].split("</li>", 1)[0]
     assert 'data-trace-missing="lineage"' in candidate
@@ -540,14 +541,18 @@ def test_unpublished_hops_stay_missing_and_are_not_guessed() -> None:
     # no ledger pointer at all: nothing is inferred from similar-looking ids
     bare = build_evidence_fixture("complete")
     data = json.loads(json.dumps(bare.data))
-    bare_trace = render_evidence_trace(replace(bare, data=data), query_context="/?view=evidence")
+    bare_trace = render_evidence_trace(
+        replace(bare, data=data), query_context="/?view=evidence", translator=Translator("en")
+    )
     assert 'data-trace-missing="lineage"' in bare_trace
     assert "trace-lineage-link" not in bare_trace
     assert "Open lineage" not in bare_trace
 
     # a source without a public locator is Missing, not linked
     unresolved = replace(bare, source_refs=())
-    text = render_evidence_trace(unresolved, query_context="/?view=evidence")
+    text = render_evidence_trace(
+        unresolved, query_context="/?view=evidence", translator=Translator("en")
+    )
     assert 'data-trace-missing="source"' in text
 
 
@@ -556,6 +561,7 @@ def test_selected_detail_resolves_record_artifact_and_source() -> None:
     found = app.render(
         _url(
             "evidence",
+            lang="en",
             record_id="protocol-evidence-1",
             artifact_id="artifact-report-1",
             source_id="evidence-fixture-source",
@@ -568,16 +574,16 @@ def test_selected_detail_resolves_record_artifact_and_source() -> None:
     assert 'href="fixture://apex-research/evidence-ledger"' in found
 
     missing = app.render(
-        _url("evidence", record_id="nope", artifact_id="nope", source_id="nope")
+        _url("evidence", lang="en", record_id="nope", artifact_id="nope", source_id="nope")
     )
     assert missing.count('data-trace-found="false"') == 3
     assert "not a failure and not proof that the record does not exist" in missing
 
     mismatch = ManagerGUIApp(default_fixture=FixtureState.COMPLETE).render(
-        _url("evidence", "integrity_failure", artifact_id="artifact-report-1")
+        _url("evidence", "integrity_failure", lang="en", artifact_id="artifact-report-1")
     )
     detail = mismatch.split('data-trace-detail="artifact"', 1)[1].split("</section>", 1)[0]
-    assert "hash mismatch" in detail
+    assert "Hash mismatch" in detail
     assert "Declared hash does not match the observed bytes." in detail
 
 
@@ -595,7 +601,7 @@ def test_the_ledgers_existing_context_links_now_reach_a_real_detail() -> None:
             return unresolved
 
     app = ManagerGUIApp(Provider())
-    page = app.render(_url("evidence"))
+    page = app.render(_url("evidence", lang="en"))
     ledger_links = [
         href
         for href in _hrefs(page, "evidence-source-context-link")
@@ -632,7 +638,7 @@ def test_private_locators_are_never_rendered_as_links_on_any_s4_route(locator: s
             model, source_refs=tuple(replace(ref, locator=locator) for ref in model.source_refs)
         )
         document = ManagerGUIApp(_FixedProvider(swapped)).render(
-            _url(view, lang="en") if view == "lineage" else _url(view)
+            _url(view, lang="en")
         )
         for prefix in ('href="C:', 'href="file:', 'href="https://user:pw@'):
             assert prefix not in document, (view, prefix)
@@ -722,10 +728,12 @@ def test_the_trace_is_bounded_for_a_large_ledger() -> None:
         {**template, "record_id": f"record-{index}", "label": f"Record {index}", "artifacts": []}
         for index in range(MAX_TRACE_ROWS * 3)
     ]
-    trace = render_evidence_trace(replace(base, data=payload), query_context="/?view=evidence")
+    trace = render_evidence_trace(
+        replace(base, data=payload), query_context="/?view=evidence", translator=Translator("en")
+    )
 
     assert trace.count("data-trace-record=") == MAX_TRACE_ROWS
-    assert f"Showing {MAX_TRACE_ROWS} of {MAX_TRACE_ROWS * 3} evidence records" in trace
+    assert f"Showing {MAX_TRACE_ROWS} of {MAX_TRACE_ROWS * 3} Evidence records" in trace
 
 
 # --- regression: S1-S3, S5 and S6 behavior is unchanged ----------------------------------

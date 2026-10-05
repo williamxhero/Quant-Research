@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
+
 from manager_gui import FixtureState
 from manager_gui.fixtures import build_fixture
 from manager_gui.web.failure_grouping import build_failure_grouping_fixture, render_failure_grouping
 from manager_gui.web.failure_patterns import render_failure_patterns
 from manager_gui.web.i18n import Locale, Translator
-from manager_gui.web.i18n.catalog import CATALOG, merge
+from manager_gui.web.i18n.catalog import CATALOG, REGISTRY, CatalogError, merge
+from manager_gui.web.i18n.catalog.l4_evidence import ENTRIES as EVIDENCE_ENTRIES
+from manager_gui.web.i18n.catalog.l4_lineage import ENTRIES as LINEAGE_ENTRIES
 from manager_gui.web.i18n.catalog.l4_memory import ENTRIES
 from manager_gui.web.memory import render_memory
 
-CATALOG_L4 = merge(CATALOG, ENTRIES)
+CATALOG_L4 = CATALOG
 
 
 def _translator(locale: Locale) -> Translator:
@@ -43,13 +47,20 @@ def test_memory_failure_and_derived_grouping_have_zh_and_en_page_copy() -> None:
     assert "Named Derived groups" in en[2] and "not an owner fact" in en[2]
 
 
-def test_l4_catalog_is_additive_and_does_not_change_shared_registry() -> None:
+def test_l4_catalogs_are_registered_once_and_duplicate_keys_fail_closed() -> None:
     assert len(ENTRIES) >= 240
-    assert "l4_memory.memory_title" not in CATALOG
-    assert "l4_memory.memory_title" in CATALOG_L4
+    assert len(EVIDENCE_ENTRIES) >= 200
+    assert len(LINEAGE_ENTRIES) >= 190
+    for entries in (ENTRIES, EVIDENCE_ENTRIES, LINEAGE_ENTRIES):
+        assert all(CATALOG[key] == entry for key, entry in entries.items())
+    assert "l4_memory.memory_title" in CATALOG
+    assert "trace.title" in CATALOG
+    assert "lineage.page_title" in CATALOG
     assert all(
         key.startswith(("l4_memory.", "label.l4_memory_")) for key in ENTRIES
     )
+    with pytest.raises(CatalogError, match="duplicate catalog key"):
+        REGISTRY.register({"l4_memory.memory_title": ENTRIES["l4_memory.memory_title"]})
 
 
 def test_memory_catalog_merges_with_existing_lineage_and_failure_keys() -> None:

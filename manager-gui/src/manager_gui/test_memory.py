@@ -8,8 +8,7 @@ from typing import cast
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.web.i18n import Translator
-from manager_gui.web.i18n.catalog import CATALOG, merge
-from manager_gui.web.i18n.catalog.l4_memory import ENTRIES
+from manager_gui.web.i18n.catalog import CATALOG
 from manager_gui.web.memory import (
     MemoryAuthority,
     MemoryFilters,
@@ -22,7 +21,7 @@ from manager_gui.web.memory import (
     render_memory_view as _render_memory_view,
 )
 
-EN_TRANSLATOR = Translator("en", strict=True, catalog=merge(CATALOG, ENTRIES))
+EN_TRANSLATOR = Translator("en", strict=True, catalog=CATALOG)
 render_memory = partial(_render_memory, translator=EN_TRANSLATOR)
 render_memory_view = partial(_render_memory_view, translator=EN_TRANSLATOR)
 
