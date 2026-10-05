@@ -6,6 +6,8 @@ from typing import cast
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
+from manager_gui.web.i18n import Locale, Translator
+from manager_gui.web.i18n.catalog.l3_method_history import ENTRIES
 from manager_gui.web.methodology import (
     CATEGORY_ORDER,
     MethodologyFixtureState,
@@ -178,6 +180,18 @@ def test_provider_hook_reads_only_methodology_resource_and_preserves_snapshot() 
     assert provider.calls == [("methodology", "requested-snapshot")]
     assert "G0" in document
     assert "read-only" in document
+
+
+def test_methodology_catalog_has_bilingual_entries_and_localizes_page_chrome() -> None:
+    model = build_methodology_fixture("complete")
+    zh = render_methodology(model, translator=Translator(Locale.ZH_CN))
+    en = render_methodology(model, translator=Translator(Locale.EN))
+
+    assert Translator(Locale.ZH_CN, strict=True, catalog=ENTRIES).t("methodology.title") == "研究方法库"
+    assert "研究方法库" in zh
+    assert "Methodology" in en
+    assert "研究方法库 · 只读" in zh
+    assert "Methodology archive · read-only" in en
 
 
 def test_fixture_provider_is_read_only_and_rejects_other_resources() -> None:
