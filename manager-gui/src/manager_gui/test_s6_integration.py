@@ -24,6 +24,7 @@ from manager_gui import (
     public_provider_methods,
 )
 from manager_gui.models import Availability, Derivation, JSONValue
+from manager_gui.testing.i18n import assert_shared_shell_i18n
 from manager_gui.web import ManagerGUIApp, create_server
 from manager_gui.web.navigation import NAVIGATION
 from manager_gui.web.s4_fixtures import S4_RESOURCES, build_s4_fixture
@@ -115,6 +116,8 @@ def test_every_mounted_route_is_integrated_for_every_shared_fixture_state(
     for view, (hook, resource) in ROUTES.items():
         url = _url(view, fixture.value, q="regression", panel="events", opaque="keep")
         document = app.render(url)
+        english = app.render(url + "&lang=en")
+        assert_shared_shell_i18n(document, english, route=view, source_url=url)
         model = app.read_model(app.request_state(url))
         main = _main(document)
         assert f'data-integration-hook="{hook}"' in main, view
@@ -257,24 +260,24 @@ def test_search_links_each_declared_identity_to_a_real_mounted_route() -> None:
 
 def test_search_partial_pagination_and_unavailable_states_are_honest() -> None:
     app = ManagerGUIApp(default_fixture="complete")
-    partial = app.render(_url("search", "partial", q="absent"))
+    partial = app.render(_url("search", "partial", q="absent") + "&lang=en")
     assert 'data-search-state="partial"' in partial
     assert 'data-pagination-complete="false"' in partial
     assert 'data-search-next-cursor="fixture-search-next-v0"' in partial
     assert "global no-match is not established" in partial
     assert "complete snapshot" not in partial
-    unavailable = app.render(_url("search", "api_unavailable", q="absent"))
+    unavailable = app.render(_url("search", "api_unavailable", q="absent") + "&lang=en")
     assert 'data-status="api_unavailable"' in unavailable
     assert 'data-search-state="api_unavailable"' in unavailable
     assert 'data-display-state="empty"' not in _main(unavailable)
-    blocked = app.render(_url("search", "blocked"))
+    blocked = app.render(_url("search", "blocked") + "&lang=en")
     assert 'data-status="blocked"' in blocked
     assert 'data-display-state="error"' in _main(blocked)
 
 
 def test_portal_keeps_publication_artifact_and_boundary_distinct() -> None:
     app = ManagerGUIApp(default_fixture="complete")
-    complete = app.render(_url("portal"))
+    complete = app.render(_url("portal") + "&lang=en")
     assert 'data-portal-state="ready"' in complete
     assert 'data-source-publication-state="published"' in complete
     assert 'data-artifact-state="ready"' in complete

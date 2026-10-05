@@ -23,6 +23,7 @@ from manager_gui import (
     fixture_provider,
     public_provider_methods,
 )
+from manager_gui.testing.i18n import assert_shared_shell_i18n
 from manager_gui.web import (
     DisplayState,
     Locale,
@@ -257,11 +258,11 @@ def test_comparison_incomparable_outcome_surfaces_the_shared_incomparable_state(
 
 
 def test_methodology_blocked_scope_is_an_error_not_an_empty_scope() -> None:
-    document = _main(ManagerGUIApp().render(_url("methodology", "blocked")))
+    document = _main(ManagerGUIApp().render(_url("methodology", "blocked") + "&lang=en"))
 
     assert 'data-display-state="empty"' not in document
     assert "not a recorded empty scope" in document
-    complete = _main(ManagerGUIApp().render(_url("methodology", "empty")))
+    complete = _main(ManagerGUIApp().render(_url("methodology", "empty") + "&lang=en"))
     assert "No methodology methods are recorded in this scope." in complete
 
 
@@ -272,9 +273,13 @@ def test_methodology_blocked_scope_is_an_error_not_an_empty_scope() -> None:
 def test_mounted_pages_pass_the_shared_accessibility_audit(view: str) -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     for fixture in (FixtureState.COMPLETE, FixtureState.PARTIAL, FixtureState.BLOCKED):
-        audit = _audit(app.render(_url(view, fixture.value, panel="events")))
+        url = _url(view, fixture.value, panel="events")
+        document = app.render(url)
+        english = app.render(url + "&lang=en")
+        assert_shared_shell_i18n(document, english, route=view, source_url=url)
+        audit = _audit(document)
 
-        # The default locale is now Chinese; explicit ``lang=en`` is tested below.
+        # Both default Chinese and explicit English run the shared harness above.
         assert audit.html_lang == "zh-CN"
         assert audit.h1_count == 1
         assert len(audit.ids) == len(set(audit.ids)), "duplicate id attributes"

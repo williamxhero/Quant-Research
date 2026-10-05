@@ -18,6 +18,7 @@ from manager_gui import (
     fixture_provider,
     public_provider_methods,
 )
+from manager_gui.testing.i18n import assert_shared_shell_i18n
 from manager_gui.web import (
     DisplayState,
     Locale,
@@ -72,9 +73,14 @@ def test_fixture_status_maps_to_distinct_display_states() -> None:
 
 
 def test_shell_preserves_navigation_context_and_read_only_surface() -> None:
-    document = ManagerGUIApp().render(
-        "/?view=evidence&fixture=partial&panel=events&q=campaign&lang=en"
-    )
+    app = ManagerGUIApp()
+    url = "/?view=evidence&fixture=partial&panel=events&q=campaign"
+    document = app.render(url + "&lang=en")
+    chinese = app.render(url)
+    assert_shared_shell_i18n(chinese, document, route="evidence", source_url=url)
+    for label in ("总览", "研究故事", "记忆", "证据", "研究方法库", "历史", "搜索"):
+        assert label in chinese
+    assert "只读" in chinese
 
     for label in (
         "Atlas",
@@ -301,7 +307,7 @@ def test_local_server_serves_html_json_and_rejects_mutations() -> None:
     thread.start()
     try:
         base_url = f"http://127.0.0.1:{server.server_port}"
-        with urlopen(f"{base_url}/?view=history&fixture=stale") as response:
+        with urlopen(f"{base_url}/?view=history&fixture=stale&lang=en") as response:
             document = response.read().decode("utf-8")
             assert response.status == 200
             assert "History" in document
@@ -329,7 +335,7 @@ def test_local_server_serves_html_json_and_rejects_mutations() -> None:
 
 def test_s1_mounts_atlas_and_story_hooks_as_one_read_only_flow() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
-    atlas_url = "/?view=atlas&fixture=complete&panel=events&q=campaign"
+    atlas_url = "/?view=atlas&fixture=complete&panel=events&q=campaign&lang=en"
     atlas = app.render(atlas_url)
 
     assert 'data-integration-hook="atlas-view"' in atlas
@@ -353,18 +359,19 @@ def test_s1_mounts_atlas_and_story_hooks_as_one_read_only_flow() -> None:
     assert "record_id=campaign-fixture-1" in story_query
 
     story = app.render(story_url)
+    story_zh = app.render(story_url.replace("&lang=en", ""))
     assert 'data-integration-hook="research-story-view"' in story
     assert 'data-story-mode="narrative"' in story
     assert "Fixture campaign" in story
     assert "fixture://strategy-workspace/stories/campaigns" in story
     assert 'id="inspector"' in story
     assert 'id="event-drawer"' in story
-    assert "只读" in story
+    assert "只读" in story_zh
 
     for mode in ("narrative", "evidence", "timeline"):
         mode_document = app.render(
             "/?view=stories&fixture=complete&mode="
-            f"{mode}&campaign=campaign-fixture-1&record_type=campaign&q=campaign"
+            f"{mode}&campaign=campaign-fixture-1&record_type=campaign&q=campaign&lang=en"
         )
         assert f'data-story-mode="{mode}"' in mode_document
         assert "campaign=campaign-fixture-1" in mode_document
@@ -377,8 +384,8 @@ def test_s1_integrated_routes_keep_every_fixture_state_explicit() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     for fixture in FixtureState:
         expected = fixture_provider(fixture).read("atlas").availability.status.value
-        atlas = app.render(f"/?view=atlas&fixture={fixture.value}")
-        story = app.render(f"/?view=stories&fixture={fixture.value}&mode=evidence")
+        atlas = app.render(f"/?view=atlas&fixture={fixture.value}&lang=en")
+        story = app.render(f"/?view=stories&fixture={fixture.value}&mode=evidence&lang=en")
 
         assert f'data-status="{expected}"' in atlas
         assert f'data-status="{expected}"' in story
@@ -387,9 +394,9 @@ def test_s1_integrated_routes_keep_every_fixture_state_explicit() -> None:
         assert 'id="inspector"' in atlas
         assert 'id="event-drawer"' in story
 
-    complete = app.render("/?view=atlas&fixture=complete")
+    complete = app.render("/?view=atlas&fixture=complete&lang=en")
     assert 'data-display-state="ready"' in complete
-    empty = app.render("/?view=stories&fixture=empty")
+    empty = app.render("/?view=stories&fixture=empty&lang=en")
     assert 'data-display-state="empty"' in empty
     assert "No research material recorded" in empty
 
@@ -434,7 +441,7 @@ def test_s1_page_hooks_reuse_the_shell_read_without_a_second_provider_call() -> 
     try:
         base_url = f"http://127.0.0.1:{server.server_port}"
         with urlopen(
-            f"{base_url}/?view=stories&fixture=complete&mode=timeline&q=campaign"
+            f"{base_url}/?view=stories&fixture=complete&mode=timeline&q=campaign&lang=en"
         ) as response:
             document = response.read().decode("utf-8")
             assert response.status == 200
@@ -521,7 +528,7 @@ def test_s2_integrated_genome_condition_and_comparison_routes_preserve_context()
     comparison = app.render(
         "/?view=strategy-genome-comparison&fixture=incomparable"
         "&left_genome_id=genome-left&right_genome_id=genome-right"
-        "&panel=events&q=signal&snapshot_token=s2-snapshot"
+        "&panel=events&q=signal&snapshot_token=s2-snapshot&lang=en"
     )
     assert 'data-integration-hook="strategy-genome-comparison-view"' in comparison
     assert 'data-comparison-result="incomparable"' in comparison
@@ -547,8 +554,8 @@ def test_s2_integrated_fixture_states_keep_empty_partial_and_failures_distinct()
         FixtureState.API_UNAVAILABLE: "api_unavailable",
     }
     for fixture, status in expected_status.items():
-        genome = app.render(f"/?view=strategies&fixture={fixture.value}")
-        conditions = app.render(f"/?view=strategy-conditions&fixture={fixture.value}")
+        genome = app.render(f"/?view=strategies&fixture={fixture.value}&lang=en")
+        conditions = app.render(f"/?view=strategy-conditions&fixture={fixture.value}&lang=en")
         assert f'data-status="{status}"' in genome
         assert f'data-status="{status}"' in conditions
         assert 'class="read-only-badge"' in genome
@@ -569,7 +576,7 @@ def test_s2_integrated_fixture_states_keep_empty_partial_and_failures_distinct()
             assert 'data-display-state="error"' in genome
             assert 'data-display-state="error"' in conditions
 
-    comparison = app.render("/?view=strategy-genome-comparison&fixture=incomparable")
+    comparison = app.render("/?view=strategy-genome-comparison&fixture=incomparable&lang=en")
     assert 'data-comparison-result="incomparable"' in comparison
     assert "Incompatible axes" in comparison
 
@@ -611,7 +618,7 @@ def test_s2_integrated_provider_reads_each_route_once_and_exposes_no_mutations()
 def test_s3_integrated_memory_and_failure_routes_preserve_context_and_lineage() -> None:
     app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
     context = (
-        "fixture=complete&panel=events&q=data-gate&snapshot_token=s3-snapshot"
+        "fixture=complete&panel=events&q=data-gate&snapshot_token=s3-snapshot&lang=en"
         "&family=memory-family-fixture-1&failure_category=data_blocker"
     )
     memory = app.render(f"/?view=memory&{context}&memory_id=memory-fixture-1")
@@ -664,8 +671,8 @@ def test_s3_integrated_fixture_states_keep_empty_partial_and_source_failures_dis
         FixtureState.API_UNAVAILABLE: "api_unavailable",
     }
     for fixture, status in expected.items():
-        memory = app.render(f"/?view=memory&fixture={fixture.value}")
-        failures = app.render(f"/?view=failure-patterns&fixture={fixture.value}")
+        memory = app.render(f"/?view=memory&fixture={fixture.value}&lang=en")
+        failures = app.render(f"/?view=failure-patterns&fixture={fixture.value}&lang=en")
         assert f'data-status="{status}"' in memory
         assert f'data-status="{status}"' in failures
         assert 'class="read-only-badge"' in memory
@@ -706,8 +713,8 @@ def test_s3_zero_entry_and_missing_lineage_states_are_honest() -> None:
 
     provider = Provider()
     app = ManagerGUIApp(provider)
-    memory = app.render("/?view=memory&fixture=complete&panel=events&q=zero")
-    failures = app.render("/?view=memory-failures&fixture=complete&panel=events&q=zero")
+    memory = app.render("/?view=memory&fixture=complete&panel=events&q=zero&lang=en")
+    failures = app.render("/?view=memory-failures&fixture=complete&panel=events&q=zero&lang=en")
     assert 'data-memory-empty="true"' in memory
     assert "No Research Memory entries are recorded" in memory
     assert "not evidence that Memory is empty" not in memory
@@ -744,7 +751,7 @@ def test_s3_zero_entry_and_missing_lineage_states_are_honest() -> None:
             return missing_lineage
 
     document = ManagerGUIApp(MissingLineageProvider()).render(
-        "/?view=memory-failures&fixture=complete&failure_id=failure-missing-lineage"
+        "/?view=memory-failures&fixture=complete&failure_id=failure-missing-lineage&lang=en"
     )
     assert "Missing / Unconfirmed link" in document
     assert "https://not-published" not in document
@@ -773,3 +780,15 @@ def test_s3_provider_audit_reads_memory_resources_once_and_exposes_no_mutations(
     ]
     assert public_provider_methods(provider) == ("read",)
     assert not FORBIDDEN_PROVIDER_METHODS.intersection(public_provider_methods(provider))
+
+
+def test_web_shared_shell_audit_covers_default_chinese_and_explicit_english() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    for route in ("atlas", "stories", "methodology", "history", "source-documents", "search"):
+        url = f"/?view={route}&fixture=complete&panel=events&q=web&tag=a&tag=b&tag="
+        assert_shared_shell_i18n(
+            app.render(url),
+            app.render(url + "&lang=en"),
+            route=route,
+            source_url=url,
+        )
