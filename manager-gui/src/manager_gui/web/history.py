@@ -38,6 +38,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog import l3_method_history as _l3_method_history_catalog
 from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -228,14 +229,47 @@ def _record_id(item: Mapping[str, object]) -> str | None:
     return _first_text(item, ("record_id", "recordId", "id", "uid", "key"))
 
 
+_CATALOG_PREFIX = "__catalog__:"
+
+
 def _title_and_detail(item: Mapping[str, object]) -> tuple[str, str]:
     title = _first_text(item, ("title", "name", "label", "heading"))
     detail = _first_text(item, ("summary", "description", "detail", "message", "text", "value"))
     if title is None:
-        title = detail[:120] if detail else "Source event"
+        title = detail[:120] if detail else f"{_CATALOG_PREFIX}history.event.fallback_title"
     if detail is None:
-        detail = "Source event recorded; no additional detail published."
+        detail = f"{_CATALOG_PREFIX}history.event.fallback_detail"
     return title, detail
+
+
+def _is_history_fixture(model: ManagerReadModel) -> bool:
+    return any(
+        source.owner == "manager-gui-fixture"
+        and source.kind == "source-event-record"
+        and source.schema == "manager-gui.history-fixture.v0"
+        and source.revision == "v0"
+        and source.locator.startswith("fixture://manager-gui/history/")
+        for source in model.source_refs
+    )
+
+
+def _history_fixture_text(
+    translator: Translator,
+    event: HistoryEvent,
+    field: str,
+    *,
+    fixture: bool,
+    scope: str | None = None,
+) -> str:
+    key = f"history.fixture.{event.event_type.value.replace('-', '_')}.{field}"
+    if fixture and key in _l3_method_history_catalog.ENTRIES:
+        return translator.t(key, scope=scope or "")
+    value = event.title if field == "title" else event.detail
+    if value is None:
+        return translator.t("history.event.fallback_detail")
+    if value.startswith(_CATALOG_PREFIX):
+        return translator.t(value.removeprefix(_CATALOG_PREFIX))
+    return value
 
 
 def _event_key(event: HistoryEvent) -> tuple[str, str, str]:
@@ -379,11 +413,12 @@ class HistoryViewModel:
         translator: Translator | None = None,
     ) -> str:
         selected_translator = translator or Translator()
-        scope = self.scope or "All approved scopes"
+        fixture = _is_history_fixture(self.read_model)
+        scope = self.scope or selected_translator.t("method_history.all_scopes")
         scope_links = "".join(
             f'<a class="history-scope-link" data-history-scope="{escape(selected, quote=True)}" '
             f'href="{escape(self.context_url(base_path=base_path, query=query, scope=selected), quote=True)}"'
-            f'>{escape(selected)}</a>'
+            f'>{escape(selected_translator.label("method_history.scope", selected))}</a>'
             for selected in HISTORY_SCOPES
         )
         window = PageWindow.from_query(query if query is not None else base_path, total=len(self.events))
@@ -399,35 +434,40 @@ class HistoryViewModel:
                 empty = render_operational_state(
                     DisplayState.EMPTY,
                     translator=selected_translator,
-                    detail="No explicit source events are recorded in this scope.",
+                    detail=selected_translator.t("history.empty_scope"),
                 )
             else:
                 empty = render_operational_state(
                     state,
                     translator=selected_translator,
-                    detail="No source events are available in this scope.",
+                    detail=selected_translator.t("history.unavailable_scope"),
                 )
             body = empty
         else:
             rows = "".join(
-                _render_event(event, base_path=base_path, query=query) for event in paged_events
+                _render_event(
+                    event,
+                    base_path=base_path,
+                    query=query,
+                    translator=selected_translator,
+                    fixture=fixture,
+                )
+                for event in paged_events
             )
             body = (
-                '<ol class="history-event-list" aria-label="Source event timeline">'
+                f'<ol class="history-event-list" aria-label="{escape(selected_translator.t("history.timeline_aria"))}">'
                 f"{rows}</ol>"
             )
         return (
             f'<section class="history-page" data-integration-hook="history-view" '
             f'data-history-scope="{escape(scope, quote=True)}">'
-            '<p class="eyebrow">History · source events only</p>'
-            '<h1 class="page-title" data-page-title tabindex="-1">History</h1>'
-            '<p class="page-intro">Only source-recorded events are shown. GUI phase transitions are never inferred.</p>'
-            '<p class="boundary-note" data-boundary="canonical-fact"><strong>Canonical facts</strong> '
-            "are limited to source-recorded events. Reports, plans, and future ideas remain document "
-            "interpretation and are linked through the approved index.</p>"
-            f'<p class="context-line history-context"><strong>Scope</strong> {escape(scope)}</p>'
+            f'<p class="eyebrow">{escape(selected_translator.t("history.eyebrow"))}</p>'
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("history.title"))}</h1>'
+            f'<p class="page-intro">{escape(selected_translator.t("history.intro"))}</p>'
+            f'<p class="boundary-note" data-boundary="canonical-fact">{selected_translator.html("history.boundary")}</p>'
+            f'<p class="context-line history-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> {escape(scope)}</p>'
             f"{related}"
-            f'<nav class="history-scope-nav" aria-label="History fixture scopes">{scope_links}</nav>'
+            f'<nav class="history-scope-nav" aria-label="{escape(selected_translator.t("history.scopes_aria"))}">{scope_links}</nav>'
             f"{render_status_block(self.read_model, translator=selected_translator)}{body}{window.render(query if query is not None else base_path, view='history')}</section>"
         )
 
@@ -437,33 +477,40 @@ def _render_event(
     *,
     base_path: str,
     query: Mapping[str, object] | str | None,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     locator = (
         f'<a class="history-source-link" data-link-kind="source-artifact" href="{escape(event.source_locator, quote=True)}">'
         f"{escape(event.source_locator)}</a>"
         if event.source_locator
-        else '<span class="history-source-missing">Missing / Unconfirmed source locator</span>'
+        else f'<span class="history-source-missing">{escape(translator.t("history.event.missing_locator"))}</span>'
     )
     document_links = " · ".join(
         f'<a class="history-document-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
         f"{escape(document_id)}</a>"
         for document_id in event.document_ids
-    ) or '<span class="history-source-missing">Missing / Unconfirmed document</span>'
+    ) or f'<span class="history-source-missing">{escape(translator.t("history.event.missing_document"))}</span>'
     record = (
         f'<a class="history-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=event.record_id), quote=True)}">'
         f"{escape(event.record_id)}</a>"
         if event.record_id
-        else "Missing / Unconfirmed"
+        else translator.t("method_history.missing")
     )
-    detail = escape(event.detail or "Source event recorded.")
+    title = _history_fixture_text(translator, event, "title", fixture=fixture, scope=event.raw.get("scope") if event.raw else None)
+    detail = _history_fixture_text(translator, event, "detail", fixture=fixture, scope=event.raw.get("scope") if event.raw else None)
+    event_type = translator.label("history.event_type", event.event_type.value)
+    record_label = translator.t("history.event.record")
+    source_label = translator.t("history.event.source")
+    document_label = translator.t("history.event.document")
     return (
         f'<li class="history-event" data-event-id="{escape(event.event_id, quote=True)}" '
         f'data-event-type="{escape(event.event_type.value, quote=True)}" '
         f'data-source-event-time="{escape(event.source_event_time, quote=True)}">'
         f'<time datetime="{escape(event.source_event_time, quote=True)}">{escape(event.source_event_time)}</time>'
-        f'<span class="history-event-type">{escape(event.event_type.value)}</span>'
-        f'<strong>{escape(event.title)}</strong><p>{detail}</p>'
-        f'<p class="history-event-meta">Record: {record} · Source: {locator} · Document: {document_links}</p></li>'
+        f'<span class="history-event-type">{event_type}</span>'
+        f'<strong>{title}</strong><p>{detail}</p>'
+        f'<p class="history-event-meta">{escape(record_label)}: {record} · {escape(source_label)}: {locator} · {escape(document_label)}: {document_links}</p></li>'
     )
 
 

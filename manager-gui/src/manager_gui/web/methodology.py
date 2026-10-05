@@ -32,7 +32,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
-from .i18n.catalog import l3_method_history as _l3_method_history_catalog  # noqa: F401
+from .i18n.catalog import l3_method_history as _l3_method_history_catalog
 from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -803,7 +803,25 @@ def _methodology_value(
 
     if value is None:
         return translator.t("methodology.missing")
-    return translator.t(key) if fixture else translator.source_text(value)
+    return translator.t(key) if fixture else value
+
+
+def _fixture_methodology_text(
+    translator: Translator,
+    method_id: str,
+    field: str,
+    value: str | None,
+    *,
+    fixture: bool,
+) -> str:
+    """Translate only content from the exact deterministic methodology fixture."""
+
+    if value is None:
+        return translator.t("methodology.missing")
+    key = f"methodology.fixture.{method_id.replace('-', '_')}.{field}"
+    if fixture and key in _l3_method_history_catalog.ENTRIES:
+        return translator.t(key)
+    return value
 
 
 def _methodology_status(
@@ -815,7 +833,7 @@ def _methodology_status(
         return translator.t("label.methodology.evidence_status.recorded")
     if fixture and value == "known":
         return translator.t("label.methodology.evidence_status.known")
-    return translator.source_text(value)
+    return value
 
 
 def _render_ref_list(
@@ -824,6 +842,7 @@ def _render_ref_list(
     *,
     translator: Translator,
     query_context: str | Mapping[str, object] | None = None,
+    fixture: bool = False,
 ) -> str:
     if not refs:
         return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd>{escape(translator.t("methodology.missing"))}</dd></div>'
@@ -834,6 +853,10 @@ def _render_ref_list(
             link_kind = "source"
         elif isinstance(ref, MethodologyDocumentRef):
             label = ref.title or ref.document_id
+            if fixture:
+                key = f"methodology.fixture.{ref.document_id.replace('-', '_')}.title"
+                if key in _l3_method_history_catalog.ENTRIES:
+                    label = translator.t(key)
             target = (
                 _context_url(
                     query_context,
@@ -858,16 +881,28 @@ def _render_ref_list(
                 f'href="{escape(target, quote=True)}">{escape(label)}</a></li>'
             )
         else:
-            items.append(f"<li>{escape(label)} — Missing / Unconfirmed</li>")
+            items.append(f'<li>{escape(label)} — {escape(translator.t("methodology.missing"))}</li>')
     return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd><ul>{"".join(items)}</ul></dd></div>'
 
 
-def _render_text_list(title: str, values: Sequence[str]) -> str:
+def _render_text_list(
+    title: str,
+    values: Sequence[str],
+    *,
+    missing: str = "None recorded",
+    translator: Translator | None = None,
+    method_id: str | None = None,
+    field: str | None = None,
+    fixture: bool = False,
+) -> str:
     if not values:
         return (
-            f'<div class="methodology-detail"><dt>{escape(title)}</dt><dd>None recorded</dd></div>'
+            f'<div class="methodology-detail"><dt>{escape(title)}</dt><dd>{escape(missing)}</dd></div>'
         )
-    items = "".join(f"<li>{escape(value)}</li>" for value in values)
+    items = "".join(
+        f"<li>{escape(_fixture_methodology_text(translator, method_id, f'{field}.{index}', value, fixture=fixture) if translator and method_id and field else value)}</li>"
+        for index, value in enumerate(values)
+    )
     return (
         f'<div class="methodology-detail"><dt>{escape(title)}</dt><dd><ul>{items}</ul></dd></div>'
     )
@@ -876,16 +911,26 @@ def _render_text_list(title: str, values: Sequence[str]) -> str:
 def _render_method(
     method: MethodologyMethod,
     *,
+    translator: Translator,
+    fixture: bool,
     query_context: str | Mapping[str, object] | None = None,
 ) -> str:
-    usage_count = "Missing / Unconfirmed" if method.usage_count is None else str(method.usage_count)
-    version = method.version or "Missing / Unconfirmed"
-    definition = method.definition or "Missing / Unconfirmed"
+    missing = translator.t("methodology.missing")
+    usage_count = missing if method.usage_count is None else str(method.usage_count)
+    version = method.version or missing
+    if method.superseded is True:
+        superseded = translator.t("label.methodology.superseded.superseded")
+    elif method.superseded is False:
+        superseded = translator.t("label.methodology.superseded.current")
+    else:
+        superseded = translator.t("label.methodology.superseded.unknown")
     superseded_by = (
-        f" · superseded by {escape(method.superseded_by)}" if method.superseded_by else ""
+        translator.t("methodology.superseded_by", method_id=method.superseded_by)
+        if method.superseded_by
+        else ""
     )
     usages = (
-        "<p>Missing / Unconfirmed</p>"
+        f"<p>{escape(missing)}</p>"
         if not method.usage_records
         else "<ul>"
         + "".join(
@@ -896,12 +941,12 @@ def _render_method(
         + "</ul>"
     )
     results = (
-        "<p>Missing / Unconfirmed</p>"
+        f"<p>{escape(missing)}</p>"
         if not method.associated_results
         else "<ul>"
         + "".join(
             f'<li data-result-id="{escape(result.result_id, quote=True)}">'
-            f"{escape(result.title or result.result_id)}"
+            f"{escape(_fixture_methodology_text(translator, method.method_id, 'result_title', result.title or result.result_id, fixture=fixture))}"
             f"{f' · {escape(result.status)}' if result.status else ''}"
             f"{f' — {escape(result.summary)}' if result.summary else ''}</li>"
             for result in method.associated_results
@@ -909,37 +954,36 @@ def _render_method(
         + "</ul>"
     )
     evidence = (
-        "<p>Missing / Unconfirmed</p>"
+        f"<p>{escape(missing)}</p>"
         if not method.validity_evidence
         else "<ul>"
         + "".join(
             f'<li data-validity-evidence-id="{escape(item.evidence_id, quote=True)}">'
-            f"{escape(item.label or item.evidence_id)}"
-            f"{f' · {escape(item.status)}' if item.status else ''}"
+            f"{escape(_fixture_methodology_text(translator, method.method_id, 'evidence_label', item.label or item.evidence_id, fixture=fixture))}"
+            f"{f' · {_methodology_status(translator, item.status, fixture=fixture)}' if item.status else ''}"
             f"{f' — {escape(item.summary)}' if item.summary else ''}</li>"
             for item in method.validity_evidence
         )
         + "</ul>"
     )
-    superseded = method.superseded_label
     return (
         f'<article class="methodology-method" data-method-id="{escape(method.method_id, quote=True)}" '
         f'data-methodology-category="{method.category.value}" '
         f'data-superseded="{"unknown" if method.superseded is None else str(method.superseded).lower()}">'
-        f"<h3>{escape(method.title)}</h3>"
+        f"<h3>{escape(_fixture_methodology_text(translator, method.method_id, 'title', method.title, fixture=fixture))}</h3>"
         '<dl class="methodology-details">'
-        f'<div class="methodology-detail"><dt>Definition</dt><dd>{escape(definition)}</dd></div>'
-        f'<div class="methodology-detail"><dt>Version</dt><dd>{escape(version)}</dd></div>'
-        f'<div class="methodology-detail"><dt>Usage count</dt><dd>{escape(usage_count)}</dd></div>'
-        f'<div class="methodology-detail"><dt>Superseded status</dt><dd>{escape(superseded)}{superseded_by}</dd></div>'
-        f'<div class="methodology-detail"><dt>Usage records</dt><dd>{usages}</dd></div>'
-        f'<div class="methodology-detail"><dt>Associated results</dt><dd>{results}</dd></div>'
-        f'<div class="methodology-detail"><dt>Validity evidence</dt><dd>{evidence}</dd></div>'
-        f"{_render_text_list('Limitations', method.limitations)}"
-        f"{_render_text_list('Failure cases', method.failure_cases)}"
-        f"{_render_ref_list('Source refs', method.source_refs, query_context=query_context)}"
-        f"{_render_ref_list('Document refs', method.document_refs, query_context=query_context)}"
-        f"{_render_ref_list('Record refs', method.record_refs, query_context=query_context)}"
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.definition"))}</dt><dd>{escape(_fixture_methodology_text(translator, method.method_id, "definition", method.definition, fixture=fixture))}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.version"))}</dt><dd>{escape(version)}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.usage_count"))}</dt><dd>{escape(usage_count)}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.superseded_status"))}</dt><dd>{escape(superseded)}{escape(superseded_by)}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.usage_records"))}</dt><dd>{usages}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.associated_results"))}</dt><dd>{results}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.validity_evidence"))}</dt><dd>{evidence}</dd></div>'
+        f"{_render_text_list(translator.t('methodology.limitations'), method.limitations, missing=missing, translator=translator, method_id=method.method_id, field='limitations', fixture=fixture)}"
+        f"{_render_text_list(translator.t('methodology.failure_cases'), method.failure_cases, missing=missing, translator=translator, method_id=method.method_id, field='failure_cases', fixture=fixture)}"
+        f"{_render_ref_list(translator.t('methodology.source_refs'), method.source_refs, translator=translator, query_context=query_context, fixture=fixture)}"
+        f"{_render_ref_list(translator.t('methodology.document_refs'), method.document_refs, translator=translator, query_context=query_context, fixture=fixture)}"
+        f"{_render_ref_list(translator.t('methodology.record_refs'), method.record_refs, translator=translator, query_context=query_context, fixture=fixture)}"
         "</dl></article>"
     )
 
@@ -953,15 +997,16 @@ def render_methodology(
     """Render a methodology archive fragment for a shared shell to mount."""
 
     selected_translator = translator or Translator()
+    fixture = _is_methodology_fixture(view_or_model.read_model if isinstance(view_or_model, MethodologyViewModel) else view_or_model)
     view = (
         view_or_model
         if isinstance(view_or_model, MethodologyViewModel)
         else MethodologyViewModel.from_read_model(view_or_model)
     )
     model = view.read_model
-    sources = ", ".join(source.source_id for source in model.source_refs) or "None recorded"
-    observed = model.as_of or "Unavailable"
-    snapshot = model.snapshot_token or "Unavailable"
+    sources = ", ".join(source.source_id for source in model.source_refs) or selected_translator.t("methodology.missing")
+    observed = model.as_of or selected_translator.t("shell.unavailable")
+    snapshot = model.snapshot_token or selected_translator.t("shell.snapshot_missing")
     documents_url = _context_url(query_context, view="source-documents")
     history_url = _context_url(query_context, view="history")
     window = PageWindow.from_query(query_context, total=len(view.methods))
@@ -973,18 +1018,15 @@ def render_methodology(
     pieces = [
         '<section class="methodology-page" data-integration-hook="methodology-view" '
         f'data-index-state="{view.index_state.value}" data-boundary="canonical-fact">',
-        '<p class="eyebrow">Methodology archive · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Methodology</h1>',
-        '<p class="page-intro">Versioned methods are catalogued by category. Usage records, '
-        "associated results, and explicit validity evidence remain separate facts.</p>",
-        '<p class="boundary-note" data-boundary="canonical-fact"><strong>Canonical facts</strong> '
-        "come from the approved methodology record. Document notes, plans, and future ideas remain "
-        "document interpretation and are never promoted to owner facts.</p>",
-        f'<nav class="methodology-related-nav" aria-label="Methodology related sources">'
-        f'<a class="methodology-documents-link" href="{escape(documents_url, quote=True)}">Source Documents</a>'
-        f'<a class="methodology-history-link" href="{escape(history_url, quote=True)}">History</a></nav>',
-        f'<p class="context-line methodology-context"><span><strong>Observed</strong> {escape(observed)}</span>'
-        f"<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(sources)}</span></p>",
+        f'<p class="eyebrow">{escape(selected_translator.t("methodology.eyebrow"))}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("methodology.title"))}</h1>',
+        f'<p class="page-intro">{escape(selected_translator.t("methodology.intro"))}</p>',
+        f'<p class="boundary-note" data-boundary="canonical-fact">{selected_translator.html("methodology.boundary")}</p>',
+        f'<nav class="methodology-related-nav" aria-label="{escape(selected_translator.t("methodology.related_aria"))}">'
+        f'<a class="methodology-documents-link" href="{escape(documents_url, quote=True)}">{escape(selected_translator.t("documents.title"))}</a>'
+        f'<a class="methodology-history-link" href="{escape(history_url, quote=True)}">{escape(selected_translator.t("history.title"))}</a></nav>',
+        f'<p class="context-line methodology-context"><span><strong>{escape(selected_translator.t("shell.observed"))}</strong> {escape(observed)}</span>'
+        f"<span><strong>{escape(selected_translator.t('shell.snapshot'))}</strong> {escape(snapshot)}</span><span><strong>{escape(selected_translator.t('shell.sources'))}</strong> {escape(sources)}</span></p>",
         render_status_block(model, translator=selected_translator),
     ]
     if view.index_state is MethodologyIndexState.NOT_INDEXED:
@@ -992,7 +1034,7 @@ def render_methodology(
             render_operational_state(
                 "error",
                 translator=selected_translator,
-                detail="The approved methodology document index is not indexed.",
+                detail=selected_translator.t("methodology.not_indexed"),
             )
         )
     if not paged_methods and view.index_state is not MethodologyIndexState.NOT_INDEXED:
@@ -1003,7 +1045,7 @@ def render_methodology(
                 render_operational_state(
                     DisplayState.ERROR,
                     translator=selected_translator,
-                    detail="Methods cannot be listed from this source state; this is not a recorded empty scope.",
+                    detail=selected_translator.t("methodology.error_scope"),
                 )
             )
         else:
@@ -1011,19 +1053,19 @@ def render_methodology(
                 render_operational_state(
                     DisplayState.EMPTY,
                     translator=selected_translator,
-                    detail="No methodology methods are recorded in this scope.",
+                    detail=selected_translator.t("methodology.empty_scope"),
                 )
             )
     for group, methods in paged_groups:
         body = (
-            '<p class="methodology-empty">No methods recorded in this category.</p>'
+            f'<p class="methodology-empty">{escape(selected_translator.t("methodology.empty_category"))}</p>'
             if not methods
-            else "".join(_render_method(method, query_context=query_context) for method in methods)
+            else "".join(_render_method(method, translator=selected_translator, fixture=fixture, query_context=query_context) for method in methods)
         )
         pieces.append(
             f'<section class="methodology-category" data-methodology-category="{group.category.value}" '
             f'aria-labelledby="methodology-category-{group.category.value}">'
-            f'<h2 id="methodology-category-{group.category.value}">{escape(group.label)}</h2>{body}</section>'
+            f'<h2 id="methodology-category-{group.category.value}">{escape(selected_translator.label("methodology.category", group.category.value))}</h2>{body}</section>'
         )
     pieces.append(window.render(query_context, view="methodology"))
     pieces.append("</section>")
