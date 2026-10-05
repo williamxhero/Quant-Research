@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ..translator import M, label_key
+from ..translator import M
 
 _FIELDS = {
     "record_id": M("记录 ID", "Record ID"),
@@ -35,9 +35,16 @@ ENTRIES: Mapping[str, M] = {
     "l5.search.title": M("搜索", "Search"),
     "l5.search.intro": M(
         "在已批准的记录和文档元数据中进行字面、不区分大小写的匹配；不使用语义或 LLM 排序。",
-        "Literal, case-insensitive matching across approved records and document metadata; no semantic or LLM ranking is used.",
+        "Literal, case-insensitive matching across approved records and document metadata; "
+        "no semantic or LLM ranking is used.",
     ),
     "l5.search.query": M("查询", "Query"),
+    "l5.search.form_aria": M("搜索表单", "Search form"),
+    "l5.search.query_placeholder": M("输入查询", "Enter a query"),
+    "l5.search.query_aria": M("搜索查询", "Search query"),
+    "l5.search.query_title": M("输入字面搜索查询", "Enter a literal search query"),
+    "l5.search.submit": M("搜索", "Search"),
+    "l5.search.none": M("无", "None"),
     "l5.search.observed": M("观察时间", "Observed"),
     "l5.search.snapshot": M("快照", "Snapshot"),
     "l5.search.sources": M("来源", "Sources"),
@@ -45,7 +52,8 @@ ENTRIES: Mapping[str, M] = {
     "l5.search.none_recorded": M("未记录", "None recorded"),
     "l5.search.pagination_complete": M(
         "已批准索引完整；只有在此已知快照中，空结果才表示全局无匹配。",
-        "The approved index is complete; an empty result is a global no-match only for this known snapshot.",
+        "The approved index is complete; an empty result is a global no-match only "
+        "for this known snapshot.",
     ),
     "l5.search.pagination_partial": M(
         "当前仅提供已索引页面；空页面不表示全局无匹配。",
@@ -55,8 +63,13 @@ ENTRIES: Mapping[str, M] = {
         "在完整快照中没有已批准的记录或文档匹配此查询。",
         "No approved record or document matches this query in the complete snapshot.",
     ),
-    "l5.search.no_match_scope": M("当前范围中尚未索引匹配条目。", "No matching entry is currently indexed in this scope."),
-    "l5.search.enter_query": M("输入查询以搜索已批准的记录和文档索引。", "Enter a query to search the approved record and document index."),
+    "l5.search.no_match_scope": M(
+        "当前范围中尚未索引匹配条目。", "No matching entry is currently indexed in this scope."
+    ),
+    "l5.search.enter_query": M(
+        "输入查询以搜索已批准的记录和文档索引。",
+        "Enter a query to search the approved record and document index.",
+    ),
     "l5.search.partial_empty": M(
         "当前索引页面没有匹配条目；尚未建立全局无匹配结论。",
         "The current indexed page has no matching entry; global no-match is not established.",
@@ -73,12 +86,16 @@ ENTRIES: Mapping[str, M] = {
         "已批准的搜索读模型不能作为完整的当前事实使用。",
         "The approved Search read model cannot be used as complete current truth.",
     ),
-    "l5.search.page_empty": M("此页面没有可见的索引条目。", "No indexed entries are visible on this page."),
+    "l5.search.page_empty": M(
+        "此页面没有可见的索引条目。", "No indexed entries are visible on this page."
+    ),
     "l5.search.results_aria": M("确定性搜索结果", "Deterministic search results"),
     "l5.search.matched_fields": M("匹配字段", "Matched fields"),
     "l5.search.reason": M("原因", "Reason"),
     "l5.search.source": M("来源", "Source"),
-    "l5.search.missing_source": M("未记录 / 未确认来源引用", "Missing / Unconfirmed source reference"),
+    "l5.search.missing_source": M(
+        "未记录 / 未确认来源引用", "Missing / Unconfirmed source reference"
+    ),
     "l5.search.missing": M("未记录 / 未确认", "Missing / Unconfirmed"),
     "l5.search.browse_entry": M("无（浏览条目）", "none (browse entry)"),
     "l5.search.next_page": M("下一页索引", "Next indexed page"),

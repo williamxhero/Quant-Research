@@ -7,6 +7,7 @@ from typing import cast
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.search import (
     SEARCH_FIELDS,
     SEARCH_FIXTURE_STATES,
@@ -181,7 +182,8 @@ def test_partial_page_never_claims_global_no_match() -> None:
     assert view.pagination_complete is False
     assert view.global_no_match is False
     rendered = view.render(
-        query_context="/?view=search&fixture=partial&q=absent&snapshot_token=partial"
+        query_context="/?view=search&fixture=partial&q=absent&snapshot_token=partial",
+        translator=Translator(Locale.EN),
     )
     assert 'data-search-state="partial"' in rendered
     assert 'data-pagination-complete="false"' in rendered
@@ -204,12 +206,12 @@ def test_complete_empty_and_missing_empty_are_distinct_from_partial() -> None:
     assert complete_empty.state is SearchState.EMPTY
     assert complete_empty.global_no_match is True
     assert (
-        "global no-match" not in complete_empty.render().lower()
-        or "complete snapshot" in complete_empty.render()
+        "global no-match" not in complete_empty.render(translator=Translator(Locale.EN)).lower()
+        or "complete snapshot" in complete_empty.render(translator=Translator(Locale.EN))
     )
     assert missing_empty.state is SearchState.EMPTY
     assert missing_empty.global_no_match is False
-    assert 'data-status="missing"' in missing_empty.render()
+    assert 'data-status="missing"' in missing_empty.render(translator=Translator(Locale.EN))
 
 
 def test_api_unavailable_is_explicit_and_has_no_fallback() -> None:
@@ -219,7 +221,7 @@ def test_api_unavailable_is_explicit_and_has_no_fallback() -> None:
 
     assert view.state is SearchState.API_UNAVAILABLE
     assert view.hits == ()
-    rendered = view.render()
+    rendered = view.render(translator=Translator(Locale.EN))
     assert 'data-status="api_unavailable"' in rendered
     assert 'data-search-state="api_unavailable"' in rendered
     assert "private-storage fallback" in rendered
@@ -285,3 +287,55 @@ def test_deterministic_fixtures_cover_required_search_states_and_are_read_only()
     )
     assert [hit.record_id for hit in document.hits] == ["document-fixture-1"]
     assert "document_title" in document.hits[0].matched_fields
+
+
+def test_search_localizes_complete_result_copy_without_translating_owner_data() -> None:
+    model = build_search_fixture("complete")
+    owner = _source("owner-<script>", owner="Owner <script>alert(1)</script>")
+    entry = _entry("owned-1", title="Owner <script>alert(1)</script>", source_ref=owner.source_id)
+    owner_model = ManagerReadModel(
+        data=cast(JSONValue, {"records": [entry], "pagination": {"complete": True}}),
+        source_refs=(owner,),
+        as_of=model.as_of,
+        snapshot_token=model.snapshot_token,
+        derivation=model.derivation,
+        availability=Availability(status=ReadModelStatus.KNOWN, complete=True),
+    )
+    zh = render_search_view(owner_model, query="Owner", translator=Translator(Locale.ZH_CN))
+    en = render_search_view(owner_model, query="Owner", translator=Translator(Locale.EN))
+    pseudo = render_search_view(
+        owner_model, query="Owner", translator=Translator(Locale.EN, pseudo=True)
+    )
+
+    assert "搜索 · 已批准的确定性索引" in zh
+    assert "Search · deterministic approved index" in en
+    assert "⟦Search · deterministic approved index" in pseudo
+    assert "Owner &lt;script&gt;alert(1)&lt;/script&gt;" in zh
+    assert "label.l5_search" not in zh
+    assert "<script>alert(1)</script>" not in zh
+
+
+def test_search_localizes_states_and_preserves_cross_resource_context_contract() -> None:
+    partial = SearchViewModel.from_read_model(build_search_fixture("partial"), query="absent")
+    zh = partial.render(
+        query_context="/?view=search&lang=zh-CN&q=absent&cursor=old&record_id=old",
+        translator=Translator(Locale.ZH_CN),
+    )
+    en = partial.render(
+        query_context="/?view=search&lang=en&q=absent&cursor=old&record_id=old",
+        translator=Translator(Locale.EN),
+    )
+    assert "尚未建立全局无匹配结论" in zh
+    assert "global no-match is not established" in en
+    assert "record_id=old" not in zh.split('data-search-next-cursor=', 1)[0]
+    assert "cursor=old" not in zh.split('data-search-next-cursor=', 1)[0]
+    assert "lang=zh-CN" in zh
+    assert "q=absent" in zh
+
+
+def test_search_default_and_invalid_locale_are_zh_cn() -> None:
+    model = build_search_fixture("empty")
+    assert "输入查询以搜索已批准的记录和文档索引。" in render_search_view(model)
+    assert "输入查询以搜索已批准的记录和文档索引。" in render_search_view(
+        model, query_context="/?view=search&lang=invalid"
+    )
