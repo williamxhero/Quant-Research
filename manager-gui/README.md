@@ -49,6 +49,48 @@ WebUI 只从 URL 的 `lang` 查询参数读取界面语言，不使用 cookie �
 指定语言时逐字节相同。`/api/export` 以及页面内嵌的导出载荷会从 `query` 和
 `query_params` 中剥离 `lang`，因此导出内容也与界面语言无关。
 
+## L2 共用层契约与 Exit Gate
+
+L2-T4 只验证共用层，不翻译页面专属正文。`ManagerGUIApp.render()` 为每个请求创建
+一个 `Translator`，并以关键字参数传给 17 个页面入口；`render_status_block`、
+`render_common_state`、`render_operational_state`、复制/导出/图谱表格 helper 的
+`translator` 也是必填关键字参数。页面入口可以继续保留默认值以兼容独立调用，但
+集成 shell 必须显式传递请求语言，不能在页面内重新推导语言。
+
+共用目录由 `web/i18n/catalog/` 按命名空间拥有：`shell.py`、`nav.py`、`status.py`、
+`interaction.py`、`client.py` 和 `pagination.py` 只能通过 `CatalogRegistry` 追加注册，
+不得覆盖已有键。L3/L4/L5 页面目录只能新增自己的命名空间，不得修改共用目录、
+`models.py` 或共享 shell。`MIGRATED_ROUTES` 位于 `testing/i18n.py`：它当前为空，
+因此 17 路由的 11 个 fixture 状态 × 2 种语言（374 份文档）只对共用 shell 执行
+伪语言泄漏、DOM 骨架、语言文字、链接/表单和可访问性审计；页面
+完成迁移后，所属 ticket 才能将路由加入该集合并启用页面审计。
+
+页面属主自由文本（标题、摘要、`reason`、错误信息、ID、locator 和时间戳）原样保留，
+由 `Translator.source_text()` 只转义一次；L2 不翻译、不猜测其源语言。程序生成的
+共用文案必须走目录，状态块必须用当前语言的状态标题和说明，再以带标签的“来源说明”
+显示属主 `reason`。内联客户端文案通过 `<script type="application/json" id="gui-messages">`
+注入；可执行 JS 保持静态且不含用户可见文案。CSS 在 `:lang(zh-CN)` 下使用中文字体
+栈并取消中文标签的大写/字距规则，不保留双语 `X / 中文` 或旧的 `*-label-zh` 选择器。
+
+L2 Exit Gate 的精确检查命令（均从 QuantResearch 根目录执行）为：
+
+```console
+uv run --directory manager-gui pytest -q
+uv run --directory manager-gui ruff check .
+uv run --directory manager-gui --with mypy --with pytest mypy --python-version 3.11 src
+uv build --directory manager-gui
+python -m compileall -q manager-gui/src
+git diff --check
+```
+
+此外必须运行 wheel 安装后的无源码 shell 冒烟：安装刚构建的
+`manager-gui/dist/quantresearch_manager_gui-*.whl` 到临时环境，分别渲染默认
+`zh-CN` 和 `?lang=en`；并启动 `manager-gui-web --fixture complete`，对全部 17 个
+`view` 执行中文/英文 HTML、`/api/read-model`、`/api/export` GET，确认 API 与导出
+逐字节一致，且 `/`、两个 API、`/health` 的 `POST`/`PUT`/`PATCH`/`DELETE` 均返回
+`405 Allow: GET, HEAD`。这些检查不改变 fixture 的只读性质，也不接触 SQLite、私有存储
+或任意文件系统。
+
 ## 中文排版与术语规范
 
 - 中文文案使用全角标点；不得写成 ASCII 逗号紧跟汉字。并列项目使用「、」，句内连接使用「和」或「与」，不以斜线代替连接词。

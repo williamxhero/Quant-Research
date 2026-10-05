@@ -688,7 +688,7 @@ def test_client_messages_are_in_safe_json_separate_from_static_executable_js() -
     from manager_gui.testing.i18n import parse_html
     from manager_gui.web.assets import JS_MESSAGE_KEYS
 
-    owner = '</script><script>unsafe()</script>&  '
+    owner = '</script><script>unsafe()</script>&' + chr(0x2028) + chr(0x2029)
     messages = {key: owner for key in JS_MESSAGE_KEYS}
     markup = render_js(messages)
     scripts = parse_html(markup).select("script")
@@ -697,7 +697,7 @@ def test_client_messages_are_in_safe_json_separate_from_static_executable_js() -
     payload = "".join(child for child in scripts[0].children if isinstance(child, str))
     assert json.loads(payload) == messages
     assert "<" not in payload and "&" not in payload
-    assert " " not in payload and " " not in payload
+    assert chr(0x2028) not in payload and chr(0x2029) not in payload
     assert "".join(child for child in scripts[1].children if isinstance(child, str)) == JS
     for locale in Locale:
         document = ManagerGUIApp().render(f"/?lang={locale.value}")

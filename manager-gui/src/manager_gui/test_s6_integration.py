@@ -326,14 +326,38 @@ def test_cli_and_live_http_exit_gate_covers_every_route_and_read_only_verbs(
     served_app: str,
 ) -> None:
     for view, (hook, _) in ROUTES.items():
-        with urlopen(f"{served_app}{_url(view)}") as response:
+        query = f"view={view}&fixture=complete&panel=events&q=gate&tag=a&tag="
+        with urlopen(f"{served_app}/?{query}") as response:
             assert response.status == 200
-            assert f'data-integration-hook="{hook}"' in response.read().decode("utf-8")
-        with urlopen(f"{served_app}/api/read-model?view={view}&fixture=complete") as response:
-            assert json.loads(response.read())["schema"] == "manager-gui.manager-read-model.v0"
-        with urlopen(f"{served_app}/api/export?view={view}&fixture=complete") as response:
-            payload = json.loads(response.read())
-            assert payload["view"] == view and payload["read_only"] is True
+            document = response.read().decode("utf-8")
+            assert f'data-integration-hook="{hook}"' in document
+            assert '<html lang="zh-CN">' in document
+        with urlopen(f"{served_app}/?{query}&lang=en") as response:
+            assert response.status == 200
+            document = response.read().decode("utf-8")
+            assert f'data-integration-hook="{hook}"' in document
+            assert '<html lang="en">' in document
+
+        zh_model_url = f"{served_app}/api/read-model?{query}"
+        en_model_url = f"{served_app}/api/read-model?{query}&lang=en"
+        with urlopen(zh_model_url) as response:
+            zh_model = response.read()
+        with urlopen(en_model_url) as response:
+            en_model = response.read()
+        assert zh_model == en_model
+        assert json.loads(zh_model)["schema"] == "manager-gui.manager-read-model.v0"
+
+        zh_export_url = f"{served_app}/api/export?{query}"
+        en_export_url = f"{served_app}/api/export?{query}&lang=en"
+        with urlopen(zh_export_url) as response:
+            zh_export = response.read()
+        with urlopen(en_export_url) as response:
+            en_export = response.read()
+        assert zh_export == en_export
+        payload = json.loads(zh_export)
+        assert payload["view"] == view and payload["read_only"] is True
+        assert "lang" not in payload["query_params"]
+
     for path in ("/", "/api/read-model", "/api/export", "/health"):
         for verb in MUTATING_VERBS:
             with pytest.raises(HTTPError) as caught:
