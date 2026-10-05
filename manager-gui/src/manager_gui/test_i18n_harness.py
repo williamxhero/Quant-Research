@@ -15,6 +15,7 @@ from manager_gui.testing.i18n import (
     assert_dom_equivalent,
     assert_enum_vocabulary,
     assert_fixture_vocabulary,
+    assert_l5_vocabulary,
     assert_lang_propagation,
     assert_language_text,
     assert_owner_text_escaped,
@@ -173,6 +174,10 @@ def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> N
                     pytest.fail(f"pseudo {route}/{fixture.value}/{locale_url}: {exc}")
             count += 2
     assert count == 374
+
+
+def test_l5_sample_enumerations_have_explicit_bilingual_labels() -> None:
+    assert_l5_vocabulary()
 
 
 def test_l3_modes_and_scopes_run_the_full_locale_dom_aria_link_matrix() -> None:

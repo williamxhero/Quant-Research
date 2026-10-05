@@ -22,12 +22,11 @@ def opaque_copy_button(
     *,
     translator: Translator,
     label: str = "Copy reference",
-    label_zh: str = "复制引用",
     css_class: str = "copy-reference",
 ) -> str:
     """Render a localized copy affordance for an opaque reference."""
 
-    del label, label_zh  # kept in the signature for page-owner compatibility
+    del label  # retained for page-owner compatibility
     if not value:
         return ""
     visible = escape(translator.t("interaction.copy_reference"))
@@ -147,11 +146,10 @@ def render_view_mode_controls(
     target: str,
     selected: str = "table",
     label: str = "Alternative view",
-    label_zh: str = "替代视图",
 ) -> str:
     """Render keyboard-operable graph/table mode controls for a page hook."""
 
-    del label, label_zh
+    del label
     selected_mode = selected if selected in {"graph", "table"} else "table"
     visible_label = escape(translator.t("interaction.alternative_view"))
     return (
@@ -172,11 +170,9 @@ def render_alternative_view(
     table_markup: str,
     selected: str = "table",
     label: str = "Lineage view",
-    label_zh: str = "谱系视图",
 ) -> str:
     """Render a graph hook and semantic table alternative."""
 
-    del label_zh
     selected_mode = selected if selected in {"graph", "table"} else "table"
     graph_hidden = "" if selected_mode == "graph" else " hidden"
     table_hidden = "" if selected_mode == "table" else " hidden"

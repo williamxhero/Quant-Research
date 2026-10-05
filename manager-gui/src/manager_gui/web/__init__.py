@@ -108,7 +108,6 @@ from .navigation import (
     ViewId,
     clear_filters_link,
     context_link,
-    navigation_label_zh,
     query_values,
 )
 from .portal import (
@@ -144,16 +143,13 @@ from .search import (
 from .server import create_server, run_server
 from .status import (
     DISPLAY_STATE_LABELS,
-    DISPLAY_STATE_LABELS_ZH,
     DisplayState,
     StatusDescriptor,
     describe_status,
     display_state_for,
-    display_state_label_zh,
     render_common_state,
     render_operational_state,
     render_status_block,
-    status_label_zh,
 )
 
 __all__ = [
@@ -164,7 +160,6 @@ __all__ = [
     "CONDITIONS_ROUTE",
     "DEFAULT_LOCALE",
     "DISPLAY_STATE_LABELS",
-    "DISPLAY_STATE_LABELS_ZH",
     "EVIDENCE_COMPARISON_INTEGRATION_HOOK",
     "EVIDENCE_COMPARISON_RESOURCE",
     "EVIDENCE_COMPARISON_ROUTE",
@@ -243,7 +238,6 @@ __all__ = [
     "current_view_export",
     "describe_status",
     "display_state_for",
-    "display_state_label_zh",
     "evidence_comparison_fixture_provider",
     "evidence_fixture_provider",
     "export_filename",
@@ -251,7 +245,6 @@ __all__ = [
     "export_url",
     "failure_grouping_fixture_provider",
     "lineage_fixture_provider",
-    "navigation_label_zh",
     "opaque_copy_button",
     "query_values",
     "render_alternative_view",
@@ -285,6 +278,5 @@ __all__ = [
     "resolve_locale",
     "run_server",
     "search_result_link",
-    "status_label_zh",
     "with_lang",
 ]

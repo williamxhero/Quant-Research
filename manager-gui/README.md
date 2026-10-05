@@ -49,41 +49,35 @@ WebUI 只从 URL 的 `lang` 查询参数读取界面语言，不使用 cookie �
 指定语言时逐字节相同。`/api/export` 以及页面内嵌的导出载荷会从 `query` 和
 `query_params` 中剥离 `lang`，因此导出内容也与界面语言无关。
 
-## L2 共用层契约与 Exit Gate
+## 全站多语言契约与最终 Exit Gate
 
-L2-T4 只验证共用层，不翻译页面专属正文。`ManagerGUIApp.render()` 为每个请求创建
-一个 `Translator`，并以关键字参数传给 17 个页面入口；`render_status_block`、
-`render_common_state`、`render_operational_state`、复制/导出/图谱表格 helper 的
-`translator` 也是必填关键字参数。页面入口可以继续保留默认值以兼容独立调用，但
-集成 shell 必须显式传递请求语言，不能在页面内重新推导语言。
+`ManagerGUIApp.render()` 为每个请求创建一个 `Translator`，并以关键字参数传给全部
+17 个页面入口；共用状态、交互、分页、导出和图谱/表格 helper 也只接受该请求语言。
+页面入口可以保留默认值以兼容独立调用，但集成 shell 必须显式传递请求语言，不能在页面
+内重新推导语言。Search 和 Portal 也使用同一请求 `Translator`，不会改变读模型或 API。
 
 共用目录由 `web/i18n/catalog/` 按命名空间拥有：`shell.py`、`nav.py`、`status.py`、
 `interaction.py`、`client.py` 和 `pagination.py` 只能通过 `CatalogRegistry` 追加注册，
-不得覆盖已有键。L3 页面目录由 `l3_atlas_story.py`、`l3_genome.py` 和
-`l3_method_history.py` 分别拥有；三个目录只在 `catalog/__init__.py` 中各注册一次。
-L4 页面目录由 `l4_memory.py`、`l4_evidence.py` 和 `l4_lineage.py` 分别拥有；三个目录也只在
-`catalog/__init__.py` 中各注册一次。注册表拒绝重复键，页面 helper 可接受 shell 传入的请求
-`Translator` 并仅补齐完全相同的页面目录项。L3/L4 页面不得修改共用目录、`models.py` 或共享
-shell；L5 Search 与 Portal 页面文案及 Exit Gate 保留给后续 ticket，不纳入 L4 页面迁移。
+不得覆盖已有键。L3、L4、L5 页面目录分别由各自的 `l3_*`、`l4_*` 和 `l5_search.py` /
+`l5_portal.py` 拥有，并且仅在 `catalog/__init__.py` 中注册一次。注册表拒绝重复键；
+所有页面 helper 使用 shell 传入的请求 `Translator`。`models.py`、共享 shell、
+`/api/read-model` 和 `/api/export` 保持语言中立。
 
-L3 已迁移路由集合位于 `testing/i18n.py`，固定为八条：`atlas`、`stories`、
-`strategies`、`strategy-conditions`、`strategy-genome-comparison`、`methodology`、
-`history` 和 `source-documents`。因此 17 路由的 11 个 fixture 状态 × 2 种语言
-（374 份文档）执行共用 shell 与已迁移页面的伪语言泄漏、DOM 骨架、语言文字、
-链接/表单和可访问性审计。L3 专项还覆盖 Stories 的 `narrative`、`evidence`、
-`timeline` 三种模式，以及 History/Source Documents 的 `A0`、`S3`、`CPA`、`V1.x`
-四个范围；Atlas 到 Research Story 的内部链接必须保留 `fixture`、记录 ID 和显式
-语言状态。
+最终 `MIGRATED_ROUTES` 精确包含全部 17 条路由：`atlas`、`stories`、`strategies`、
+`strategy-conditions`、`strategy-genome-comparison`、`memory`、`memory-failures`、
+`failure-patterns`、`evidence`、`lineage`、`evidence-object-comparison`、
+`derived-failure-grouping`、`methodology`、`history`、`source-documents`、`search`、
+`portal`。严格 Exit Gate 对 17 路由 × 11 个 fixture 状态 × 2 种语言执行 374 份文档的
+伪语言泄漏、DOM 骨架、语言文字、链接/表单和可访问性审计；Search/Portal 另外执行
+Search/Portal 页面状态、枚举词表及样例内容审计。L3 专项覆盖 Stories 的 `narrative`、
+`evidence`、`timeline` 三种模式；History/Source Documents 覆盖 `A0`、`S3`、`CPA`、
+`V1.x` 四个范围；所有内部链接保留 `fixture`、记录 ID 和显式语言状态。
 
-L4 新增迁移 `memory`、`memory-failures`、`failure-patterns`、`evidence`、`lineage`、
-`evidence-object-comparison` 和 `derived-failure-grouping` 七条路由，加入同一伪语言、DOM、
-语言文字、链接/表单及可访问性审计。17 条路由 × 11 种共用 fixture 状态 × 2 种语言仍执行
-374 份文档；Search 与 Portal 保持在 L5，不纳入已迁移页面文案审计。L4 页面专项还覆盖记忆、
-失败和证据详情，Lineage 边界/错误状态、Evidence 比较分页及 Derived 分组筛选。Evidence Trace
-必须使用 shell 的请求 `Translator`，其视图不改读模型、API 或导出内容。
-
-L5 handoff：Search 与 Portal 页面目录、页面专属中英文文案审计及其 Exit Gate 仍待 #660；
-后续集成在现有注册表中追加各自目录，不修改 L2 共用目录、L3/L4 目录或 `models.py`。
+所有界面文案、封闭枚举和程序生成说明均走目录；Search 的字段、记录类型、状态以及
+Portal 的制品、核验和重建状态均要求显式中英文标签。属主标题、摘要、reason、错误信息、
+ID、locator、范围和时间戳保持原文，只转义一次并以 `translate="no"` 或属主文本标记；
+不使用宽泛的英文白名单掩盖 UI 泄漏。不存在 `*_ZH` 导出、`label_zh` 参数或双语
+`*-label-zh` 选择器。
 
 L3 页面入口接收 shell 创建的请求 `Translator`，不可在页面内重新推导语言。封闭枚举
 （生命周期、模式、事件类型、文档类型和索引状态）通过 `translator.label`，计数通过
@@ -92,13 +86,13 @@ L3 页面入口接收 shell 创建的请求 `Translator`，不可在页面内重
 `translate="no"` 标记。Qualification 仍表示历史研究成熟度，不表示生产资格或交易准入。
 
 页面属主自由文本（标题、摘要、`reason`、错误信息、ID、locator 和时间戳）原样保留，
-由 `Translator.source_text()` 只转义一次；L2 不翻译、不猜测其源语言。程序生成的
+由 `Translator.source_text()` 只转义一次；全站不翻译、不猜测其源语言。程序生成的
 共用文案必须走目录，状态块必须用当前语言的状态标题和说明，再以带标签的“来源说明”
 显示属主 `reason`。内联客户端文案通过 `<script type="application/json" id="gui-messages">`
 注入；可执行 JS 保持静态且不含用户可见文案。CSS 在 `:lang(zh-CN)` 下使用中文字体
 栈并取消中文标签的大写/字距规则，不保留双语 `X / 中文` 或旧的 `*-label-zh` 选择器。
 
-L2 Exit Gate 的精确检查命令（均从 QuantResearch 根目录执行）为：
+最终 Manager GUI Exit Gate 的精确检查命令（均从 QuantResearch 根目录执行）为：
 
 ```console
 uv run --directory manager-gui pytest -q
