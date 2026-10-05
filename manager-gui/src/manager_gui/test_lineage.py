@@ -22,6 +22,8 @@ from manager_gui import (
 )
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.web.i18n import CATALOG, Locale, Translator, merge
+from manager_gui.web.i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from manager_gui.web.lineage import (
     LINEAGE_INTEGRATION_HOOK,
     LINEAGE_RESOURCE,
@@ -48,6 +50,9 @@ from manager_gui.web.lineage import (
 )
 
 CONTEXT = "/?view=lineage&fixture=complete&panel=events&q=abc&opaque=keep"
+LINEAGE_CATALOG_ALL = merge(CATALOG, LINEAGE_CATALOG)
+EN_TRANSLATOR = Translator(Locale.EN, catalog=LINEAGE_CATALOG_ALL)
+ZH_TRANSLATOR = Translator(Locale.ZH_CN, catalog=LINEAGE_CATALOG_ALL)
 
 
 # --- helpers -------------------------------------------------------------------
@@ -120,8 +125,19 @@ def _ids(view: LineageViewModel) -> set[str]:
     return {node.node_id for node in view.visible_nodes}
 
 
-def _render(state: str = "complete", context: str = CONTEXT, *, route: str = "lineage") -> str:
-    return render_lineage_view(build_lineage_fixture(state), query_context=context, route=route)
+def _render(
+    state: str = "complete",
+    context: str = CONTEXT,
+    *,
+    route: str = "lineage",
+    translator: Translator = EN_TRANSLATOR,
+) -> str:
+    if "lang=" not in context:
+        separator = "&" if "?" in context else "?"
+        context = f"{context}{separator}lang={translator.locale.value}"
+    return render_lineage_view(
+        build_lineage_fixture(state), query_context=context, route=route, translator=translator
+    )
 
 
 def _graph_nodes(out: str) -> list[str]:
@@ -190,7 +206,10 @@ def test_query_bounds_are_clamped_and_reported_not_hidden() -> None:
     assert query.direction is LineageDirection.BOTH
     assert query.relations == () and query.record_types == ()
     assert len(query.notes) == 5
-    out = render_lineage(LineageViewModel.from_read_model(build_lineage_fixture("complete"), query))
+    out = render_lineage(
+        LineageViewModel.from_read_model(build_lineage_fixture("complete"), query),
+        translator=EN_TRANSLATOR,
+    )
     for fragment in ("Unknown direction", "Unknown relation", f"using {MAX_DEPTH}", "using 1"):
         assert fragment in out
     assert LineageQuery.from_query("/?depth=abc").depth == 2
@@ -292,7 +311,7 @@ def test_source_refs_as_of_and_derivation_are_visible_and_unresolved_refs_are_no
             SourceReference("src-1", "owner", "lineage", "https://example.invalid/l", "s", "r"),
         ),
     )
-    out = render_lineage_view(model, query_context="/?view=lineage")
+    out = render_lineage_view(model, query_context="/?view=lineage&lang=en", translator=EN_TRANSLATOR)
 
     assert "ghost-src" in out and "Missing / Unconfirmed" in out
     assert 'href="https://example.invalid/l"' in out
@@ -306,7 +325,7 @@ def test_source_refs_as_of_and_derivation_are_visible_and_unresolved_refs_are_no
 
 def test_labels_are_escaped() -> None:
     model = _model([_n("a", "conclusion", label="<script>alert(1)</script>")], [])
-    out = render_lineage_view(model)
+    out = render_lineage_view(model, query_context="/?lang=en", translator=EN_TRANSLATOR)
     assert "<script>alert(1)</script>" not in out
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in out
 
@@ -481,7 +500,7 @@ def test_partial_page_with_unlinked_record_is_not_declared_disconnected() -> Non
     )
     view = LineageViewModel.from_read_model(model)
     assert [node.node_id for node in view.disconnected] == ["lone"]
-    out = render_lineage(view)
+    out = render_lineage(view, translator=EN_TRANSLATOR)
     assert "Not determined: records on further owner pages may connect these." in out
 
 
@@ -502,8 +521,8 @@ def test_graph_table_and_text_describe_the_same_records_and_relations() -> None:
 def test_pagination_keeps_graph_and_table_in_step() -> None:
     model = build_lineage_fixture("large")
     ctx = "/?view=lineage&page_size=5&depth=2&lang=en"
-    first = render_lineage_view(model, query_context=ctx)
-    second = render_lineage_view(model, query_context=ctx + "&page=2")
+    first = render_lineage_view(model, query_context=ctx, translator=EN_TRANSLATOR)
+    second = render_lineage_view(model, query_context=ctx + "&page=2", translator=EN_TRANSLATOR)
 
     assert _graph_nodes(first) == _table_nodes(first)
     assert _graph_nodes(first) == [f"node-{i:04d}" for i in range(1, 6)]
