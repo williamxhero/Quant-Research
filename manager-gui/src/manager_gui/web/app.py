@@ -492,7 +492,7 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 translator=translator,
-            ) + render_evidence_trace(model, query_context=url)
+            ) + render_evidence_trace(model, query_context=url, translator=translator)
         if state.view is ViewId.LINEAGE:
             return render_lineage_view(
                 cached,
