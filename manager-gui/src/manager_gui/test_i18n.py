@@ -338,7 +338,7 @@ def test_merge_validates_combines_and_rejects_duplicates() -> None:
         merge({"a.one": M("一", "one")}, {"a.one": M("一", "one")})
 
 
-def test_default_registry_contains_registered_shared_catalogs_and_keeps_unknown_keys_lenient() -> None:
+def test_default_registry_contains_shared_catalogs_and_unknown_keys_are_lenient() -> None:
     assert {
         "shell.brand",
         "nav.atlas.label",
