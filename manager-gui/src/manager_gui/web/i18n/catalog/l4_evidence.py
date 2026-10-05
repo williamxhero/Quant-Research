@@ -131,8 +131,8 @@ ENTRIES: Mapping[str, M] = {
     "trace.runtime_version": M("运行时版本", "Runtime version"),
     "trace.data_version": M("数据版本", "Data version"),
     "trace.not_published": M(
-        "{value} 未在此账本范围内发布 — 未记录 / 未确认。这不是失败，也不能证明记录不存在。",
-        "{value} is not published in this ledger scope — Missing / Unconfirmed. This is not a failure and not proof that the record does not exist.",
+        '<code translate="no">{value}</code> 未在此账本范围内发布 — 未记录 / 未确认。这不是失败，也不能证明记录不存在。',
+        '<code translate="no">{value}</code> is not published in this ledger scope — Missing / Unconfirmed. This is not a failure and not proof that the record does not exist.',
     ),
     # General Evidence/object comparison page.
     "l4.evidence_comparison.eyebrow": M("证据 / 对象比较 · 只读", "Evidence / object comparison · read-only"),
