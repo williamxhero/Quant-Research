@@ -684,6 +684,31 @@ def test_static_client_script_has_explicit_locale_message_injection_hook() -> No
     assert "Copied opaque reference / 已复制不透明引用" not in JS
 
 
+def test_client_messages_are_in_safe_json_separate_from_static_executable_js() -> None:
+    from manager_gui.testing.i18n import parse_html
+    from manager_gui.web.assets import JS_MESSAGE_KEYS
+
+    owner = '</script><script>unsafe()</script>&  '
+    messages = {key: owner for key in JS_MESSAGE_KEYS}
+    markup = render_js(messages)
+    scripts = parse_html(markup).select("script")
+    assert len(scripts) == 2
+    assert scripts[0].attrs == {"type": "application/json", "id": "gui-messages"}
+    payload = "".join(child for child in scripts[0].children if isinstance(child, str))
+    assert json.loads(payload) == messages
+    assert "<" not in payload and "&" not in payload
+    assert " " not in payload and " " not in payload
+    assert "".join(child for child in scripts[1].children if isinstance(child, str)) == JS
+    for locale in Locale:
+        document = ManagerGUIApp().render(f"/?lang={locale.value}")
+        actual = parse_html(document).select("script")
+        assert actual[0].attrs["id"] == "gui-messages"
+        data = "".join(child for child in actual[0].children if isinstance(child, str))
+        assert json.loads(data) == js_messages(Translator(locale))
+        assert tuple(json.loads(data)) == JS_MESSAGE_KEYS
+        assert "".join(child for child in actual[1].children if isinstance(child, str)) == JS
+
+
 def test_lineage_truncation_uses_cjk_display_width() -> None:
     assert _truncate("中文中文abc", 7) == "中文中…"
     assert _truncate("中文a", 4) == "中…"

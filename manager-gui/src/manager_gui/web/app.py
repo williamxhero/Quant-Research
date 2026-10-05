@@ -727,7 +727,7 @@ class ManagerGUIApp:
     <pre class="raw-json" aria-label="{escape(translator.t("shell.raw_json_aria"), quote=True)}">{raw_json}</pre>
   </aside>
 </div>
-<script>{render_js(translator=translator)}</script>
+{render_js(translator=translator)}
 </body>
 </html>"""
 

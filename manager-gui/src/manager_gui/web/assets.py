@@ -86,6 +86,7 @@ a { color: inherit; }
   background: #f2a65a; border-radius: 4px;
 }
 .read-only-badge::before { width: 6px; height: 6px; content: ""; background: #18343a; border-radius: 50%; }
+:lang(zh-CN) .read-only-badge { letter-spacing: normal; text-transform: none; }
 .search-form { display: flex; flex: 0 1 280px; min-width: 150px; }
 .search-input {
   width: 100%; padding: 9px 12px; color: white; background: #24474d;
@@ -104,7 +105,6 @@ a { color: inherit; }
 }
 .nav-link:hover, .nav-link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
 .nav-short { display: none; color: var(--accent); font-size: 10px; letter-spacing: .08em; }
-.nav-label-zh { color: var(--muted); font-size: 10px; font-weight: 600; }
 
 .workspace {
   display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 22px;
@@ -127,7 +127,6 @@ a { color: inherit; }
 .status-line { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .status-mark { width: 9px; height: 9px; background: var(--accent); border-radius: 50%; }
 .status-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.status-label-zh { color: var(--muted); font-size: 12px; font-weight: 650; }
 .display-state {
   margin-left: auto; padding: 3px 7px; color: var(--muted); font-size: 10px; font-weight: 750;
   letter-spacing: .08em; text-transform: uppercase; background: var(--surface-alt); border-radius: 3px;
@@ -213,7 +212,7 @@ a { color: inherit; }
   .inspector { position: static; }
   .nav-short { display: inline; }
   .nav-link { padding: 0 10px; }
-  .nav-label, .nav-label-zh { display: none; }
+  .nav-label { display: none; }
   .event-drawer { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 480px) {
@@ -227,7 +226,7 @@ a { color: inherit; }
 
 JS_TEMPLATE = r"""
 (() => {
-  const messages = __MANAGER_GUI_MESSAGES__;
+  const messages = JSON.parse(document.getElementById("gui-messages")?.textContent || "{}");
   const links = [...document.querySelectorAll("[data-nav-link]")];
   const inspector = document.querySelector("#inspector");
   const drawer = document.querySelector("#event-drawer");
@@ -399,7 +398,13 @@ JS_TEMPLATE = r"""
 })();
 """
 
-JS_MESSAGE_KEYS = {
+JS_MESSAGE_KEYS = (
+    "copy_success",
+    "copy_unavailable",
+    "export_success",
+    "export_unavailable",
+)
+_JS_MESSAGE_CATALOG = {
     "copy_success": "client.copy_success",
     "copy_unavailable": "client.copy_unavailable",
     "export_success": "client.export_success",
@@ -410,18 +415,22 @@ JS_MESSAGE_KEYS = {
 def js_messages(translator: Translator) -> dict[str, str]:
     """Return the explicit client-message map for one request locale."""
 
-    return {name: translator.t(key) for name, key in JS_MESSAGE_KEYS.items()}
+    return {name: translator.t(_JS_MESSAGE_CATALOG[name]) for name in JS_MESSAGE_KEYS}
 
 
 def render_js(
     messages: Mapping[str, str] | None = None, *, translator: Translator | None = None
 ) -> str:
-    """Inject a JSON message map into static JS without interpolating user data.
+    """Return static JS, or its safe per-request message/data script pair.
 
-    ``app.py`` currently mounts the legacy ``JS`` constant.  T1 can call this
-    seam with ``js_messages(translator)`` when it mounts the per-request locale.
+    With no arguments this returns the executable source used by ``JS``.  Passing
+    a translator or explicit message map returns two script elements: an inert
+    JSON data element followed by that unchanged executable source.  Keeping the
+    data out of executable JS means user-facing copy never becomes a JS literal.
     """
 
+    if messages is None and translator is None:
+        return JS_TEMPLATE
     if messages is not None and translator is not None:
         raise TypeError("pass messages or translator, not both")
     selected = js_messages(translator) if translator is not None else dict(messages or {})
@@ -430,10 +439,14 @@ def render_js(
         payload.replace("&", "\\u0026")
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
-        .replace("\\u2028", "\\u2028")
-        .replace("\\u2029", "\\u2029")
+        .replace(chr(0x2028), "\\u2028")
+        .replace(chr(0x2029), "\\u2029")
     )
-    return JS_TEMPLATE.replace("__MANAGER_GUI_MESSAGES__", payload)
+    return (
+        '<script type="application/json" id="gui-messages">'
+        f"{payload}</script>"
+        f"<script>{JS_TEMPLATE}</script>"
+    )
 
 
 # Keep the current shell contract static and safe; a locale-aware shell can use
