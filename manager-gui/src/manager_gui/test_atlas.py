@@ -21,6 +21,7 @@ from manager_gui.testing.i18n import (
     assert_language_text,
     assert_owner_text_escaped,
     assert_pseudo_localized,
+    parse_html,
 )
 from manager_gui.web.atlas import (
     LIFECYCLE_SPINE,
@@ -291,6 +292,20 @@ def test_atlas_localizes_page_copy_and_preserves_language_query_state() -> None:
             translator=Translator(pseudo=True, strict=True),
         )
     )
+
+
+def test_complete_atlas_fixture_has_localized_display_copy_but_keeps_payload_data() -> None:
+    model = fixture_provider("complete").read("atlas")
+    zh = render_atlas(model, translator=Translator(Locale.ZH_CN, strict=True))
+    en = render_atlas(model, translator=Translator(Locale.EN, strict=True))
+
+    assert "样例研究活动" in zh
+    assert "Fixture campaign" in en
+    zh_visible = "".join(surface.text for surface in parse_html(zh).visible_text)
+    assert "Fixture campaign" not in zh_visible
+    atlas_data = cast(dict[str, object], model.data)
+    records = cast(list[dict[str, object]], atlas_data["records"])
+    assert records[0]["title"] == "Fixture campaign"
 
 
 def test_atlas_owner_title_is_escaped_once_and_remains_verbatim() -> None:

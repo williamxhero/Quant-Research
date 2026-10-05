@@ -13,15 +13,16 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import escape
 from typing import TypeAlias, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
 from .i18n import Translator
-from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog  # noqa: F401
+from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import clear_filters_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -66,6 +67,35 @@ _CONTEXT_ORDER: tuple[str, ...] = (
 )
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
+
+
+def _is_fixture(model: ManagerReadModel) -> bool:
+    """Only localize owner prose for an exact shipped synthetic envelope."""
+
+    if not (model.snapshot_token or "").startswith("fixture-") and model.data != {}:
+        return False
+    return any(model == build_fixture(state, resource="atlas") for state in FixtureState)
+
+
+def _fixture_text(value: str | None, *, translator: Translator, fixture: bool) -> str:
+    if value is None:
+        return ""
+    key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value) if fixture else None
+    if key is not None:
+        return escape(translator.t(key))
+    return f'<span data-owner-text="true">{translator.source_text(value)}</span>'
+
+
+def _fixture_status_model(model: ManagerReadModel, translator: Translator) -> ManagerReadModel:
+    def localize(value: str | None) -> str | None:
+        key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value or "")
+        return translator.t(key) if key is not None else value
+
+    return replace(
+        model,
+        availability=replace(model.availability, reason=localize(model.availability.reason)),
+        errors=tuple(replace(error, message=localize(error.message) or "") for error in model.errors),
+    )
 
 
 def _text(value: object) -> str | None:
@@ -532,7 +562,11 @@ def _story_link(record: AtlasRecord, query_context: QueryContext) -> str:
 
 
 def _render_record(
-    record: AtlasRecord, *, query_context: QueryContext, translator: Translator
+    record: AtlasRecord,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     state = (
         f'<span class="atlas-record-state">{translator.label("atlas.state", record.state)}</span>'
@@ -557,7 +591,7 @@ def _render_record(
         f'<li class="atlas-record" data-record-id="{escape(record.record_id, quote=True)}" '
         f'data-record-type="{escape(record.record_type, quote=True)}">'
         f'<a href="{escape(_record_link(record, query_context), quote=True)}">'
-        f'<span data-owner-text="true">{translator.source_text(record.title)}</span></a>'
+        f'{_fixture_text(record.title, translator=translator, fixture=fixture)}</a>'
         f'<a class="atlas-story-link" data-record-story="{escape(record.record_id, quote=True)}" '
         f'href="{escape(_story_link(record, query_context), quote=True)}">'
         f'{escape(translator.t("atlas.record.open_story"))}</a>'
@@ -566,12 +600,18 @@ def _render_record(
 
 
 def _render_record_list(
-    records: Sequence[AtlasRecord], *, query_context: QueryContext, translator: Translator
+    records: Sequence[AtlasRecord],
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     return (
         '<ul class="atlas-record-list">'
         + "".join(
-            _render_record(record, query_context=query_context, translator=translator)
+            _render_record(
+                record, query_context=query_context, translator=translator, fixture=fixture
+            )
             for record in records
         )
         + "</ul>"
@@ -579,7 +619,11 @@ def _render_record_list(
 
 
 def _render_lifecycle(
-    view: AtlasViewModel, *, query_context: QueryContext, translator: Translator
+    view: AtlasViewModel,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     by_type: dict[str, list[AtlasRecord]] = {record_type: [] for record_type in LIFECYCLE_SPINE}
     extras: list[AtlasRecord] = []
@@ -592,7 +636,9 @@ def _render_lifecycle(
     for index, record_type in enumerate(LIFECYCLE_SPINE, start=1):
         records = by_type[record_type]
         body = (
-            _render_record_list(records, query_context=query_context, translator=translator)
+            _render_record_list(
+                records, query_context=query_context, translator=translator, fixture=fixture
+            )
             if records
             else f'<p class="atlas-muted">{escape(translator.t("atlas.lifecycle.empty"))}</p>'
         )
@@ -608,7 +654,7 @@ def _render_lifecycle(
             '<article class="atlas-spine-step atlas-extra-records"><div class="atlas-step-heading">'
             f'<h3>{escape(translator.t("atlas.lifecycle.other"))}</h3>'
             f'<span class="atlas-count">{escape(translator.count("atlas.count.records", len(extras)))}</span>'
-            f'</div>{_render_record_list(extras, query_context=query_context, translator=translator)}</article>'
+            f'</div>{_render_record_list(extras, query_context=query_context, translator=translator, fixture=fixture)}</article>'
         )
     return (
         '<section class="atlas-spine" aria-labelledby="atlas-spine-title">'
@@ -625,13 +671,14 @@ def _render_special_records(
     query_context: QueryContext,
     section_id: str,
     translator: Translator,
+    fixture: bool,
 ) -> str:
     if not records:
         return ""
     return (
         f'<section class="atlas-section" id="{section_id}" aria-labelledby="{section_id}-title">'
         f'<h2 id="{section_id}-title">{escape(translator.t(title_key))}</h2>'
-        f'{_render_record_list(records, query_context=query_context, translator=translator)}</section>'
+        f'{_render_record_list(records, query_context=query_context, translator=translator, fixture=fixture)}</section>'
     )
 
 
@@ -735,6 +782,7 @@ def render_atlas(
         )
     )
     model = view.read_model
+    fixture = _is_fixture(model)
     context = _context_with_filters(view, query_context)
     source_ids = [source.source_id for source in model.source_refs]
     source_text = (
@@ -768,7 +816,10 @@ def render_atlas(
         f'<span><strong>{escape(selected_translator.t("atlas.snapshot"))}</strong> {snapshot}</span>'
         f'<span><strong>{escape(selected_translator.t("atlas.sources"))}</strong> '
         f'{source_text}</span></p>',
-        render_status_block(model, translator=selected_translator),
+        render_status_block(
+            _fixture_status_model(model, selected_translator) if fixture else model,
+            translator=selected_translator,
+        ),
     ]
     state = display_state_for(model)
     if state is DisplayState.EMPTY:
@@ -776,7 +827,9 @@ def render_atlas(
     pieces.append(_render_filters(view, query_context=context, translator=selected_translator))
     if view.records:
         pieces.append(
-            _render_lifecycle(view, query_context=context, translator=selected_translator)
+            _render_lifecycle(
+                view, query_context=context, translator=selected_translator, fixture=fixture
+            )
         )
     if view.status_groups:
         rows = "".join(
@@ -796,6 +849,7 @@ def render_atlas(
             query_context=context,
             section_id="recently-changed",
             translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append(
@@ -805,6 +859,7 @@ def render_atlas(
             query_context=context,
             section_id="blocked-unavailable",
             translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append(
@@ -814,19 +869,20 @@ def render_atlas(
             query_context=context,
             section_id="unresolved-conclusions",
             translator=selected_translator,
+            fixture=fixture,
         )
     )
     if view.research_gaps:
         gap_markup: list[str] = []
         for gap in view.research_gaps:
             detail = (
-                f'<span data-owner-text="true">{selected_translator.source_text(gap.detail)}</span>'
+                _fixture_text(gap.detail, translator=selected_translator, fixture=fixture)
                 if gap.detail
                 else ""
             )
             gap_markup.append(
                 f'<li data-gap-id="{escape(gap.gap_id, quote=True)}">'
-                f'<strong data-owner-text="true">{selected_translator.source_text(gap.title)}</strong>'
+                f'<strong>{_fixture_text(gap.title, translator=selected_translator, fixture=fixture)}</strong>'
                 f"{detail}</li>"
             )
         gaps = "".join(gap_markup)
@@ -842,6 +898,7 @@ def render_atlas(
             query_context=context,
             section_id="frontier",
             translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append("</div>")

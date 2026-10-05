@@ -310,15 +310,12 @@ def test_story_localizes_each_mode_and_preserves_machine_context_in_zh_and_en() 
 def test_story_view_model_stores_catalog_keys_not_generated_gui_prose() -> None:
     view = ResearchStoryViewModel.from_read_model(_model(_complete_data()))
     payload = view.to_dict()
+    chapters = cast(list[dict[str, object]], payload["chapters"])
+    timeline_events = cast(list[dict[str, object]], payload["timeline_events"])
 
-    assert all(
-        chapter["label"].startswith("label.story.chapter.")
-        for chapter in payload["chapters"]
-    )
-    assert all("Intent / purpose" not in str(chapter) for chapter in payload["chapters"])
-    assert all(
-        "Source event" not in str(event) for event in payload["timeline_events"]
-    )
+    assert all(str(chapter["label"]).startswith("label.story.chapter.") for chapter in chapters)
+    assert all("Intent / purpose" not in str(chapter) for chapter in chapters)
+    assert all("Source event" not in str(event) for event in timeline_events)
     generated_links = [
         link
         for entry in view.entries
@@ -342,7 +339,9 @@ def test_story_complete_fixture_has_localized_display_copy_but_keeps_payload_dat
     zh_visible = "".join(surface.text for surface in parse_html(zh).visible_text)
     assert "Fixture campaign" not in zh_visible
     assert "样例研究活动" not in "".join(surface.text for surface in parse_html(en).visible_text)
-    assert model.data["campaign"]["title"] == "Fixture campaign"
+    story_data = cast(dict[str, object], model.data)
+    campaign = cast(dict[str, object], story_data["campaign"])
+    assert campaign["title"] == "Fixture campaign"
     assert model.to_json() == fixture_provider("complete").read("stories").to_json()
 
 
