@@ -156,6 +156,8 @@ def test_dom_skeleton_audit_rejects_added_or_missing_elements() -> None:
 
 
 def test_pseudo_locale_and_language_audits_identify_untranslated_text() -> None:
+    translated = Translator(Locale.EN, pseudo=True).t("shell.read_only")
+    assert_pseudo_localized(f"<html><body><p>{translated}</p></body></html>")
     with pytest.raises(AssertionError, match="pseudo-locale leak"):
         assert_pseudo_localized("<html><body><p>⟦已翻译⟧ leaked</p></body></html>")
     with pytest.raises(AssertionError, match="Chinese Latin leak"):

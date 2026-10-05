@@ -352,6 +352,11 @@ def is_owner_text(surface: TextSurface) -> bool:
         return True
     if any("status-errors" in ancestor.classes for ancestor in node.ancestors()):
         return True
+    if node.tag == "dt" and any(
+        "inspector-list" in ancestor.classes for ancestor in node.ancestors()
+    ):
+        # Source owner/kind pairs are owner payload; ordinary <dt> labels are not.
+        return " · " in node.text(include_hidden=True)
     return node.tag in _OWNER_DIRECT_TAGS and any(
         ancestor.classes & OWNER_TEXT_ALLOWLIST for ancestor in node.ancestors()
     )
@@ -585,6 +590,10 @@ def assert_accessible(
     """
 
     document = parse_html(document) if isinstance(document, str) else document
+    for surface in _surfaces(document, route):
+        assert not _BILINGUAL.search(surface.text), (
+            f"bilingual UI text at {surface.location}: {surface.text!r}"
+        )
     ids = [node.attrs["id"] for node in document.elements if node.attrs.get("id")]
     assert len(ids) == len(set(ids)), "duplicate id attributes"
     for key, token in document.references:
