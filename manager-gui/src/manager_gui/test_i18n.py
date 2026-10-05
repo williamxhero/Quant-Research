@@ -338,10 +338,14 @@ def test_merge_validates_combines_and_rejects_duplicates() -> None:
         merge({"a.one": M("一", "one")}, {"a.one": M("一", "one")})
 
 
-def test_default_registry_is_empty_until_catalogs_are_added() -> None:
-    assert len(REGISTRY.entries) == 0
+def test_default_registry_contains_the_registered_shared_catalogs() -> None:
+    assert "shell.brand" in REGISTRY.entries
+    assert "nav.atlas.label" in REGISTRY.entries
+    assert "pagination.summary" in REGISTRY.entries
+    before = len(REGISTRY.entries)
     register({})
-    assert Translator().t("any.key") == "any.key"
+    assert len(REGISTRY.entries) == before
+    assert Translator().t("shell.brand") == "Manager GUI"
 
 
 def test_module_level_register_feeds_default_translators() -> None:

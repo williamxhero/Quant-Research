@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 from ..fixtures import FixtureState, build_fixture
 from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
-from .assets import CSS, JS
+from .assets import CSS, render_js
 from .atlas import render_atlas_view
 from .comparison import (
     COMPARISON_RESOURCE,
@@ -83,10 +83,6 @@ from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE, render_search_view
 from .status import render_status_block
 
-_SWITCHER_LABELS: dict[Locale, tuple[str, str]] = {
-    Locale.ZH_CN: ("语言", "中文"),
-    Locale.EN: ("Language", "English"),
-}
 _INTERNAL_HREF = re.compile(r'''(?P<prefix>href=["'])(?P<url>/\?[^"']*)(?P<suffix>["'])''')
 
 
@@ -373,7 +369,9 @@ class ManagerGUIApp:
         model = self.read_model(state)
         item = navigation_item(state.view)
         translator = Translator(state.locale)
-        page = self._render_page(state, model, normalized_url)
+        page = self._render_page(
+            state, model, normalized_url, translator=translator
+        )
         page = self._localize_internal_links(page, state.lang)
         return self._render_document(
             state, model, item, page, translator=translator, raw_url=url
@@ -415,7 +413,14 @@ class ManagerGUIApp:
 
         return _INTERNAL_HREF.sub(replace_link, markup)
 
-    def _render_page(self, state: WebRequestState, model: ManagerReadModel, url: str) -> str | None:
+    def _render_page(
+        self,
+        state: WebRequestState,
+        model: ManagerReadModel,
+        url: str,
+        *,
+        translator: Translator,
+    ) -> str | None:
         """Mount a page hook while leaving all shell chrome in this app."""
 
         cached = _CachedReadProvider(model)
@@ -424,6 +429,7 @@ class ManagerGUIApp:
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.STORIES:
             return render_research_story(
@@ -431,6 +437,7 @@ class ManagerGUIApp:
                 mode=state.mode,
                 base_path=url,
                 query=url,
+                translator=translator,
             )
         if state.view is ViewId.STRATEGIES:
             return render_genome_view(
@@ -438,6 +445,7 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 genome_id=dict(state.context).get("genome_id"),
+                translator=translator,
             )
         if state.view is ViewId.CONDITIONS:
             return render_genome_conditions_view(
@@ -445,12 +453,14 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 genome_id=dict(state.context).get("genome_id"),
+                translator=translator,
             )
         if state.view is ViewId.COMPARISON:
             return render_genome_comparison_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.MEMORY:
             return render_memory_view(
@@ -458,6 +468,7 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 memory_id=dict(state.context).get("memory_id"),
+                translator=translator,
             )
         if state.view is ViewId.MEMORY_FAILURES:
             return render_memory_failure_view(
@@ -465,12 +476,14 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 failure_id=dict(state.context).get("failure_id") or dict(state.context).get("memory_id"),
+                translator=translator,
             )
         if state.view is ViewId.FAILURE_PATTERNS:
             return render_failure_patterns_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.EVIDENCE:
             # The trace reuses the already-read envelope: still exactly one provider read.
@@ -478,6 +491,7 @@ class ManagerGUIApp:
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             ) + render_evidence_trace(model, query_context=url)
         if state.view is ViewId.LINEAGE:
             return render_lineage_view(
@@ -485,24 +499,28 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 record_id=dict(state.context).get("record_id"),
+                translator=translator,
             )
         if state.view is ViewId.EVIDENCE_COMPARISON:
             return render_evidence_comparison_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.FAILURE_GROUPING:
             return render_failure_grouping_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.METHODOLOGY:
             return render_methodology_view(
                 cached,
                 snapshot_token=model.snapshot_token,
                 query_context=url,
+                translator=translator,
             )
         if state.view is ViewId.HISTORY:
             return render_history_view(
@@ -510,6 +528,7 @@ class ManagerGUIApp:
                 scope=self._scope_for_state(state),
                 base_path=url,
                 query=url,
+                translator=translator,
             )
         if state.view is ViewId.SOURCE_DOCUMENTS:
             return render_source_documents_view(
@@ -518,6 +537,7 @@ class ManagerGUIApp:
                 boundary=ApprovedDirectoryBoundary(self._approved_directories),
                 base_path=url,
                 query=url,
+                translator=translator,
             )
         if state.view is ViewId.SEARCH:
             context = dict(state.context)
@@ -528,6 +548,7 @@ class ManagerGUIApp:
                 record_type=context.get("record_type") or context.get("type"),
                 source_filter=context.get("source"),
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         if state.view is ViewId.PORTAL:
             return render_portal_view(
@@ -535,22 +556,9 @@ class ManagerGUIApp:
                 base_path=url,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
+                translator=translator,
             )
         return None
-
-    @staticmethod
-    def _render_copy_button(value: str | None, translator: Translator) -> str:
-        """Render a localized copy affordance for an opaque, non-dereferenced value."""
-
-        if not value:
-            return ""
-        label = translator.t("shell.copy_reference")
-        safe_value = escape(value, quote=True)
-        return (
-            '<button class="copy-reference" type="button" '
-            f'data-copy-value="{safe_value}" aria-label="{escape(label, quote=True)}">'
-            f"{escape(label)}</button>"
-        )
 
     @staticmethod
     def _render_source_refs(model: ManagerReadModel, translator: Translator) -> str:
@@ -566,7 +574,7 @@ class ManagerGUIApp:
                 f"{escape(source.kind)}</dt><dd>"
                 f'<span data-opaque-ref="{escape(source.source_id, quote=True)}">'
                 f"{escape(source.locator)}</span>"
-                f"{ManagerGUIApp._render_copy_button(source.source_id, translator)}"
+                f"{opaque_copy_button(source.source_id, translator=translator)}"
                 f"</dd></div>"
             )
         return "".join(refs)
@@ -584,7 +592,7 @@ class ManagerGUIApp:
         return "".join(
             f'<div class="inspector-item"><dt>{escape(key)} · {escape(opaque_label)}</dt><dd>'
             f'<span data-opaque-ref="{escape(value, quote=True)}">{escape(value)}</span>'
-            f"{ManagerGUIApp._render_copy_button(value, translator)}</dd></div>"
+            f"{opaque_copy_button(value, translator=translator)}</dd></div>"
             for key, value in candidates
         )
 
@@ -613,7 +621,7 @@ class ManagerGUIApp:
         context_hidden = "".join(
             f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
             for key, value in raw_pairs
-            if key not in {"q", "view", "fixture", "lang"}
+            if key not in {"q", "view", "fixture", "lang", "panel", "mode"}
         )
         lang_hidden = (
             f'<input type="hidden" name="lang" value="{escape(state.lang.value, quote=True)}">'
@@ -638,7 +646,7 @@ class ManagerGUIApp:
       <p class="context-line"><span><strong>{escape(translator.t("shell.view"))}</strong> {escape(state.view.value)}</span>
         <span><strong>{escape(translator.t("shell.fixture"))}</strong> {escape(state.fixture.value)}</span>
         <span><strong>{escape(translator.t("shell.observed"))}</strong> {escape(as_of)}</span></p>
-      {render_status_block(model)}
+      {render_status_block(model, translator=translator)}
       <section class="hook-surface" data-integration-hook="{escape(item.integration_hook)}">
         <h2>{escape(translator.t("shell.integration_ready"))}</h2>
         <p>{escape(translator.t("shell.placeholder_intro", schema="ManagerReadModel v0"))}</p>
@@ -647,19 +655,17 @@ class ManagerGUIApp:
         else:
             page_markup = page
         export_context = with_lang(raw_url, None)
-        export_control = ManagerGUIApp._localize_export_control(
-            render_export_control(
-                export_context,
-                view=state.view.value,
-                snapshot_token=model.snapshot_token,
-                model=model,
-            ),
-            translator,
+        export_control = render_export_control(
+            export_context,
+            translator=translator,
+            view=state.view.value,
+            snapshot_token=model.snapshot_token,
+            model=model,
         )
         language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
-            f"{ManagerGUIApp._render_copy_button(model.snapshot_token, translator)}"
+            f"{opaque_copy_button(model.snapshot_token, translator=translator)}"
             if model.snapshot_token
             else escape(snapshot)
         )
@@ -721,44 +727,59 @@ class ManagerGUIApp:
     <pre class="raw-json" aria-label="{escape(translator.t("shell.raw_json_aria"), quote=True)}">{raw_json}</pre>
   </aside>
 </div>
-<script>{JS}</script>
+<script>{render_js(translator=translator)}</script>
 </body>
 </html>"""
 
     @staticmethod
-    def _render_language_switcher(state: WebRequestState, raw_url: str) -> str:
+    def _render_language_switcher(
+        state: WebRequestState, raw_url: str, translator: Translator
+    ) -> str:
         """Render a no-JavaScript switcher while preserving the raw query state."""
 
-        aria_label, _ = _SWITCHER_LABELS[state.locale]
+        aria_label = translator.t("shell.language")
+        labels = {
+            Locale.ZH_CN: translator.t("shell.language_zh"),
+            Locale.EN: translator.t("shell.language_en"),
+        }
         choices: list[str] = []
-        for locale, (_, endonym) in _SWITCHER_LABELS.items():
+        for locale in (Locale.ZH_CN, Locale.EN):
+            label = labels[locale]
             if locale is state.locale:
                 choices.append(
                     f'<span lang="{locale.html_lang}" aria-current="true">'
-                    f"{escape(endonym)}</span>"
+                    f"{escape(label)}</span>"
                 )
                 continue
             href = with_lang(raw_url, locale)
             choices.append(
                 f'<a lang="{locale.html_lang}" hreflang="{locale.html_lang}" '
-                f'href="{escape(href, quote=True)}">{escape(endonym)}</a>'
+                f'href="{escape(href, quote=True)}">{escape(label)}</a>'
             )
         return (
-            f'<nav class="language-switcher" aria-label="{escape(aria_label)}" '
+            f'<nav class="language-switcher" aria-label="{escape(aria_label, quote=True)}" '
             'data-language-switcher>'
             + '<span class="language-switcher-label" aria-hidden="true">·</span>'.join(choices)
             + "</nav>"
         )
 
     @staticmethod
-    def _static_link(state: WebRequestState) -> str:
-        return state.url(view=ViewId.ATLAS)
+    def _static_link(state: WebRequestState, raw_url: str) -> str:
+        normalized_url = with_lang(raw_url, state.lang)
+        pairs = parse_qsl(urlsplit(normalized_url).query, keep_blank_values=True)
+        pairs = [(key, value) for key, value in pairs if key not in {"view", "fixture"}]
+        pairs.extend((("view", ViewId.ATLAS.value), ("fixture", state.fixture.value)))
+        return "/?" + urlencode(pairs)
 
     @staticmethod
-    def _render_navigation_static(state: WebRequestState) -> str:
+    def _render_navigation_static(
+        state: WebRequestState, raw_url: str, translator: Translator
+    ) -> str:
+        normalized_url = with_lang(raw_url, state.lang)
+        raw_pairs = parse_qsl(urlsplit(normalized_url).query, keep_blank_values=True)
         context = [
             (key, value)
-            for key, value in state.query_pairs()
+            for key, value in raw_pairs
             if key not in {"view", "fixture"}
         ]
         links = []
@@ -766,14 +787,15 @@ class ManagerGUIApp:
             current = item.view_id is state.view
             href_values = [("view", item.view_id.value), ("fixture", state.fixture.value), *context]
             href = "/?" + urlencode(href_values)
+            label = navigation_label(item.view_id, translator)
+            description = navigation_description(item.view_id, translator)
             links.append(
                 f'<a class="nav-link" data-nav-link href="{escape(href, quote=True)}" '
                 f'aria-current="{"page" if current else "false"}" '
-                f'aria-label="{escape(item.label)} / {escape(navigation_label_zh(item.view_id))}" '
-                f'title="{escape(item.description, quote=True)}">'
+                f'aria-label="{escape(label, quote=True)}" '
+                f'title="{escape(description, quote=True)}">'
                 f'<span class="nav-short" aria-hidden="true">{escape(item.short_label)}</span>'
-                f'<span class="nav-label">{escape(item.label)}</span>'
-                f'<span class="nav-label-zh" lang="zh-CN">{escape(navigation_label_zh(item.view_id))}</span></a>'
+                f'<span class="nav-label">{escape(label)}</span></a>'
             )
         return "".join(links)
 

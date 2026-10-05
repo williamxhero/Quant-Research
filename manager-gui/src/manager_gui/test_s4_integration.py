@@ -429,7 +429,7 @@ def test_evidence_local_pagination_keeps_every_shared_context_key() -> None:
 
 def test_navigation_between_s4_routes_keeps_fixture_query_panel_and_opaque_context() -> None:
     document = _render("evidence", q="gate", panel="events", opaque="keep me", presentation="graph")
-    nav = document.split('aria-label="Manager GUI sections', 1)[1].split("</nav>", 1)[0]
+    nav = document.split('aria-label="管理界面分区', 1)[1].split("</nav>", 1)[0]
     for view in S4_ROUTES:
         match = re.search(rf'href="(/\?[^"]*view={re.escape(view)}(?:&|")[^"]*)"', nav)
         assert match is not None, view

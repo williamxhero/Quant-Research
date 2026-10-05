@@ -147,13 +147,18 @@ def test_s6_fixture_matrix_preserves_owner_status_and_round_trips() -> None:
             assert model.availability.status is shell_model.availability.status
 
 
-def test_navigation_has_search_and_portal_with_bilingual_accessible_labels() -> None:
+def test_navigation_has_search_and_portal_in_the_selected_locale() -> None:
     order = [item.view_id.value for item in NAVIGATION]
     assert order[-2:] == ["search", "portal"]
-    document = ManagerGUIApp(default_fixture="complete").render(_url("portal"))
-    assert 'aria-label="Search / 搜索"' in document
-    assert 'aria-label="Portal / 报告门户"' in document
-    assert 'aria-current="page"' in document
+    chinese = ManagerGUIApp(default_fixture="complete").render(_url("portal"))
+    assert 'aria-label="搜索"' in chinese
+    assert 'aria-label="报告门户"' in chinese
+    assert 'aria-current="page"' in chinese
+
+    english = ManagerGUIApp(default_fixture="complete").render(_url("portal") + "&lang=en")
+    assert 'aria-label="Search"' in english
+    assert 'aria-label="Portal"' in english
+    assert 'aria-current="page"' in english
 
 
 def test_search_links_each_declared_identity_to_a_real_mounted_route() -> None:
