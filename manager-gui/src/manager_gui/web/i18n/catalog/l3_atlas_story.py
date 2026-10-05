@@ -99,6 +99,7 @@ ENTRIES: Mapping[str, M] = {
     "label.story.evidence_state.stale": M("已过时", "Stale"),
     "label.story.evidence_state.incomparable": M("不可比较", "Incomparable"),
     "label.story.chapter.intent": M("意图与目的", "Intent / purpose"),
+    "label.story.chapter.events": M("时间线事件", "Timeline event"),
     "label.story.chapter.initial_hypothesis": M("初始研究假设", "Initial hypothesis"),
     "label.story.chapter.research_design": M("研究设计", "Research design"),
     "label.story.chapter.attempts": M("尝试 / 运行", "Attempts / runs"),
@@ -116,21 +117,26 @@ ENTRIES: Mapping[str, M] = {
     "label.story.link_kind.source": M("来源", "Source"),
     "story.missing": M("未记录 / 未确认", "Missing / Unconfirmed"),
     "story.record_id": M("记录 ID：{record_id}", "Record ID: {record_id}"),
-    "story.source_missing": M("未记录 / 未确认的来源", "Missing / Unconfirmed source"),
-    "story.source_unconfirmed": M(
-        "{source_id} — 未记录 / 未确认", "{source_id} — Missing / Unconfirmed"
+    "story.source_missing": M("未记录或未确认的来源", "Missing / Unconfirmed source"),
+    "story.source_reference": M(
+        "来源引用 <span translate=\"no\">{source_id}</span>",
+        "Source <span translate=\"no\">{source_id}</span>",
     ),
+    "story.link.missing": M("未记录或未确认", "Missing / Unconfirmed"),
+    "story.record_id.label": M("记录 ID", "Record ID"),
     "story.temporal.both": M(
-        "来源事件 {event_time}；系统获知时间 {known_at}。",
-        "Source event {event_time}; known at {known_at}.",
+        "来源事件 <time translate=\"no\">{event_time}</time>；"
+        "系统获知时间 <time translate=\"no\">{known_at}</time>。",
+        "Source event <time translate=\"no\">{event_time}</time>; "
+        "known at <time translate=\"no\">{known_at}</time>.",
     ),
     "story.temporal.event_only": M(
-        "来源事件 {event_time}；系统获知时间不可用。",
-        "Source event {event_time}; known-at time unavailable.",
+        "来源事件 <time translate=\"no\">{event_time}</time>；系统获知时间不可用。",
+        "Source event <time translate=\"no\">{event_time}</time>; known-at time unavailable.",
     ),
     "story.temporal.known_only": M(
-        "系统获知时间 {known_at}；来源事件时间不可用。",
-        "Known at {known_at}; source event time unavailable.",
+        "系统获知时间 <time translate=\"no\">{known_at}</time>；来源事件时间不可用。",
+        "Known at <time translate=\"no\">{known_at}</time>; source event time unavailable.",
     ),
     "story.temporal.none": M(
         "来源事件时间和系统获知时间均不可用。",
@@ -163,6 +169,8 @@ ENTRIES: Mapping[str, M] = {
     ),
     "story.timeline.aria": M("来源事件时间线", "Source event timeline"),
     "story.timeline.default_category": M("来源事件", "Source event"),
+    "story.entry.title_missing": M("已记录项目", "Recorded item"),
+    "story.entry.summary_missing": M("未记录叙述文本。", "No narrative text recorded."),
     "story.link_kind.unknown": M("{kind}", "{kind}"),
 }
 
