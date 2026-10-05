@@ -21,6 +21,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog  # noqa: F401
 from .navigation import clear_filters_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
