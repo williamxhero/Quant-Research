@@ -34,6 +34,7 @@ ENTRIES: Mapping[str, M] = {
     "atlas.unavailable": M("不可用", "Unavailable"),
     "atlas.lifecycle.title": M("研究生命周期", "Research lifecycle"),
     "atlas.lifecycle.other": M("其他记录类型", "Other record types"),
+    "atlas.lifecycle.empty": M("此生命周期范围中没有记录。", "No records in this lifecycle scope."),
     "atlas.count.records": M("{n} 条记录", {"one": "{n} record", "other": "{n} records"}),
     "atlas.empty_scope": M("此研究总览范围中没有记录。", "No records are present in this Atlas scope."),
     "atlas.section.status_groups": M("状态分组", "Status groups"),
