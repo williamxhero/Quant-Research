@@ -932,10 +932,14 @@ def _render_identity(genome: GenomeRecord, translator: Translator) -> str:
         ("provenance", genome.provenance),
         ("explicit_state", genome.state),
     )
+    def render_value(key: str, value: object) -> str:
+        if key == "explicit_state" and isinstance(value, str):
+            return translator.label("lifecycle_event", value)
+        return _render_value(value, translator)
     return (
         '<dl class="genome-identity">'
         + "".join(
-            f'<div data-identity-field="{escape(key, quote=True)}"><dt>{translator.label("genome_identity", key)}</dt><dd>{_render_value(value, translator)}</dd></div>'
+            f'<div data-identity-field="{escape(key, quote=True)}"><dt>{translator.label("genome_identity", key)}</dt><dd>{render_value(key, value)}</dd></div>'
             for key, value in rows
         )
         + "</dl>"

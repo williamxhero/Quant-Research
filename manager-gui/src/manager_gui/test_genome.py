@@ -7,7 +7,6 @@ from typing import cast
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
-from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.genome import (
     BEHAVIOR_PROJECTION_FIELDS,
     LIFECYCLE_EVENT_KINDS,
@@ -22,6 +21,7 @@ from manager_gui.web.genome import (
     render_genome,
     render_genome_view,
 )
+from manager_gui.web.i18n import Locale, Translator
 
 
 def test_complete_fixture_exposes_catalog_detail_behavior_validation_lifecycle_and_lineage() -> (
@@ -44,7 +44,9 @@ def test_complete_fixture_exposes_catalog_detail_behavior_validation_lifecycle_a
     assert view.detail.source_refs[0].locator == "fixture://manager-gui/genomes"
 
     document = render_genome(
-        view, query_context="/?fixture=complete&panel=events&q=signal", translator=Translator(Locale.EN)
+        view,
+        query_context="/?fixture=complete&panel=events&q=signal",
+        translator=Translator(Locale.EN),
     )
     chinese_document = render_genome(view, query_context="/?fixture=complete&panel=events&q=signal")
     assert "基因组目录" in chinese_document
@@ -261,7 +263,10 @@ def test_raw_json_is_json_compatible_and_provider_hook_reads_once_without_mutati
 
 def test_render_hook_accepts_an_already_read_model_without_a_provider_call() -> None:
     document = render_genome_view(
-        build_genome_fixture("complete"), genome_id="genome-fixture-1", query_context="/?q=signal", translator=Translator(Locale.EN)
+        build_genome_fixture("complete"),
+        genome_id="genome-fixture-1",
+        query_context="/?q=signal",
+        translator=Translator(Locale.EN),
     )
     assert 'data-genome-id="genome-fixture-1"' in document
     assert "q=signal" in document

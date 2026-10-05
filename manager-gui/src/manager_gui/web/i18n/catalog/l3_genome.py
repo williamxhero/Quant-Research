@@ -15,7 +15,6 @@ from collections.abc import Mapping
 from ..translator import M
 from . import register
 
-
 ENTRIES: Mapping[str, M] = {
     # Genome page copy.
     "genome.eyebrow": M(
@@ -25,7 +24,10 @@ ENTRIES: Mapping[str, M] = {
     "genome.title": M("策略基因组", "Strategy Genomes"),
     "genome.intro": M(
         "检查已发布的策略基因组身份、行为投影、验证绑定、生命周期事件和谱系，不推断属主事实。",
-        "Inspect published Genome identity, behavior projection, validation binding, lifecycle events, and lineage without inferring owner facts.",
+        (
+            "Inspect published Genome identity, behavior projection, validation binding, "
+            "lifecycle events, and lineage without inferring owner facts."
+        ),
     ),
     "genome.observed": M("截至时间", "Observed"),
     "genome.snapshot": M("快照", "Snapshot"),
@@ -46,7 +48,10 @@ ENTRIES: Mapping[str, M] = {
     "genome.behavior_title": M("行为投影", "Behavior projection"),
     "genome.behavior_intro": M(
         "已发布读模型中的十四个行为字段都会显示；不会推断缺失字段。",
-        "All fourteen behavior fields are shown from the published read model; missing fields are not inferred.",
+        (
+            "All fourteen behavior fields are shown from the published read model; "
+            "missing fields are not inferred."
+        ),
     ),
     "genome.field": M("字段", "Field"),
     "genome.value": M("值", "Value"),
@@ -61,7 +66,10 @@ ENTRIES: Mapping[str, M] = {
     "genome.lifecycle_title": M("生命周期时间线", "Lifecycle timeline"),
     "genome.lifecycle_intro": M(
         "这里只显示明确记录的已提出、已验证、已发布、已撤销和已设为墓碑来源事件；不会推断状态。",
-        "Only explicit proposed, validated, published, revoked, and tombstoned source events are shown; no state is inferred.",
+        (
+            "Only explicit proposed, validated, published, revoked, and tombstoned source "
+            "events are shown; no state is inferred."
+        ),
     ),
     "genome.lifecycle_aria": M("基因组生命周期事件时间线", "Genome lifecycle event timeline"),
     "genome.no_events": M(
@@ -72,7 +80,10 @@ ENTRIES: Mapping[str, M] = {
     "genome.lineage_title": M("谱系入口", "Lineage entry points"),
     "genome.lineage_intro": M(
         "这些{term:candidate}、{term:hypothesis}、{term:strategy_family}、上下文、软件包、{term:run}和{term:evidence}引用，都是有来源支持的入口。",
-        "These {term:candidate}, {term:hypothesis}, {term:strategy_family}, context, package, {term:run}, and {term:evidence} refs are source-backed entry points.",
+        (
+            "These {term:candidate}, {term:hypothesis}, {term:strategy_family}, context, "
+            "package, {term:run}, and {term:evidence} refs are source-backed entry points."
+        ),
     ),
     "genome.lineage_empty": M(
         "没有记录{kind}谱系入口。{term:missing}。",
@@ -106,7 +117,10 @@ ENTRIES: Mapping[str, M] = {
     "conditions.title": M("策略基因组条件与证据", "Genome conditions and evidence"),
     "conditions.intro": M(
         "只有属主记录发布证据时，才显示适用条件和失效条件。制度或行为描述仍是观察。",
-        "Applicability and invalidation conditions are shown only when an owner record publishes evidence. Regime and behaviour descriptors remain observations.",
+        (
+            "Applicability and invalidation conditions are shown only when an owner record "
+            "publishes evidence. Regime and behaviour descriptors remain observations."
+        ),
     ),
     "conditions.observed": M("截至时间", "Observed"),
     "conditions.snapshot": M("快照", "Snapshot"),
@@ -154,7 +168,10 @@ ENTRIES: Mapping[str, M] = {
     "comparison.title": M("基因组比较", "Genome comparison"),
     "comparison.intro": M(
         "只显示明确的比较轴。相等、不同和不可比较仍是不同结果。",
-        "Only explicit comparison axes are shown. Equal, different, and incomparable remain distinct outcomes.",
+        (
+            "Only explicit comparison axes are shown. Equal, different, and incomparable "
+            "remain distinct outcomes."
+        ),
     ),
     "comparison.observed": M("截至时间", "Observed"),
     "comparison.snapshot": M("快照", "Snapshot"),
@@ -168,13 +185,18 @@ ENTRIES: Mapping[str, M] = {
     "comparison.result": M("结果：{result}", "Result: {result}"),
     "comparison.reason": M("原因", "Reason"),
     "comparison.no_comparison": M(
-        "此范围中没有记录明确的基因组比较。", "No explicit Genome comparison is recorded in this scope."
+        "此范围中没有记录明确的基因组比较。",
+        "No explicit Genome comparison is recorded in this scope.",
     ),
     "comparison.no_comparison_explanation": M(
         "没有明确比较记录，不能声称相等或不同。",
         "Without an explicit comparison record, equality or difference cannot be claimed.",
     ),
     "comparison.axes_incompatible": M(
+        "声明的比较轴不完整或不兼容。",
+        "The declared comparison axes are not complete or compatible.",
+    ),
+    "comparison.generated_axes_reason": M(
         "声明的比较轴不完整或不兼容。",
         "The declared comparison axes are not complete or compatible.",
     ),
@@ -264,7 +286,9 @@ ENTRIES: Mapping[str, M] = {
     "label.comparison_axis.metric_definition": M("指标定义", "Metric definition"),
     "label.comparison_axis.evidence_sections": M("证据章节", "Evidence sections"),
     "label.comparison_axis.currency": M("货币", "Currency"),
-    "label.comparison_axis.data_requirements.version": M("数据要求 · 版本", "Data requirements · version"),
+    "label.comparison_axis.data_requirements.version": M(
+        "数据要求 · 版本", "Data requirements · version"
+    ),
 }
 
 

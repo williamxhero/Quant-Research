@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from manager_gui.models import ReadModelStatus
-from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.comparison import (
     ComparisonFixtureState,
     ComparisonResult,
@@ -15,6 +14,7 @@ from manager_gui.web.comparison import (
     render_genome_comparison,
     render_genome_comparison_view,
 )
+from manager_gui.web.i18n import Locale, Translator
 
 
 def test_equal_and_different_comparisons_keep_changed_paths_explicit() -> None:
@@ -145,6 +145,6 @@ def test_comparison_context_link_and_provider_hook_are_stable_and_read_only() ->
     assert "panel=compare" in document
     fixture_provider = comparison_fixture_provider("equal")
     assert fixture_provider.read().availability.status is ReadModelStatus.DERIVED
-    assert tuple(
-        name for name in dir(fixture_provider) if name in {"write", "update", "delete"}
-    ) == ()
+    assert (
+        tuple(name for name in dir(fixture_provider) if name in {"write", "update", "delete"}) == ()
+    )
