@@ -47,6 +47,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog.l4_evidence import page_translator
 from .locators import public_locator
 from .navigation import PageWindow, context_link
 from .status import render_operational_state, render_status_block
@@ -1023,123 +1024,232 @@ def _parse_ledger(
 # --- rendering -----------------------------------------------------------------
 
 
+_FIXTURE_TEXT_KEYS: Mapping[str, str] = {
+    "The protocol result is inspectable.": "fixture.evidence.conclusion",
+    "Retain the published protocol result for review.": "fixture.evidence.decision",
+    "Conclusion and decision": "fixture.evidence.section_conclusion",
+    "Conclusion is linked to a public source and artifact.": "fixture.evidence.section_summary",
+    "Candidate screening result": "fixture.evidence.candidate_label",
+    "Candidate signal": "fixture.evidence.candidate_section",
+    "A candidate result awaiting the frozen protocol.": "fixture.evidence.candidate_summary",
+    "Candidate evidence is not a protocol result.": "fixture.evidence.candidate_limit",
+    "Protocol result": "fixture.evidence.protocol_label",
+    "Protocol evaluation": "fixture.evidence.protocol_section",
+    "A result evaluated under the declared protocol.": "fixture.evidence.protocol_summary",
+    "Synthetic fixture; not a live data gate.": "fixture.evidence.synthetic_limit",
+    "Fixture data only.": "fixture.evidence.fixture_only",
+    "This view does not recalculate metrics.": "fixture.evidence.ledger_limit",
+    "Some protocol sections are outside the published scope.": "fixture.evidence.partial_limit",
+    "The approved protocol source is blocked.": "fixture.evidence.blocker",
+    "Data snapshots are not comparable.": "fixture.evidence.incomparable",
+    "Failed protocol result": "fixture.evidence.failed_label",
+    "Not evaluated result": "fixture.evidence.not_evaluated_label",
+    "Declared hash does not match the observed bytes.": "fixture.evidence.artifact_hash_detail",
+    "The published artifact cannot be located.": "fixture.evidence.artifact_missing_detail",
+    "Artifact schema is not recognised by this reader.": "fixture.evidence.artifact_schema_detail",
+    "The fixture contains the published Evidence Ledger projection.": "fixture.evidence.read_reason",
+    "Only part of the Evidence Ledger is published in this scope.": "fixture.evidence.partial_reason",
+    "Some protocol evidence sections are outside the indexed scope.": "fixture.evidence.partial_error",
+    "The approved Evidence read seam is blocked.": "fixture.evidence.blocked_reason",
+    "The fixture preserves a blocked evidence determination.": "fixture.evidence.blocked_error",
+    "The evidence snapshots are incompatible.": "fixture.evidence.incomparable_reason",
+    "The fixture preserves incomparable evidence rather than ranking it.": "fixture.evidence.incomparable_error",
+    "The artifact verification did not pass its integrity gate.": "fixture.evidence.integrity_reason",
+    "The artifact hash does not match the declared hash.": "fixture.evidence.hash_error",
+    "The artifact schema is unknown to this reader.": "fixture.evidence.schema_error",
+    "A referenced artifact is missing.": "fixture.evidence.missing_reason",
+    "The evidence record references an unavailable artifact.": "fixture.evidence.missing_error",
+    "The Evidence Ledger source is stale.": "fixture.evidence.stale_reason",
+    "The published evidence is retained for historical inspection only.": "fixture.evidence.stale_error",
+    "The approved public Evidence read API is unavailable.": "fixture.evidence.api_reason",
+    "No private-storage fallback is permitted for Evidence reads.": "fixture.evidence.api_error",
+}
+
+
 def _display(value: object, fallback: str = NOT_RECORDED) -> str:
     text = _text(value)
     return text if text is not None else fallback
 
 
-def _status_label(status: StrEnum) -> str:
-    return str(status.value).replace("_", " ").title()
+def _fixture_text(value: str | None, translator: Translator, *, is_fixture: bool = True) -> str | None:
+    if value is None:
+        return None
+    key = _FIXTURE_TEXT_KEYS.get(value) if is_fixture else None
+    return translator.t(key) if key is not None else value
 
 
-def _kind_label(kind: EvidenceKind) -> str:
-    return {
-        EvidenceKind.CANDIDATE: "Candidate evidence",
-        EvidenceKind.PROTOCOL_CONFORMING: "Protocol-conforming evidence",
-        EvidenceKind.NOT_RECORDED: "Evidence class not recorded",
-    }[kind]
+def _owner_text(value: str | None, translator: Translator, *, is_fixture: bool) -> str:
+    if value is None:
+        return escape(translator.t("evidence.not_recorded"))
+    if is_fixture and value in _FIXTURE_TEXT_KEYS:
+        return escape(translator.t(_FIXTURE_TEXT_KEYS[value]))
+    return f'<span data-owner-text="true">{escape(value)}</span>'
+
+
+def _status_label(status: StrEnum, translator: Translator) -> str:
+    if isinstance(status, EvidenceKind):
+        return translator.label("evidence_kind", status.value)
+    if isinstance(status, EvidenceLevel):
+        return translator.label("evidence_level", status.value)
+    if isinstance(status, EvidenceOutcome):
+        return translator.label("evidence_outcome", status.value)
+    if isinstance(status, ArtifactVerificationStatus):
+        return translator.label("artifact_verification", status.value)
+    return escape(str(status.value).replace("_", " ").title())
+
+
+def _kind_label(kind: EvidenceKind, translator: Translator) -> str:
+    return translator.label("evidence_kind", kind.value)
 
 
 def _render_source_refs(
-    refs: Sequence[EvidenceSourceRef], *, query_context: QueryContext = None
+    refs: Sequence[EvidenceSourceRef], *, query_context: QueryContext = None, translator: Translator,
+    is_fixture: bool = True,
 ) -> str:
+    label = escape(translator.t("evidence.sources"))
+    empty = escape(translator.t("evidence.not_recorded"))
     if not refs:
-        return f'<div class="evidence-ref-group"><dt>Sources</dt><dd>{NOT_RECORDED.title()}</dd></div>'
+        return f'<div class="evidence-ref-group"><dt>{label}</dt><dd>{empty}</dd></div>'
     items: list[str] = []
     for ref in refs:
-        label = escape(ref.source_id)
+        source_label = f'<span data-owner-text="true">{escape(ref.source_id)}</span>'
         target = public_locator(ref.locator)
         if target:
             items.append(
                 f'<li><a class="evidence-source-link" data-source-id="{escape(ref.source_id, quote=True)}" '
-                f'href="{escape(target, quote=True)}">{label}</a></li>'
+                f'href="{escape(target, quote=True)}">{source_label}</a></li>'
             )
         else:
             fallback = context_link(query_context, view=EVIDENCE_ROUTE, source_id=ref.source_id)
             items.append(
-                f'<li data-source-id="{escape(ref.source_id, quote=True)}">{label} — '
+                f'<li data-source-id="{escape(ref.source_id, quote=True)}">{source_label} — '
                 f'<a class="evidence-source-context-link" href="{escape(fallback, quote=True)}">'
-                "Missing / Unconfirmed</a></li>"
+                f'{escape(translator.t("evidence.missing_unconfirmed"))}</a></li>'
             )
-    return '<div class="evidence-ref-group"><dt>Sources</dt><dd><ul>' + "".join(items) + "</ul></dd></div>"
+    return f'<div class="evidence-ref-group"><dt>{label}</dt><dd><ul>{"".join(items)}</ul></dd></div>'
 
 
-def _render_text_list(title: str, values: Sequence[str], *, empty: str = NOT_RECORDED.title()) -> str:
+def _render_text_list(
+    title: str,
+    values: Sequence[str],
+    *,
+    translator: Translator,
+    is_fixture: bool,
+    empty: str | None = None,
+) -> str:
+    empty_text = empty or translator.t("evidence.not_recorded")
     if not values:
-        return f'<div class="evidence-detail"><dt>{escape(title)}</dt><dd>{escape(empty)}</dd></div>'
-    items = "".join(f"<li>{escape(value)}</li>" for value in values)
+        return f'<div class="evidence-detail"><dt>{escape(title)}</dt><dd>{escape(empty_text)}</dd></div>'
+    items = "".join(
+        f'<li>{_owner_text(value, translator, is_fixture=is_fixture)}</li>' for value in values
+    )
     return f'<div class="evidence-detail"><dt>{escape(title)}</dt><dd><ul>{items}</ul></dd></div>'
 
 
+def _owner_markup(value: str | None, translator: Translator, *, is_fixture: bool) -> str:
+    if value is None:
+        return escape(translator.t("evidence.not_recorded"))
+    key = _FIXTURE_TEXT_KEYS.get(value) if is_fixture else None
+    if key is not None:
+        return escape(translator.t(key))
+    return f'<span data-owner-text="true">{escape(value)}</span>'
+
+
 def _render_artifact(
-    artifact: EvidenceArtifact, *, query_context: QueryContext = None
+    artifact: EvidenceArtifact, *, query_context: QueryContext = None, translator: Translator,
+    is_fixture: bool = True,
 ) -> str:
     status = artifact.verification_status.value
     public = public_locator(artifact.locator)
     link = public or context_link(query_context, view=EVIDENCE_ROUTE, artifact_id=artifact.artifact_id)
+    name = _owner_markup(artifact.name, translator, is_fixture=is_fixture)
     link_markup = (
-        f'<a class="evidence-artifact-link" href="{escape(link, quote=True)}">'
-        f"{escape(artifact.name)}</a>"
+        f'<a class="evidence-artifact-link" href="{escape(link, quote=True)}">{name}</a>'
         if public
-        else f'<a class="evidence-artifact-context-link" href="{escape(link, quote=True)}">{escape(artifact.name)}</a>'
+        else f'<a class="evidence-artifact-context-link" href="{escape(link, quote=True)}">{name}</a>'
     )
-    detail = artifact.verification_detail or NOT_RECORDED.title()
-    source_markup = _render_source_refs(artifact.source_refs, query_context=query_context)
+    detail = _owner_markup(artifact.verification_detail, translator, is_fixture=is_fixture)
+    source_markup = _render_source_refs(artifact.source_refs, query_context=query_context, translator=translator, is_fixture=is_fixture)
     return (
         f'<article class="evidence-artifact" data-artifact-id="{escape(artifact.artifact_id, quote=True)}" '
         f'data-verification-status="{escape(status, quote=True)}">'
         f"<h4>{link_markup}</h4><dl class=\"evidence-artifact-details\">"
-        f'<div class="evidence-detail"><dt>Media type</dt><dd>{escape(_display(artifact.media_type))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Logical role</dt><dd>{escape(_display(artifact.logical_role))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Hash</dt><dd>{escape(_display(artifact.hash))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Producer</dt><dd>{escape(_display(artifact.producer))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Runtime version</dt><dd>{escape(_display(artifact.runtime_version))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Data version</dt><dd>{escape(_display(artifact.data_version))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Verification status</dt><dd>{escape(_status_label(artifact.verification_status))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Verification detail</dt><dd>{escape(detail)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.media_type"))}</dt><dd>{_owner_markup(artifact.media_type, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.logical_role"))}</dt><dd>{_owner_markup(artifact.logical_role, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.hash"))}</dt><dd>{_owner_markup(artifact.hash, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.producer"))}</dt><dd>{_owner_markup(artifact.producer, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.runtime_version"))}</dt><dd>{_owner_markup(artifact.runtime_version, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.data_version"))}</dt><dd>{_owner_markup(artifact.data_version, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.verification_status"))}</dt><dd>{_status_label(artifact.verification_status, translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.verification_detail"))}</dt><dd>{detail}</dd></div>'
         f"{source_markup}</dl></article>"
     )
 
 
-def _render_section(section: EvidenceSection, *, query_context: QueryContext = None) -> str:
-    sources = _render_source_refs(section.source_refs, query_context=query_context)
+def _render_section(
+    section: EvidenceSection, *, query_context: QueryContext = None, translator: Translator,
+    is_fixture: bool = True,
+) -> str:
+    sources = _render_source_refs(section.source_refs, query_context=query_context, translator=translator, is_fixture=is_fixture)
     artifacts = (
-        ", ".join(escape(ref) for ref in section.artifact_refs)
+        ", ".join(f'<span data-owner-text="true">{escape(ref)}</span>' for ref in section.artifact_refs)
         if section.artifact_refs
-        else NOT_RECORDED.title()
+        else escape(translator.t("evidence.not_recorded"))
     )
     return (
         f'<article class="evidence-section" data-section-id="{escape(section.section_id, quote=True)}" '
         f'data-evidence-kind="{section.evidence_kind.value}" data-evidence-status="{section.status.value}">'
-        f"<h3>{escape(section.title)}</h3>"
-        f'<p class="evidence-kind-label">{escape(_kind_label(section.evidence_kind))}</p>'
+        f'<h3>{_owner_markup(section.title, translator, is_fixture=is_fixture)}</h3>'
+        f'<p class="evidence-kind-label">{_kind_label(section.evidence_kind, translator)}</p>'
         f'<dl class="evidence-details">'
-        f'<div class="evidence-detail"><dt>Evidence level</dt><dd>{escape(_status_label(section.evidence_level))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Status</dt><dd>{escape(_status_label(section.status))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Summary</dt><dd>{escape(_display(section.summary))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Artifacts</dt><dd>{artifacts}</dd></div>'
-        f"{sources}{_render_text_list('Limitations', section.limitations)}</dl></article>"
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.level"))}</dt><dd>{_status_label(section.evidence_level, translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.status"))}</dt><dd>{_status_label(section.status, translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.summary"))}</dt><dd>{_owner_markup(section.summary, translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.artifacts"))}</dt><dd>{artifacts}</dd></div>'
+        f'{sources}{_render_text_list(translator.t("evidence.limitations"), section.limitations, translator=translator, is_fixture=is_fixture)}</dl></article>'
     )
 
 
-def _render_record(record: EvidenceRecord, *, query_context: QueryContext = None) -> str:
-    sections = "".join(_render_section(section, query_context=query_context) for section in record.sections)
-    artifacts = "".join(_render_artifact(artifact, query_context=query_context) for artifact in record.artifacts)
+def _render_record(
+    record: EvidenceRecord,
+    *,
+    query_context: QueryContext = None,
+    translator: Translator,
+    is_fixture: bool,
+) -> str:
+    sections = "".join(
+        _render_section(
+            section,
+            query_context=query_context,
+            translator=translator,
+            is_fixture=is_fixture,
+        )
+        for section in record.sections
+    )
+    artifacts = "".join(
+        _render_artifact(
+            artifact,
+            query_context=query_context,
+            translator=translator,
+            is_fixture=is_fixture,
+        )
+        for artifact in record.artifacts
+    )
     return (
         f'<article class="evidence-record" data-record-id="{escape(record.record_id, quote=True)}" '
         f'data-evidence-kind="{record.evidence_kind.value}" data-evidence-status="{record.status.value}">'
-        f"<h3>{escape(record.label)}</h3>"
-        f'<p class="evidence-kind-label">{escape(_kind_label(record.evidence_kind))}</p>'
+        f'<h3>{_owner_markup(record.label, translator, is_fixture=is_fixture)}</h3>'
+        f'<p class="evidence-kind-label">{_kind_label(record.evidence_kind, translator)}</p>'
         f'<dl class="evidence-details">'
-        f'<div class="evidence-detail"><dt>Evidence level</dt><dd>{escape(_status_label(record.evidence_level))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Status</dt><dd>{escape(_status_label(record.status))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Summary</dt><dd>{escape(_display(record.summary))}</dd></div>'
-        f"{_render_source_refs(record.source_refs, query_context=query_context)}"
-        f"{_render_text_list('Limitations', record.limitations)}"
-        f"{_render_text_list('Blockers', record.blockers)}"
-        f"{_render_text_list('Incompatibilities', record.incompatibilities)}</dl>"
-        f'<section class="evidence-record-sections"><h4>Sections</h4>{sections or f"<p>{NOT_RECORDED.title()}</p>"}</section>'
-        f'<section class="evidence-record-artifacts"><h4>Artifacts</h4>{artifacts or f"<p>{NOT_RECORDED.title()}</p>"}</section>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.level"))}</dt><dd>{_status_label(record.evidence_level, translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.status"))}</dt><dd>{_status_label(record.status, translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.summary"))}</dt><dd>{_owner_markup(record.summary, translator, is_fixture=is_fixture)}</dd></div>'
+        f'{_render_source_refs(record.source_refs, query_context=query_context, translator=translator)}'
+        f'{_render_text_list(translator.t("evidence.limitations"), record.limitations, translator=translator, is_fixture=is_fixture)}'
+        f'{_render_text_list(translator.t("evidence.blockers"), record.blockers, translator=translator, is_fixture=is_fixture)}'
+        f'{_render_text_list(translator.t("evidence.incompatibilities"), record.incompatibilities, translator=translator, is_fixture=is_fixture)}</dl>'
+        f'<section class="evidence-record-sections"><h4>{escape(translator.t("evidence.sections"))}</h4>{sections or f"<p>{escape(translator.t('evidence.not_recorded'))}</p>"}</section>'
+        f'<section class="evidence-record-artifacts"><h4>{escape(translator.t("evidence.artifacts"))}</h4>{artifacts or f"<p>{escape(translator.t('evidence.not_recorded'))}</p>"}</section>'
         "</article>"
     )
 
@@ -1153,16 +1263,20 @@ def render_evidence(
 ) -> str:
     """Render an Evidence Ledger fragment for a shared shell to mount."""
 
-    selected_translator = translator or Translator()
+    selected_translator = page_translator(translator)
     view = (
         view_or_model
         if isinstance(view_or_model, EvidenceViewModel)
         else EvidenceViewModel.from_read_model(view_or_model)
     )
     model, ledger = view.read_model, view.ledger
-    sources = ", ".join(source.source_id for source in model.source_refs) or NOT_RECORDED.title()
-    observed = model.as_of or "Unavailable"
-    snapshot = model.snapshot_token or "Unavailable"
+    is_fixture = any(source.source_id == "evidence-fixture-source" for source in model.source_refs)
+    sources = selected_translator.join(
+        f'<span data-owner-text="true">{escape(source.source_id)}</span>'
+        for source in model.source_refs
+    ) or escape(selected_translator.t("evidence.not_recorded"))
+    observed = model.as_of or selected_translator.t("evidence.unavailable")
+    snapshot = model.snapshot_token or selected_translator.t("evidence.unavailable")
     window = PageWindow.from_query(query_context, total=len(ledger.records))
     page_records = ledger.records[window.start : window.stop]
     candidate = tuple(record for record in page_records if record.is_candidate)
@@ -1173,73 +1287,85 @@ def render_evidence(
     pieces = [
         '<section class="evidence-page" data-integration-hook="evidence-view" '
         f'data-evidence-status="{ledger.status.value}" data-read-status="{model.availability.status.value}">',
-        '<p class="eyebrow">Evidence Ledger · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Evidence Ledger</h1>',
-        '<p class="page-intro">Conclusions, decisions, evidence levels, limitations, and artifact verification '
-        "are shown exactly as published. Candidate evidence is not protocol-conforming evidence.</p>",
-        f'<p class="context-line evidence-context"><span><strong>Observed</strong> {escape(observed)}</span>'
-        f'<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(sources)}</span></p>',
+        f'<p class="eyebrow">{escape(selected_translator.t("evidence.eyebrow"))}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("evidence.title"))}</h1>',
+        f'<p class="page-intro">{escape(selected_translator.t("evidence.intro"))}</p>',
+        f'<p class="context-line evidence-context"><span><strong>{escape(selected_translator.t("evidence.observed"))}</strong> {escape(observed)}</span>'
+        f'<span><strong>{escape(selected_translator.t("evidence.snapshot"))}</strong> {escape(snapshot)}</span><span><strong>{escape(selected_translator.t("evidence.sources"))}</strong> {sources}</span></p>',
         render_status_block(model, translator=selected_translator),
-        '<section class="evidence-ledger-summary" data-ledger-summary="true"><h2>Ledger summary</h2>'
+        f'<section class="evidence-ledger-summary" data-ledger-summary="true"><h2>{escape(selected_translator.t("evidence.ledger_summary"))}</h2>'
         '<dl class="evidence-details">'
-        f'<div class="evidence-detail"><dt>Conclusion</dt><dd>{escape(_display(ledger.conclusion))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Decision</dt><dd>{escape(_display(ledger.decision))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Evidence level</dt><dd>{escape(_status_label(ledger.evidence_level))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Evidence class</dt><dd>{escape(_kind_label(ledger.evidence_kind))}</dd></div>'
-        f'<div class="evidence-detail"><dt>Ledger outcome</dt><dd>{escape(_status_label(ledger.status))}</dd></div>'
-        f"{_render_source_refs(ledger.sources, query_context=query_context)}"
-        f"{_render_text_list('Limitations', ledger.limitations)}"
-        f"{_render_text_list('Blockers', ledger.blockers)}"
-        f"{_render_text_list('Incompatibilities', ledger.incompatibilities)}</dl></section>",
+        f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.conclusion"))}</dt><dd>{_owner_markup(ledger.conclusion, selected_translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.decision"))}</dt><dd>{_owner_markup(ledger.decision, selected_translator, is_fixture=is_fixture)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.level"))}</dt><dd>{_status_label(ledger.evidence_level, selected_translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.category"))}</dt><dd>{_kind_label(ledger.evidence_kind, selected_translator)}</dd></div>'
+        f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.outcome"))}</dt><dd>{_status_label(ledger.status, selected_translator)}</dd></div>'
+        f"{_render_source_refs(ledger.sources, query_context=query_context, translator=selected_translator)}"
+        f"{_render_text_list(selected_translator.t('evidence.limitations'), ledger.limitations, translator=selected_translator, is_fixture=is_fixture)}"
+        f"{_render_text_list(selected_translator.t('evidence.blockers'), ledger.blockers, translator=selected_translator, is_fixture=is_fixture)}"
+        f"{_render_text_list(selected_translator.t('evidence.incompatibilities'), ledger.incompatibilities, translator=selected_translator, is_fixture=is_fixture)}</dl></section>",
     ]
     if not page_records and model.availability.status is not ReadModelStatus.API_UNAVAILABLE:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "partial"
-        detail = (
-            "No Evidence Ledger records are published in this scope."
-            if state == "empty"
-            else "The Evidence Ledger is available only in part of this scope."
+        detail = selected_translator.t(
+            "evidence.no_records" if state == "empty" else "evidence.partial_records"
         )
         pieces.append(
             render_operational_state(state, translator=selected_translator, detail=detail)
         )
     if candidate:
         pieces.append(
-            '<section class="evidence-group" data-evidence-group="candidate" '
-            'data-promotion="never"><h2>Candidate evidence</h2>'
-            '<p>Candidate evidence is not protocol-conforming evidence and is not promoted here.</p>'
-            + "".join(_render_record(record, query_context=query_context) for record in candidate)
+            f'<section class="evidence-group" data-evidence-group="candidate" '
+            f'data-promotion="never"><h2>{escape(selected_translator.t("evidence.candidate_heading"))}</h2>'
+            f'<p>{escape(selected_translator.t("evidence.candidate_notice"))}</p>'
+            + "".join(
+                _render_record(record, query_context=query_context, translator=selected_translator, is_fixture=is_fixture)
+                for record in candidate
+            )
             + "</section>"
         )
     if conforming:
         pieces.append(
-            '<section class="evidence-group" data-evidence-group="protocol_conforming" '
-            'data-promotion="published"><h2>Protocol-conforming evidence</h2>'
-            + "".join(_render_record(record, query_context=query_context) for record in conforming)
+            f'<section class="evidence-group" data-evidence-group="protocol_conforming" '
+            f'data-promotion="published"><h2>{escape(selected_translator.t("evidence.conforming_heading"))}</h2>'
+            + "".join(
+                _render_record(record, query_context=query_context, translator=selected_translator, is_fixture=is_fixture)
+                for record in conforming
+            )
             + "</section>"
         )
     if unclassified:
         pieces.append(
-            '<section class="evidence-group" data-evidence-group="not_recorded">'
-            '<h2>Evidence class not recorded</h2>'
-            + "".join(_render_record(record, query_context=query_context) for record in unclassified)
+            f'<section class="evidence-group" data-evidence-group="not_recorded">'
+            f'<h2>{escape(selected_translator.t("evidence.class_not_recorded"))}</h2>'
+            + "".join(
+                _render_record(record, query_context=query_context, translator=selected_translator, is_fixture=is_fixture)
+                for record in unclassified
+            )
             + "</section>"
         )
     if ledger.sections:
         pieces.append(
-            '<section class="evidence-sections"><h2>Ledger sections</h2>'
-            + "".join(_render_section(section, query_context=query_context) for section in ledger.sections)
+            f'<section class="evidence-sections"><h2>{escape(selected_translator.t("evidence.sections"))}</h2>'
+            + "".join(
+                _render_section(section, query_context=query_context, translator=selected_translator, is_fixture=is_fixture)
+                for section in ledger.sections
+            )
             + "</section>"
         )
     if ledger.artifacts:
         pieces.append(
-            '<section class="evidence-artifacts"><h2>Artifacts</h2>'
-            + "".join(_render_artifact(artifact, query_context=query_context) for artifact in ledger.artifacts)
+            f'<section class="evidence-artifacts"><h2>{escape(selected_translator.t("evidence.artifacts"))}</h2>'
+            + "".join(
+                _render_artifact(artifact, query_context=query_context, translator=selected_translator, is_fixture=is_fixture)
+                for artifact in ledger.artifacts
+            )
             + "</section>"
         )
-    pieces.append(window.render(query_context, view=EVIDENCE_ROUTE))
+    pieces.append(window.render(query_context, view=EVIDENCE_ROUTE, translator=selected_translator))
     if include_raw_json:
         pieces.append(
-            '<details class="evidence-raw-json"><summary>Raw JSON</summary>'
+            f'<details class="raw-json evidence-raw-json"><summary>{escape(selected_translator.t("evidence.raw_json"))}</summary>'
             f"<pre>{escape(view.raw_json)}</pre></details>"
         )
     pieces.append("</section>")

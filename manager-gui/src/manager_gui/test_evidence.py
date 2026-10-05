@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.web.i18n import Locale, Translator
+from manager_gui.testing.i18n import (
+    assert_dom_equivalent,
+    assert_lang_propagation,
+    assert_language_text,
+    assert_owner_text_escaped,
+    assert_pseudo_localized,
+)
+from manager_gui.web.evidence_trace import render_evidence_trace
 from manager_gui.web.evidence import (
     ArtifactVerificationStatus,
     EvidenceFixtureState,
@@ -18,6 +28,20 @@ from manager_gui.web.evidence import (
     render_evidence,
     render_evidence_view,
 )
+
+
+def _render_evidence_en(
+    view_or_model: EvidenceViewModel | ManagerReadModel,
+    *,
+    query_context: str | None = None,
+    include_raw_json: bool = True,
+) -> str:
+    return render_evidence(
+        view_or_model,
+        query_context=query_context,
+        include_raw_json=include_raw_json,
+        translator=Translator(Locale.EN),
+    )
 
 
 def test_complete_fixture_keeps_ledger_fields_and_both_evidence_classes() -> None:
@@ -50,7 +74,7 @@ def test_complete_fixture_keeps_ledger_fields_and_both_evidence_classes() -> Non
 
 
 def test_renderer_separates_candidate_from_protocol_conforming_and_preserves_links() -> None:
-    rendered = render_evidence(
+    rendered = _render_evidence_en(
         build_evidence_fixture("complete"), query_context="/?view=evidence&fixture=complete"
     )
 
@@ -79,7 +103,7 @@ def test_outcomes_keep_not_evaluated_blocked_fail_and_incomparable_distinct() ->
     for fixture, status in expected.items():
         view = EvidenceViewModel.from_read_model(build_evidence_fixture(fixture))
         assert view.status is status
-        rendered = render_evidence(view)
+        rendered = _render_evidence_en(view)
         assert f'data-evidence-status="{status.value}"' in rendered
         if status is EvidenceOutcome.BLOCKED:
             assert "The approved protocol source is blocked." in rendered
@@ -115,7 +139,7 @@ def test_artifact_error_states_keep_specific_reason_and_read_model_integrity_sta
         assert model.availability.status is read_status
         assert view.artifacts[0].verification_status is artifact_status
         assert detail in (view.artifacts[0].verification_detail or "")
-        rendered = render_evidence(view)
+        rendered = _render_evidence_en(view)
         assert f'data-verification-status="{artifact_status.value}"' in rendered
         assert detail in rendered
 
@@ -129,8 +153,8 @@ def test_empty_and_unavailable_states_are_not_invented_into_evidence() -> None:
     assert empty.read_model.availability.status is ReadModelStatus.MISSING
     assert unavailable.read_model.availability.status is ReadModelStatus.API_UNAVAILABLE
     assert unavailable.status is EvidenceOutcome.UNAVAILABLE
-    assert 'data-display-state="empty"' in render_evidence(empty)
-    assert 'data-status="api_unavailable"' in render_evidence(unavailable)
+    assert 'data-display-state="empty"' in _render_evidence_en(empty)
+    assert 'data-status="api_unavailable"' in _render_evidence_en(unavailable)
 
 
 def test_raw_json_and_projection_are_stable() -> None:
@@ -192,7 +216,7 @@ def test_parser_handles_explicit_source_and_artifact_links_without_filesystem_ac
     assert view.ledger.evidence_kind is EvidenceKind.CANDIDATE
     assert view.sources[0].locator == source.locator
     assert view.artifacts[0].locator == "https://example.invalid/artifacts/candidate.json"
-    rendered = render_evidence(view)
+    rendered = _render_evidence_en(view)
     assert source.locator in rendered
     assert "https://example.invalid/artifacts/candidate.json" in rendered
     assert 'data-promotion="never"' in rendered
@@ -213,7 +237,9 @@ def test_provider_hook_reads_only_evidence_resource_and_preserves_snapshot() -> 
             return build_evidence_fixture("complete")
 
     provider = CountingProvider()
-    rendered = render_evidence_view(provider, snapshot_token="requested-snapshot")
+    rendered = render_evidence_view(
+        provider, snapshot_token="requested-snapshot", translator=Translator(Locale.EN)
+    )
 
     assert provider.calls == [("evidence", "requested-snapshot")]
     assert 'data-integration-hook="evidence-view"' in rendered
