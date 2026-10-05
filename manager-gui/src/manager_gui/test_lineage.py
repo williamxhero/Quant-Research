@@ -501,7 +501,7 @@ def test_graph_table_and_text_describe_the_same_records_and_relations() -> None:
 
 def test_pagination_keeps_graph_and_table_in_step() -> None:
     model = build_lineage_fixture("large")
-    ctx = "/?view=lineage&page_size=5&depth=2"
+    ctx = "/?view=lineage&page_size=5&depth=2&lang=en"
     first = render_lineage_view(model, query_context=ctx)
     second = render_lineage_view(model, query_context=ctx + "&page=2")
 
@@ -876,7 +876,7 @@ def test_large_graph_is_bounded_by_depth_page_size_and_time() -> None:
 def test_wide_graph_page_is_capped_at_the_requested_page_size() -> None:
     nodes = [_n("hub", "conclusion"), *[_n(f"leaf-{i:03d}") for i in range(MAX_NODES - 1)]]
     edges = [_e(f"leaf-{i:03d}", "supports", "hub") for i in range(MAX_NODES - 1)]
-    out = render_lineage_view(_model(nodes, edges), query_context="/?page_size=25")
+    out = render_lineage_view(_model(nodes, edges), query_context="/?page_size=25&lang=en")
     assert len(_graph_nodes(out)) == len(_table_nodes(out)) == 25
     assert f"Page 1 of {-(-MAX_NODES // 25)}" in out
 
