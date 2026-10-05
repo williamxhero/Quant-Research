@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from html import escape
 from typing import TypeAlias, cast
@@ -1102,6 +1102,22 @@ def _kind_label(kind: EvidenceKind, translator: Translator) -> str:
     return translator.label("evidence_kind", kind.value)
 
 
+def _fixture_status_model(
+    model: ManagerReadModel, translator: Translator, *, is_fixture: bool
+) -> ManagerReadModel:
+    if not is_fixture:
+        return model
+    availability = replace(
+        model.availability,
+        reason=_fixture_text(model.availability.reason, translator) if model.availability.reason else None,
+    )
+    errors = tuple(
+        replace(error, message=_fixture_text(error.message, translator) or error.message)
+        for error in model.errors
+    )
+    return replace(model, availability=availability, errors=errors)
+
+
 def _render_source_refs(
     refs: Sequence[EvidenceSourceRef], *, query_context: QueryContext = None, translator: Translator,
     is_fixture: bool = True,
@@ -1290,9 +1306,12 @@ def render_evidence(
         f'<p class="eyebrow">{escape(selected_translator.t("evidence.eyebrow"))}</p>',
         f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("evidence.title"))}</h1>',
         f'<p class="page-intro">{escape(selected_translator.t("evidence.intro"))}</p>',
-        f'<p class="context-line evidence-context"><span><strong>{escape(selected_translator.t("evidence.observed"))}</strong> {escape(observed)}</span>'
-        f'<span><strong>{escape(selected_translator.t("evidence.snapshot"))}</strong> {escape(snapshot)}</span><span><strong>{escape(selected_translator.t("evidence.sources"))}</strong> {sources}</span></p>',
-        render_status_block(model, translator=selected_translator),
+        f'<p class="context-line evidence-context"><span><strong>{escape(selected_translator.t("evidence.observed"))}</strong> <span translate="no">{escape(observed)}</span></span>'
+        f'<span><strong>{escape(selected_translator.t("evidence.snapshot"))}</strong> <span translate="no">{escape(snapshot)}</span></span><span><strong>{escape(selected_translator.t("evidence.sources"))}</strong> {sources}</span></p>',
+        render_status_block(
+            _fixture_status_model(model, selected_translator, is_fixture=is_fixture),
+            translator=selected_translator,
+        ),
         f'<section class="evidence-ledger-summary" data-ledger-summary="true"><h2>{escape(selected_translator.t("evidence.ledger_summary"))}</h2>'
         '<dl class="evidence-details">'
         f'<div class="evidence-detail"><dt>{escape(selected_translator.t("evidence.conclusion"))}</dt><dd>{_owner_markup(ledger.conclusion, selected_translator, is_fixture=is_fixture)}</dd></div>'

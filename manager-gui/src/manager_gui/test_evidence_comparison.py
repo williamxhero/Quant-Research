@@ -158,3 +158,54 @@ def test_provider_hook_reads_only_comparison_resource_and_fixture_is_read_only()
         assert "does not serve resource" in str(error)
     else:  # pragma: no cover - the provider must keep the resource boundary
         raise AssertionError("comparison fixture provider served an unrelated resource")
+
+
+def test_comparison_localizes_all_eleven_axes_and_states_in_both_locales() -> None:
+    model = build_evidence_comparison_fixture("different")
+    zh = render_evidence_comparison(model, translator=Translator(Locale.ZH_CN))
+    en = render_evidence_comparison(model, translator=Translator(Locale.EN))
+
+    assert zh.count("data-axis=") == len(ComparisonAxis)
+    assert en.count("data-axis=") == len(ComparisonAxis)
+    assert "逐轴比较" in zh and "Axis-by-axis comparison" in en
+    assert "指标定义" in zh and "Metric definition" in en
+    assert "结果：不同" in zh and "Result: Different" in en
+    assert "没有明确的分母时" in zh and "does not recalculate metrics" in en
+    assert "Evidence/object comparison" not in zh
+    assert "证据 / 对象比较" in zh
+    assert 'data-axis="costs" data-axis-state="different"' in zh
+    assert 'data-axis="metric_definition" data-axis-state="different"' in zh
+
+
+def test_comparison_incomparable_and_missing_keep_distinct_chinese_labels() -> None:
+    incomparable = render_evidence_comparison(
+        build_evidence_comparison_fixture("incomparable"), translator=Translator(Locale.ZH_CN)
+    )
+    partial = render_evidence_comparison(
+        build_evidence_comparison_fixture("partial"), translator=Translator(Locale.ZH_CN)
+    )
+    assert "不可比较" in incomparable
+    assert 'data-axis-state="incomparable"' in incomparable
+    assert "未记录" in partial
+    assert 'data-axis-state="missing"' in partial
+    assert 'data-comparison-result="fail"' not in incomparable
+    assert 'data-comparison-result="fail"' not in partial
+
+
+def test_comparison_pseudo_dom_and_language_audits() -> None:
+    from manager_gui.testing.i18n import (
+        assert_dom_equivalent,
+        assert_language_text,
+        assert_pseudo_localized,
+    )
+
+    model = build_evidence_comparison_fixture("complete")
+    zh = render_evidence_comparison(model, translator=Translator(Locale.ZH_CN))
+    en = render_evidence_comparison(model, translator=Translator(Locale.EN))
+    pseudo = render_evidence_comparison(model, translator=Translator(Locale.EN, pseudo=True))
+
+    assert_dom_equivalent(zh, en)
+    assert_language_text(zh, Locale.ZH_CN)
+    assert_language_text(en, Locale.EN)
+    assert_pseudo_localized(pseudo)
+

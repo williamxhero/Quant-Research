@@ -17,6 +17,7 @@ from manager_gui.testing.i18n import (
     assert_pseudo_localized,
 )
 from manager_gui.web.evidence_trace import render_evidence_trace
+from manager_gui.web.s4_fixtures import build_s4_fixture
 from manager_gui.web.evidence import (
     ArtifactVerificationStatus,
     EvidenceFixtureState,
@@ -270,3 +271,75 @@ def test_aliases_keep_the_s4_hook_discoverable_without_shared_integration_edits(
     assert EvidenceLedgerViewModel is EvidenceViewModel
     assert build_evidence_ledger_fixture("complete").snapshot_token == "evidence-complete-v0"
     assert "evidence-view" in render_evidence_ledger_view(build_evidence_fixture("complete"))
+
+
+def test_evidence_and_trace_localize_fixture_copy_in_both_locales() -> None:
+    model = build_s4_fixture("evidence", "complete")
+    context_zh = "/?view=evidence&fixture=complete&lang=zh-CN"
+    context_en = "/?view=evidence&fixture=complete&lang=en"
+    zh = Translator(Locale.ZH_CN)
+    en = Translator(Locale.EN)
+    evidence_zh = render_evidence(model, query_context=context_zh, translator=zh)
+    evidence_en = render_evidence(model, query_context=context_en, translator=en)
+    trace_zh = render_evidence_trace(model, query_context=context_zh, translator=zh)
+    trace_en = render_evidence_trace(model, query_context=context_en, translator=en)
+
+    assert "证据账本" in evidence_zh and "候选证据" in evidence_zh
+    assert "协议结果可供检查。" in evidence_zh
+    assert "符合研究协议的证据" in evidence_zh
+    assert "Candidate evidence is not protocol-conforming evidence" not in evidence_zh
+    assert "Evidence Ledger" in evidence_en and "Candidate evidence" in evidence_en
+    assert "The protocol result is inspectable." in evidence_en
+    assert "Conclusion → evidence → source → artifact trace" not in trace_zh
+    assert "结论 → 证据 → 来源 → 制品追溯" in trace_zh
+    assert "Conclusion → evidence → source → artifact trace" in trace_en
+    assert "从此制品打开谱系" in trace_zh
+    assert "Open lineage for this artifact" in trace_en
+
+    assert_language_text(evidence_zh, Locale.ZH_CN)
+    assert_language_text(evidence_en, Locale.EN)
+    assert_language_text(trace_zh, Locale.ZH_CN)
+    assert_language_text(trace_en, Locale.EN)
+    assert_dom_equivalent(evidence_zh, evidence_en)
+    assert_dom_equivalent(trace_zh, trace_en)
+    assert_lang_propagation(evidence_zh, Locale.ZH_CN, source_url=context_zh)
+    assert_lang_propagation(evidence_en, Locale.EN, source_url=context_en)
+    assert_lang_propagation(trace_zh, Locale.ZH_CN, source_url=context_zh)
+    assert_lang_propagation(trace_en, Locale.EN, source_url=context_en)
+
+    evidence_pseudo = render_evidence(
+        model, query_context=context_en, translator=Translator(Locale.EN, pseudo=True)
+    )
+    trace_pseudo = render_evidence_trace(
+        model, query_context=context_en, translator=Translator(Locale.EN, pseudo=True)
+    )
+    assert_pseudo_localized(evidence_pseudo)
+    assert_pseudo_localized(trace_pseudo)
+
+
+def test_evidence_and_trace_escape_owner_text_exactly_once_without_translation() -> None:
+    value = 'Owner <text> & "quoted" {x} 中文'
+    base = build_evidence_fixture("complete")
+    payload = dict(cast(dict[str, object], base.data))
+    payload["conclusion"] = value
+    model = replace(base, data=cast(JSONValue, payload))
+
+    evidence = render_evidence(model, include_raw_json=False, translator=Translator(Locale.ZH_CN))
+    trace = render_evidence_trace(model, translator=Translator(Locale.EN))
+    assert_owner_text_escaped(evidence, value)
+    assert_owner_text_escaped(trace, value)
+    assert "Source note" not in evidence
+
+
+def test_blocked_not_evaluated_and_fail_remain_distinct_in_chinese() -> None:
+    for fixture, expected in (
+        ("blocked", "已阻塞"),
+        ("not_evaluated", "未评估"),
+        ("fail", "失败"),
+    ):
+        rendered = render_evidence(
+            build_evidence_fixture(fixture), translator=Translator(Locale.ZH_CN)
+        )
+        assert expected in rendered
+        if fixture != "fail":
+            assert 'data-evidence-status="fail"' not in rendered
