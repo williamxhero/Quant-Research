@@ -35,6 +35,20 @@ uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
 uv run --directory manager-gui python -m manager_gui.web --fixture complete --port 8765
 ```
 
+## 语言与 `lang` 查询参数
+
+WebUI 只从 URL 的 `lang` 查询参数读取界面语言，不使用 cookie 或
+`Accept-Language`。默认语言为 `zh-CN`；`zh`、`zh_CN`、`zh-Hans`、`en-US` 和
+`en-GB` 会规范化为 `zh-CN` 或 `en`。未指定、空值和非法值回退到应用默认语言，
+并且不会继续出现在生成的内部链接或 GET 表单中。显式有效的语言会以规范值保留在
+内部链接、分页、筛选表单和语言切换器中；切换器使用普通链接，并保留原 URL 的全部
+查询状态（包括重复参数与空值）。可用 `manager-gui-web --lang {zh-CN,en}` 设置
+应用默认语言，URL 中显式的有效 `lang` 仍优先于该默认值。
+
+`/api/read-model` 的 ManagerReadModel v0 响应不包含语言状态，在不同 `lang` 或未
+指定语言时逐字节相同。`/api/export` 以及页面内嵌的导出载荷会从 `query` 和
+`query_params` 中剥离 `lang`，因此导出内容也与界面语言无关。
+
 ## 中文排版与术语规范
 
 - 中文文案使用全角标点；不得写成 ASCII 逗号紧跟汉字。并列项目使用「、」，句内连接使用「和」或「与」，不以斜线代替连接词。

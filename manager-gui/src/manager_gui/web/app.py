@@ -578,7 +578,7 @@ class ManagerGUIApp:
         context_hidden = "".join(
             f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
             for key, value in state.context
-            if key != "q"
+            if key not in {"q", "lang"}
         )
         lang_hidden = (
             f'<input type="hidden" name="lang" value="{escape(state.lang.value, quote=True)}">'
