@@ -140,6 +140,8 @@ def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> N
                 route=route,
                 source_url=url + "&lang=en",
             )
+            for locale_url in (url, url + "&lang=en"):
+                assert_pseudo_localized(render_pseudo_document(app, locale_url), route=route)
             count += 2
     assert count == 374
 
@@ -207,3 +209,36 @@ def test_default_and_explicit_english_shell_have_expected_locale_and_translator(
     assert zh.html_lang == Locale.ZH_CN.value
     assert en.html_lang == Locale.EN.value
     assert Translator(Locale.EN).t("shell.read_only") == "READ ONLY"
+
+
+def test_invalid_locale_falls_back_and_is_removed_without_losing_url_state() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    raw = "/?view=search&fixture=complete&lang=fr&q=&tag=a&tag=&panel=events"
+    state = app.request_state(raw)
+    assert state.lang is None
+    assert state.locale is Locale.ZH_CN
+    document = parse_html(app.render(raw))
+    assert document.html_lang == Locale.ZH_CN.value
+    assert all(
+        "lang=fr" not in (link.attrs.get("href") or "")
+        for link in document.links
+    )
+    switcher = [
+        link
+        for link in document.links
+        if link.attrs.get("data-language-switcher") is not None
+        or link.attrs.get("hreflang") == Locale.EN.value
+    ]
+    english = next(link for link in document.links if link.attrs.get("hreflang") == "en")
+    assert "lang=en" in (english.attrs.get("href") or "")
+    assert "tag=a" in (english.attrs.get("href") or "")
+    assert "tag=" in (english.attrs.get("href") or "")
+    assert "panel=events" in (english.attrs.get("href") or "")
+    assert switcher
+
+    english_default = ManagerGUIApp(
+        default_fixture=FixtureState.COMPLETE, default_locale=Locale.EN
+    )
+    fallback = parse_html(english_default.render("/?view=atlas&lang=fr&tag=x"))
+    assert fallback.html_lang == Locale.EN.value
+    assert all("lang=fr" not in (link.attrs.get("href") or "") for link in fallback.links)
