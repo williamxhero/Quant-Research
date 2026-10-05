@@ -37,12 +37,22 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog.l5_search import ENTRIES as SEARCH_CATALOG
 from .locators import public_locator
 from .navigation import PageWindow, ViewId, context_link, query_values
 from .status import DisplayState, render_operational_state, render_status_block
 
 SEARCH_RESOURCE = "search"
 SEARCH_INTEGRATION_HOOK = "search-view"
+
+
+def _search_translator(translator: Translator | None) -> Translator:
+    """Use the request locale with this page's additive catalog entries."""
+
+    selected = translator or Translator()
+    from .i18n.catalog import CATALOG
+
+    return Translator(selected.locale, pseudo=selected.pseudo, catalog={**CATALOG, **SEARCH_CATALOG})
 
 # These are the only owner fields searched by the deterministic index.  The
 # record/document kind and source are filters/provenance, not hidden content.
@@ -801,7 +811,7 @@ class SearchViewModel:
         query_context: str | Mapping[str, object] | None = None,
         translator: Translator | None = None,
     ) -> str:
-        selected_translator = translator or Translator()
+        selected_translator = _search_translator(translator)
         context: str | Mapping[str, object] = query_context or base_path
         values = query_values(context)
         if self.query:
