@@ -94,12 +94,16 @@ def register(entries: Mapping[str, M] | str, message: M | None = None) -> None:
     REGISTRY.register(entries, message)
 
 
-# Keep namespace registration explicit and additive. Other L2 tickets append their
-# own imports/register calls here rather than replacing these shell entries.
+# Keep namespace registration explicit and additive. Each page namespace calls
+# ``register`` once at import time; importing here makes it available to the
+# default Translator without re-registering entries in the page modules.
 SHELL_CATALOG = shell.ENTRIES
 NAVIGATION_CATALOG = nav.ENTRIES
 PAGINATION_CATALOG = pagination.ENTRIES
 register(merge(SHELL_CATALOG, NAVIGATION_CATALOG, PAGINATION_CATALOG))
+
+from . import l3_atlas_story, l3_genome, l3_method_history  # noqa: E402
+
 
 
 __all__ = [

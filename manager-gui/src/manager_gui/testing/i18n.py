@@ -296,9 +296,20 @@ def render_pseudo_document(app: ManagerGUIApp, url: str = "/") -> str:
         return app.render(url)
 
 
-# Page copy is deliberately deferred to L3/L4/L5. Adding a route here enables all
+# L3 page copy has passed the bilingual exit gate. Adding a route here enables
 # text/name/heading audits on its page, rather than accepting its current prose.
-MIGRATED_ROUTES: frozenset[str] = frozenset()
+MIGRATED_ROUTES: frozenset[str] = frozenset(
+    {
+        "atlas",
+        "stories",
+        "strategies",
+        "strategy-conditions",
+        "strategy-genome-comparison",
+        "methodology",
+        "history",
+        "source-documents",
+    }
+)
 _SHARED_CLASSES = frozenset(
     {
         "skip-link",
