@@ -45,5 +45,24 @@ def test_memory_failure_and_derived_grouping_have_zh_and_en_page_copy() -> None:
 
 def test_l4_catalog_is_additive_and_does_not_change_shared_registry() -> None:
     assert len(ENTRIES) >= 240
-    assert "l4.memory_title" not in CATALOG
-    assert "l4.memory_title" in CATALOG_L4
+    assert "l4_memory.memory_title" not in CATALOG
+    assert "l4_memory.memory_title" in CATALOG_L4
+    assert all(
+        key.startswith(("l4_memory.", "label.l4_memory_")) for key in ENTRIES
+    )
+
+
+def test_memory_catalog_merges_with_existing_lineage_and_failure_keys() -> None:
+    from manager_gui.web.i18n import M
+
+    sibling_entries = {
+        "label.lineage_kind.candidate": M("候选证据", "Candidate evidence"),
+        "label.failure_category.data_blocker": M("其他页面数据阻塞", "Other data blocker"),
+        "label.decision.included": M("其他纳入", "Other inclusion"),
+    }
+    combined = merge(sibling_entries, ENTRIES)
+    translator = Translator(Locale.EN, strict=True, catalog=combined)
+    assert translator.label("lineage_kind", "candidate") == "Candidate evidence"
+    assert translator.label("l4_memory_lineage_kind", "candidate") == "Candidate"
+    assert translator.label("l4_memory_failure_category", "data_blocker") == "Data blocker"
+    assert translator.label("l4_memory_decision", "included") == "Included"
