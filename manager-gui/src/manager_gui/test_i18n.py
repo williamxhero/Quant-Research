@@ -338,9 +338,16 @@ def test_merge_validates_combines_and_rejects_duplicates() -> None:
         merge({"a.one": M("一", "one")}, {"a.one": M("一", "one")})
 
 
-def test_default_registry_is_empty_until_catalogs_are_added() -> None:
-    assert len(REGISTRY.entries) == 0
+def test_default_registry_contains_shared_shell_catalogs_and_keeps_unknown_keys_lenient() -> None:
+    assert {
+        "label.status.known",
+        "status.explanation.known",
+        "interaction.copy_reference",
+        "client.copy_success",
+    } <= set(REGISTRY.entries)
+    before = len(REGISTRY.entries)
     register({})
+    assert len(REGISTRY.entries) == before
     assert Translator().t("any.key") == "any.key"
 
 

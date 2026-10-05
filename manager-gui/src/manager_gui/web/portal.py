@@ -34,6 +34,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .navigation import context_link
 from .status import DisplayState, render_operational_state, render_status_block
@@ -879,6 +880,7 @@ def render_portal(
     base_path: str = "/",
     query: str | Mapping[str, object] | None = None,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a read-only Strategy Reporting Portal metadata fragment.
 
@@ -887,6 +889,7 @@ def render_portal(
     No link is an instruction to rebuild, run, publish, or mutate a report.
     """
 
+    selected_translator = translator or Translator()
     context = (
         query_context if query_context is not None else query if query is not None else base_path
     )
@@ -935,10 +938,14 @@ def render_portal(
         f'<span><strong>Observed</strong> {escape(observed)}</span>'
         f'<span><strong>Snapshot</strong> {escape(snapshot)}</span>'
         f'<span><strong>Sources</strong> {escape(source_ids)}</span></p>',
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
         f'<section class="portal-state-summary" data-portal-state-summary="{view.artifact_state.value}">'
         f"<strong>Portal state</strong> {escape(state_copy)}</section>",
-        render_operational_state(operational_state, detail=state_copy),
+        render_operational_state(
+            operational_state,
+            translator=selected_translator,
+            detail=state_copy,
+        ),
         report_sections,
         "</section>",
     ]
@@ -974,6 +981,7 @@ def render_portal_view(
     base_path: str = "/",
     query: str | Mapping[str, object] | None = None,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Public S6 integration hook accepting a provider or cached envelope."""
 
@@ -987,6 +995,7 @@ def render_portal_view(
         base_path=base_path,
         query=query,
         query_context=query_context,
+        translator=translator,
     )
 
 

@@ -20,6 +20,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import clear_filters_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -663,9 +664,11 @@ def render_atlas(
     view_or_model: AtlasViewModel | ManagerReadModel,
     *,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render an Atlas page fragment; the shared shell owns the document chrome."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, AtlasViewModel)
@@ -686,13 +689,15 @@ def render_atlas(
         "Counts describe recorded objects only; they do not establish success, ranking, or advice.</p>",
         f'<p class="context-line atlas-context"><span><strong>Observed</strong> {escape(observed)}</span>'
         f"<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>",
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     state = display_state_for(model)
     if state is DisplayState.EMPTY:
         pieces.append(
             render_operational_state(
-                DisplayState.EMPTY, detail="No records are present in this Atlas scope."
+                DisplayState.EMPTY,
+                translator=selected_translator,
+                detail="No records are present in this Atlas scope.",
             )
         )
     pieces.append(_render_filters(view, query_context=context))
@@ -769,6 +774,7 @@ def render_atlas_view(
     filters: AtlasFilters | None = None,
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """T5 integration hook: read and render the Atlas view without shell logic."""
 
@@ -780,6 +786,7 @@ def render_atlas_view(
             snapshot_token=snapshot_token,
         ),
         query_context=query_context,
+        translator=translator,
     )
 
 

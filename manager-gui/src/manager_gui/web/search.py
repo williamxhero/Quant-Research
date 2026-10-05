@@ -36,6 +36,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .navigation import PageWindow, ViewId, context_link, query_values
 from .status import DisplayState, render_operational_state, render_status_block
@@ -798,7 +799,9 @@ class SearchViewModel:
         *,
         base_path: str = "/?view=search",
         query_context: str | Mapping[str, object] | None = None,
+        translator: Translator | None = None,
     ) -> str:
+        selected_translator = translator or Translator()
         context: str | Mapping[str, object] = query_context or base_path
         values = query_values(context)
         if self.query:
@@ -841,7 +844,7 @@ class SearchViewModel:
                 else "Only the indexed page is available; an empty page is not a global no-match."
             )
             + "</p>",
-            render_status_block(self.read_model),
+            render_status_block(self.read_model, translator=selected_translator),
         ]
         if self.state is SearchState.EMPTY:
             detail = (
@@ -851,11 +854,18 @@ class SearchViewModel:
                 if self.query
                 else "Enter a query to search the approved record and document index."
             )
-            pieces.append(render_operational_state(DisplayState.EMPTY, detail=detail))
+            pieces.append(
+                render_operational_state(
+                    DisplayState.EMPTY,
+                    translator=selected_translator,
+                    detail=detail,
+                )
+            )
         elif self.state is SearchState.PARTIAL:
             pieces.append(
                 render_operational_state(
                     DisplayState.PARTIAL,
+                    translator=selected_translator,
                     detail=(
                         "The current indexed page has no matching entry; global no-match is not established."
                         if not self.hits
@@ -867,6 +877,7 @@ class SearchViewModel:
             pieces.append(
                 render_operational_state(
                     DisplayState.ERROR,
+                    translator=selected_translator,
                     detail="The approved Search API is unavailable; no private-storage fallback is used.",
                 )
             )
@@ -874,11 +885,18 @@ class SearchViewModel:
             pieces.append(
                 render_operational_state(
                     DisplayState.ERROR,
+                    translator=selected_translator,
                     detail="The approved Search read model cannot be used as complete current truth.",
                 )
             )
         elif not paged_hits:
-            pieces.append(render_operational_state(DisplayState.EMPTY, detail="No indexed entries are visible on this page."))
+            pieces.append(
+                render_operational_state(
+                    DisplayState.EMPTY,
+                    translator=selected_translator,
+                    detail="No indexed entries are visible on this page.",
+                )
+            )
         else:
             pieces.append(
                 '<ol class="search-result-list" aria-label="Deterministic search results">'
@@ -1033,6 +1051,7 @@ def render_search(
     source_id: str | None = None,
     base_path: str = "/?view=search",
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render an already-read Search envelope without a second provider call."""
 
@@ -1043,7 +1062,9 @@ def render_search(
         source=source,
         source_id=source_id,
     )
-    return view.render(base_path=base_path, query_context=query_context)
+    return view.render(
+        base_path=base_path, query_context=query_context, translator=translator
+    )
 
 
 def _query_from_context(context: str | Mapping[str, object] | None) -> str:
@@ -1060,6 +1081,7 @@ def render_search_view(
     base_path: str = "/?view=search",
     query_context: str | Mapping[str, object] | None = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S6-T1 hook accepting a provider seam or an already-cached v0 envelope."""
 
@@ -1077,6 +1099,7 @@ def render_search_view(
         source=selected_source,
         base_path=base_path,
         query_context=query_context,
+        translator=translator,
     )
 
 

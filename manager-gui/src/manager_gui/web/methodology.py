@@ -31,6 +31,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -906,9 +907,11 @@ def render_methodology(
     view_or_model: MethodologyViewModel | ManagerReadModel,
     *,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a methodology archive fragment for a shared shell to mount."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, MethodologyViewModel)
@@ -941,12 +944,14 @@ def render_methodology(
         f'<a class="methodology-history-link" href="{escape(history_url, quote=True)}">History</a></nav>',
         f'<p class="context-line methodology-context"><span><strong>Observed</strong> {escape(observed)}</span>'
         f"<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(sources)}</span></p>",
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     if view.index_state is MethodologyIndexState.NOT_INDEXED:
         pieces.append(
             render_operational_state(
-                "error", detail="The approved methodology document index is not indexed."
+                "error",
+                translator=selected_translator,
+                detail="The approved methodology document index is not indexed.",
             )
         )
     if not paged_methods and view.index_state is not MethodologyIndexState.NOT_INDEXED:
@@ -956,13 +961,16 @@ def render_methodology(
             pieces.append(
                 render_operational_state(
                     DisplayState.ERROR,
+                    translator=selected_translator,
                     detail="Methods cannot be listed from this source state; this is not a recorded empty scope.",
                 )
             )
         else:
             pieces.append(
                 render_operational_state(
-                    DisplayState.EMPTY, detail="No methodology methods are recorded in this scope."
+                    DisplayState.EMPTY,
+                    translator=selected_translator,
+                    detail="No methodology methods are recorded in this scope.",
                 )
             )
     for group, methods in paged_groups:
@@ -998,6 +1006,7 @@ def render_methodology_view(
     *,
     snapshot_token: str | None = None,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S5-T3 integration hook accepting a provider or cached read model."""
 
@@ -1006,7 +1015,9 @@ def render_methodology_view(
         if isinstance(source, ManagerReadModel)
         else methodology_view(source, snapshot_token=snapshot_token).read_model
     )
-    return render_methodology(model, query_context=query_context)
+    return render_methodology(
+        model, query_context=query_context, translator=translator
+    )
 
 
 # --- deterministic fixtures ---------------------------------------------------

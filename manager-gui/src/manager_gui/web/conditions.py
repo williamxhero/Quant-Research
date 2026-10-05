@@ -34,6 +34,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .status import render_status_block
 
 CONDITIONS_RESOURCE = "genome_conditions"
@@ -717,9 +718,11 @@ def render_genome_conditions(
     *,
     query_context: QueryContext = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render the condition evidence fragment for S2-T3 to mount."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, ConditionViewModel)
@@ -745,7 +748,7 @@ def render_genome_conditions(
             f'<p class="context-line condition-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>',
             f'<a class="conditions-context-link" href="{escape(context_href, quote=True)}">Stable condition context</a>',
             _render_related_links(view.genome_id, query_context),
-            render_status_block(model),
+            render_status_block(model, translator=selected_translator),
             _render_group("Evidence-supported applicability conditions", ConditionCategory.APPLICABILITY, view.applicability),
             _render_group("Evidence-supported invalidation / failure conditions", ConditionCategory.INVALIDATION, view.invalidation),
             '<section class="condition-group condition-descriptors" data-condition-group="descriptor" aria-label="Contextual descriptors and regime observations"><h2>Contextual descriptors / regime observations</h2><p>Descriptors are observations only; they are not validated conditions.</p>',
@@ -775,6 +778,7 @@ def render_genome_conditions_view(
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S2-T3 hook accepting either a provider or an already-read envelope."""
 
@@ -783,7 +787,12 @@ def render_genome_conditions_view(
         view = ConditionViewModel.from_read_model(provider_or_model, genome_id=selected_id)
     else:
         view = condition_view(provider_or_model, snapshot_token=snapshot_token, genome_id=selected_id)
-    return render_genome_conditions(view, query_context=query_context, genome_id=selected_id)
+    return render_genome_conditions(
+        view,
+        query_context=query_context,
+        genome_id=selected_id,
+        translator=translator,
+    )
 
 
 render_conditions_view = render_genome_conditions_view

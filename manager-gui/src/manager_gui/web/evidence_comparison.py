@@ -30,6 +30,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
 from .status import render_operational_state, render_status_block
 
@@ -819,10 +820,12 @@ def render_evidence_comparison(
     *,
     query_context: QueryContext = None,
     include_raw_json: bool = True,
+    translator: Translator | None = None,
 ) -> str:
     """Render the general S4 object comparison without shell integration."""
 
     del query_context  # The shell owns routing; this fragment has no navigation side effects.
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, EvidenceComparisonViewModel)
@@ -848,7 +851,7 @@ def render_evidence_comparison(
         'Only the eleven declared axes are shown; no missing value is filled with a default.</p>',
         f'<p class="context-line comparison-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span>'
         f'<span><strong>Snapshot</strong> {escape(model.snapshot_token or "Unavailable")}</span></p>',
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     if comparison is None:
         status = model.availability.status
@@ -865,7 +868,7 @@ def render_evidence_comparison(
             detail = model.availability.reason or "The object comparison is not determined here."
         pieces.append(
             f'<section class="comparison-not-recorded"><h2>{heading}</h2>'
-            f"{render_operational_state(state, detail=detail)}</section>"
+            f"{render_operational_state(state, translator=selected_translator, detail=detail)}</section>"
         )
     else:
         pieces.append(
@@ -919,6 +922,7 @@ def render_evidence_comparison_view(
     *,
     snapshot_token: str | None = None,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """S4-T3 integration hook accepting a provider or cached envelope."""
 
@@ -927,7 +931,9 @@ def render_evidence_comparison_view(
         if isinstance(provider_or_model, ManagerReadModel)
         else evidence_comparison_view(provider_or_model, snapshot_token=snapshot_token)
     )
-    return render_evidence_comparison(view, query_context=query_context)
+    return render_evidence_comparison(
+        view, query_context=query_context, translator=translator
+    )
 
 
 # Hook aliases keep the public seam easy to discover while retaining one

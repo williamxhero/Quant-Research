@@ -39,6 +39,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import clear_filters_link
 from .status import DisplayState, render_operational_state, render_status_block
 
@@ -1100,9 +1101,11 @@ def render_genome(
     *,
     query_context: QueryContext = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a mountable Genome catalog/detail fragment for the shared shell."""
 
+    selected_translator = translator or Translator()
     if isinstance(view_or_model, GenomeViewModel):
         view = view_or_model
         selected_id = genome_id or dict(_query_pairs(query_context)).get("genome_id")
@@ -1128,7 +1131,7 @@ def render_genome(
         '<h1 class="page-title" data-page-title tabindex="-1">Strategy Genomes</h1>',
         '<p class="page-intro">Inspect published Genome identity, behavior projection, validation binding, lifecycle events, and lineage without inferring owner facts.</p>',
         f'<p class="context-line genome-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or "Unavailable")}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>',
-        render_status_block(model),
+        render_status_block(model, translator=selected_translator),
     ]
     if not view.genomes and (
         model.availability.status is ReadModelStatus.MISSING
@@ -1136,7 +1139,9 @@ def render_genome(
     ):
         pieces.append(
             render_operational_state(
-                DisplayState.EMPTY, detail="No Genome records are present in this scope."
+                DisplayState.EMPTY,
+                translator=selected_translator,
+                detail="No Genome records are present in this scope.",
             )
         )
     pieces.append(_render_filters(view, context))
@@ -1196,6 +1201,7 @@ def render_genome_view(
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """T3 hook: read/render one Genome surface without shell or storage logic."""
 
@@ -1206,7 +1212,7 @@ def render_genome_view(
             filters=filters or GenomeFilters.from_query(query_context),
             selected_genome_id=selected_id,
         )
-        return render_genome(view, query_context=query_context)
+        return render_genome(view, query_context=query_context, translator=translator)
     return render_genome(
         genome_view(
             provider_or_model,
@@ -1216,6 +1222,7 @@ def render_genome_view(
             genome_id=genome_id,
         ),
         query_context=query_context,
+        translator=translator,
     )
 
 

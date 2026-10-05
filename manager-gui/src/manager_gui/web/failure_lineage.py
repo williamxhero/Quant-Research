@@ -18,6 +18,7 @@ from typing import cast
 from urllib.parse import urlsplit
 
 from ..models import SourceReference
+from .i18n import Translator
 from .interaction import render_alternative_view
 
 LINEAGE_KINDS = ("campaign", "candidate", "run", "evidence", "artifact", "source_document")
@@ -235,7 +236,7 @@ def render_references(links: Sequence[FailureReference], *, empty: str = "Missin
     return " · ".join(parts) or f'<span class="failure-missing">{escape(empty)}</span>'
 
 
-def render_failure_lineage(trace: FailureLineage) -> str:
+def render_failure_lineage(trace: FailureLineage, *, translator: Translator) -> str:
     sections = "".join(
         f'<section data-lineage-relation="{key}"><h4>{label}</h4>'
         f'{render_references(getattr(trace, key), empty=empty)}</section>'
@@ -268,6 +269,7 @@ def render_failure_lineage(trace: FailureLineage) -> str:
         f"{graph_items}</ol>"
     )
     alternatives = render_alternative_view(
+        translator=translator,
         target="failure-lineage",
         graph_markup=graph_markup,
         table_markup=table_markup,

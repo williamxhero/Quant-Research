@@ -37,6 +37,7 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .navigation import PageWindow, context_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -375,7 +376,9 @@ class HistoryViewModel:
         *,
         base_path: str = "/?view=history",
         query: Mapping[str, object] | str | None = None,
+        translator: Translator | None = None,
     ) -> str:
+        selected_translator = translator or Translator()
         scope = self.scope or "All approved scopes"
         scope_links = "".join(
             f'<a class="history-scope-link" data-history-scope="{escape(selected, quote=True)}" '
@@ -395,10 +398,15 @@ class HistoryViewModel:
             if self.read_model.availability.status is ReadModelStatus.KNOWN:
                 empty = render_operational_state(
                     DisplayState.EMPTY,
+                    translator=selected_translator,
                     detail="No explicit source events are recorded in this scope.",
                 )
             else:
-                empty = render_operational_state(state, detail="No source events are available in this scope.")
+                empty = render_operational_state(
+                    state,
+                    translator=selected_translator,
+                    detail="No source events are available in this scope.",
+                )
             body = empty
         else:
             rows = "".join(
@@ -420,7 +428,7 @@ class HistoryViewModel:
             f'<p class="context-line history-context"><strong>Scope</strong> {escape(scope)}</p>'
             f"{related}"
             f'<nav class="history-scope-nav" aria-label="History fixture scopes">{scope_links}</nav>'
-            f"{render_status_block(self.read_model)}{body}{window.render(query if query is not None else base_path, view='history')}</section>"
+            f"{render_status_block(self.read_model, translator=selected_translator)}{body}{window.render(query if query is not None else base_path, view='history')}</section>"
         )
 
 
@@ -477,10 +485,13 @@ def render_history(
     scope: str | None = None,
     base_path: str = "/?view=history",
     query: Mapping[str, object] | str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render an already-read history envelope without a second provider call."""
 
-    return HistoryViewModel.from_read_model(model, scope=scope).render(base_path=base_path, query=query)
+    return HistoryViewModel.from_read_model(model, scope=scope).render(
+        base_path=base_path, query=query, translator=translator
+    )
 
 
 def render_history_view(
@@ -490,6 +501,7 @@ def render_history_view(
     base_path: str = "/?view=history",
     query: Mapping[str, object] | str | None = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S5-T3 hook accepting either a provider seam or a cached read model."""
 
@@ -498,7 +510,9 @@ def render_history_view(
         if isinstance(source, ManagerReadModel)
         else provider_read(source, snapshot_token=snapshot_token)
     )
-    return render_history(model, scope=scope, base_path=base_path, query=query)
+    return render_history(
+        model, scope=scope, base_path=base_path, query=query, translator=translator
+    )
 
 
 def provider_read(provider: ManagerDataProvider, *, snapshot_token: str | None = None) -> ManagerReadModel:
