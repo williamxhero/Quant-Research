@@ -19,7 +19,7 @@ filesystem, SQLite database, or Strategy Reporting implementation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from html import escape
 from typing import Protocol, cast, runtime_checkable
@@ -35,6 +35,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog.l5_portal import page_translator
 from .locators import public_locator
 from .navigation import context_link
 from .status import DisplayState, render_operational_state, render_status_block
