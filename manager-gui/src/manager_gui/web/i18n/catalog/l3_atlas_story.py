@@ -116,7 +116,10 @@ ENTRIES: Mapping[str, M] = {
     "label.story.link_kind.report": M("报告", "Report"),
     "label.story.link_kind.source": M("来源", "Source"),
     "story.missing": M("未记录 / 未确认", "Missing / Unconfirmed"),
-    "story.record_id": M("记录 ID：{record_id}", "Record ID: {record_id}"),
+    "story.record_id": M(
+        "记录 ID：<span translate=\"no\">{record_id}</span>",
+        "Record ID: <span translate=\"no\">{record_id}</span>",
+    ),
     "story.source_missing": M("未记录或未确认的来源", "Missing / Unconfirmed source"),
     "story.source_reference": M(
         "来源引用 <span translate=\"no\">{source_id}</span>",
@@ -175,6 +178,116 @@ ENTRIES: Mapping[str, M] = {
 }
 
 
+# Display copies of the shipped synthetic envelopes only. Page code verifies the
+# entire envelope before using this map; matching one owner phrase is insufficient.
+FIXTURE_TEXT: dict[str, M] = {
+    "Fixture campaign": M("样例研究活动", "Fixture campaign"),
+    "Fixture hypothesis": M("样例研究假设", "Fixture hypothesis"),
+    "Fixture candidate": M("样例候选对象", "Fixture candidate"),
+    "Fixture run": M("样例运行", "Fixture run"),
+    "Fixture study": M("样例研究", "Fixture study"),
+    "Fixture strategy family": M("样例策略族", "Fixture strategy family"),
+    "Why test the fixture strategy?": M("为何测试样例策略？", "Why test the fixture strategy?"),
+    "Validate the complete fixture-backed research path.": M(
+        "验证完整的样例数据研究路径。", "Validate the complete fixture-backed research path."
+    ),
+    "The fixture path is traceable end to end.": M(
+        "样例路径可以端到端追溯。", "The fixture path is traceable end to end."
+    ),
+    "Frozen fixture design": M("冻结的样例设计", "Frozen fixture design"),
+    "Use only the declared public read seam.": M(
+        "仅使用声明的公开读取接口。", "Use only the declared public read seam."
+    ),
+    "The fixture run completed with explicit provenance.": M(
+        "样例运行已完成，并具有明确的溯源信息。",
+        "The fixture run completed with explicit provenance.",
+    ),
+    "Fixture evidence": M("样例证据", "Fixture evidence"),
+    "The source reference is available for inspection.": M(
+        "来源引用可供检查。", "The source reference is available for inspection."
+    ),
+    "Fixture decision": M("样例决策", "Fixture decision"),
+    "Keep the read-only path as the integration contract.": M(
+        "将只读路径保留为集成契约。", "Keep the read-only path as the integration contract."
+    ),
+    "Partial fixture story": M("部分可用的样例研究故事", "Partial fixture story"),
+    "The campaign is available, but other story chapters are not in scope.": M(
+        "研究活动可用，但其他故事章节不在范围内。",
+        "The campaign is available, but other story chapters are not in scope.",
+    ),
+    "Historical fixture result": M("历史样例结果", "Historical fixture result"),
+    "The complete fixture contains the declared lifecycle records.": M(
+        "完整样例包含声明的生命周期记录。",
+        "The complete fixture contains the declared lifecycle records.",
+    ),
+    "The complete fixture contains the declared integration path.": M(
+        "完整样例包含声明的集成路径。",
+        "The complete fixture contains the declared integration path.",
+    ),
+    "No records are present in the requested fixture scope.": M(
+        "请求的样例范围中没有记录。", "No records are present in the requested fixture scope."
+    ),
+    "Campaign records are available; other record types are not in scope.": M(
+        "研究活动记录可用；其他记录类型不在范围内。",
+        "Campaign records are available; other record types are not in scope.",
+    ),
+    "The fixture intentionally omits some expected record types.": M(
+        "样例有意省略了部分预期记录类型。",
+        "The fixture intentionally omits some expected record types.",
+    ),
+    "The approved read seam is blocked by a policy or capability gate.": M(
+        "批准的读取接口已被政策或能力关口阻塞。",
+        "The approved read seam is blocked by a policy or capability gate.",
+    ),
+    "The fixture does not permit access to this resource.": M(
+        "样例不允许访问此资源。", "The fixture does not permit access to this resource."
+    ),
+    "The source predates the current package or policy identity.": M(
+        "来源早于当前包或政策身份。", "The source predates the current package or policy identity."
+    ),
+    "The fixture is retained for historical viewing, not current truth.": M(
+        "样例仅保留用于历史查看，不作为当前事实。",
+        "The fixture is retained for historical viewing, not current truth.",
+    ),
+    "The comparison axes do not share a compatible data snapshot.": M(
+        "比较维度不具有兼容的数据快照。",
+        "The comparison axes do not share a compatible data snapshot.",
+    ),
+    "A result must not be ranked across incompatible snapshots.": M(
+        "不得在不兼容快照之间对结果排名。",
+        "A result must not be ranked across incompatible snapshots.",
+    ),
+    "The fixture artifact failed its declared integrity check.": M(
+        "样例制品未通过声明的完整性校验。",
+        "The fixture artifact failed its declared integrity check.",
+    ),
+    "The source digest does not match the declared digest.": M(
+        "来源摘要哈希与声明的摘要哈希不匹配。",
+        "The source digest does not match the declared digest.",
+    ),
+    "The approved public read API is not available in this environment.": M(
+        "此环境中批准的公开读取 API 不可用。",
+        "The approved public read API is not available in this environment.",
+    ),
+    "No private-storage fallback is permitted for this read.": M(
+        "此读取不允许回退到私有存储。", "No private-storage fallback is permitted for this read."
+    ),
+    "The requested resource has not been evaluated in this scope.": M(
+        "请求的资源在此范围内尚未评估。",
+        "The requested resource has not been evaluated in this scope.",
+    ),
+    "No evaluation result is published for this resource.": M(
+        "此资源尚未发布评估结果。", "No evaluation result is published for this resource."
+    ),
+    "The requested lineage cursor expired.": M(
+        "请求的谱系游标已失效。", "The requested lineage cursor expired."
+    ),
+    "The requested lineage snapshot drifted.": M(
+        "请求的谱系快照发生漂移。", "The requested lineage snapshot drifted."
+    ),
+}
+FIXTURE_KEYS = {text: f"atlas_story.fixture.{index}" for index, text in enumerate(FIXTURE_TEXT)}
+ENTRIES = {**ENTRIES, **{FIXTURE_KEYS[text]: message for text, message in FIXTURE_TEXT.items()}}
 register(ENTRIES)
 
-__all__ = ["ENTRIES"]
+__all__ = ["ENTRIES", "FIXTURE_KEYS"]
