@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import cast
+from urllib.parse import parse_qsl, urlsplit
+
+import pytest
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
+from manager_gui.testing.i18n import assert_lang_propagation, parse_html
+from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.search import (
     SEARCH_FIELDS,
     SEARCH_FIXTURE_STATES,
@@ -181,7 +187,8 @@ def test_partial_page_never_claims_global_no_match() -> None:
     assert view.pagination_complete is False
     assert view.global_no_match is False
     rendered = view.render(
-        query_context="/?view=search&fixture=partial&q=absent&snapshot_token=partial"
+        query_context="/?view=search&fixture=partial&q=absent&snapshot_token=partial",
+        translator=Translator(Locale.EN),
     )
     assert 'data-search-state="partial"' in rendered
     assert 'data-pagination-complete="false"' in rendered
@@ -219,7 +226,7 @@ def test_api_unavailable_is_explicit_and_has_no_fallback() -> None:
 
     assert view.state is SearchState.API_UNAVAILABLE
     assert view.hits == ()
-    rendered = view.render()
+    rendered = view.render(translator=Translator(Locale.EN))
     assert 'data-status="api_unavailable"' in rendered
     assert 'data-search-state="api_unavailable"' in rendered
     assert "private-storage fallback" in rendered
@@ -285,3 +292,44 @@ def test_deterministic_fixtures_cover_required_search_states_and_are_read_only()
     )
     assert [hit.record_id for hit in document.hits] == ["document-fixture-1"]
     assert "document_title" in document.hits[0].matched_fields
+
+
+@pytest.mark.parametrize("state", SEARCH_FIXTURE_STATES)
+@pytest.mark.parametrize("locale", list(Locale))
+def test_search_get_form_preserves_opaque_duplicates_and_blanks(
+    state: str, locale: Locale
+) -> None:
+    context = (
+        f"/?view=search&fixture={state}&lang={locale.value}&q=fixture"
+        "&tag=a&tag=b&tag=&opaque_ref=keep%26me&panel=events"
+    )
+    document = parse_html(render_search_view(
+        build_search_fixture(state), query_context=context, translator=Translator(locale)
+    ))
+    assert len(document.forms) == 1
+    assert_lang_propagation(document, locale, source_url=context)
+    controls = list(document.forms[0].descendants("input"))
+    pairs = [(node.attrs["name"], node.attrs.get("value", "")) for node in controls]
+    assert Counter(pairs) == Counter(parse_qsl(urlsplit(context).query, keep_blank_values=True))
+    for link in document.links:
+        if not link.classes & {"search-result-link", "search-next-cursor"}:
+            continue
+        actual = parse_qsl(urlsplit(link.attrs["href"] or "").query, keep_blank_values=True)
+        assert Counter((key, value) for key, value in actual if key == "tag") == Counter([
+            ("tag", "a"), ("tag", "b"), ("tag", "")
+        ])
+
+
+def test_search_labels_and_reasons_are_localized_without_changing_matching() -> None:
+    model = _model({"records": [_entry("record-1", title="Alpha", safe_summary="Beta")]})
+    zh = render_search_view(model, query="ALPHA beta")
+    en = render_search_view(model, query="ALPHA beta", translator=Translator(Locale.EN))
+    assert "搜索 · 已批准的确定性索引" in zh
+    assert "<dt>类型</dt>" in zh and "<dt>安全摘要</dt>" in zh
+    assert "匹配 标题" in zh and "匹配 安全摘要" in zh
+    assert "matched Title" in en and "matched Safe summary" in en
+    assert "<dt>Type</dt>" in en
+    assert "Alpha" in zh and "Beta" in zh
+    assert SearchViewModel.from_read_model(model, query="ALPHA beta").hits[0].match_reasons == (
+        "'alpha' matched title", "'beta' matched safe_summary"
+    )

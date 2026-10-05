@@ -25,7 +25,9 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from html import escape
 from typing import cast
+from urllib.parse import parse_qsl, urlsplit
 
+from ..fixtures import FixtureState, build_fixture
 from ..models import (
     Availability,
     Derivation,
@@ -37,6 +39,7 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
+from .i18n.catalog.l3_atlas_story import FIXTURE_KEYS as SHARED_FIXTURE_KEYS
 from .i18n.catalog.l5_search import ENTRIES as SEARCH_CATALOG
 from .locators import public_locator
 from .navigation import PageWindow, ViewId, context_link, query_values
@@ -52,7 +55,75 @@ def _search_translator(translator: Translator | None) -> Translator:
     selected = translator or Translator()
     from .i18n.catalog import CATALOG
 
-    return Translator(selected.locale, pseudo=selected.pseudo, catalog={**CATALOG, **SEARCH_CATALOG})
+    return Translator(
+        selected.locale,
+        strict=selected.strict,
+        pseudo=selected.pseudo,
+        catalog={**CATALOG, **SEARCH_CATALOG},
+    )
+
+
+def _query_pairs(context: str | Mapping[str, object] | None) -> list[tuple[str, str]]:
+    """Read query pairs without collapsing repeated opaque state."""
+
+    if isinstance(context, str):
+        return parse_qsl(urlsplit(context).query, keep_blank_values=True)
+    if context is None:
+        return []
+    return [(str(key), str(value)) for key, value in context.items() if value is not None]
+
+
+def _search_context(
+    context: str | Mapping[str, object] | None,
+    *,
+    query: str,
+    record_type: str | None,
+    source: str | None,
+) -> str:
+    """Canonicalise Search controls while retaining all unrelated query pairs."""
+
+    updates: dict[str, object] = {}
+    if query:
+        updates["q"] = query
+    if record_type:
+        updates["record_type"] = record_type
+    if source:
+        updates["source"] = source
+    return context_link(context, view=ViewId.SEARCH, **updates)
+
+
+def _search_hidden_controls(
+    context: str | Mapping[str, object] | None,
+    *,
+    translator: Translator,
+) -> str:
+    """Render GET controls so a browser does not discard opaque Search state."""
+
+    pairs = _query_pairs(context)
+    controls: list[tuple[str, str]] = [("view", ViewId.SEARCH.value)]
+    fixture = next((value for key, value in pairs if key == "fixture"), None)
+    if fixture is not None:
+        controls.append(("fixture", fixture))
+    panel = next((value for key, value in pairs if key == "panel"), None)
+    if panel is not None:
+        controls.append(("panel", panel))
+    mode = next((value for key, value in pairs if key == "mode"), None)
+    if mode is not None:
+        controls.append(("mode", mode))
+    raw_lang = next((value for key, value in pairs if key == "lang"), None)
+    if raw_lang in {"zh-CN", "en"}:
+        controls.append(("lang", translator.locale.value))
+    controls.extend(
+        (key, value)
+        for key, value in pairs
+        if key not in {"q", "view", "fixture", "lang", "panel", "mode"}
+    )
+    return "".join(
+        f'<input type="hidden" name="{escape(key, quote=True)}" '
+        f'value="{escape(value, quote=True)}">'
+        for key, value in controls
+    )
+
 
 # These are the only owner fields searched by the deterministic index.  The
 # record/document kind and source are filters/provenance, not hidden content.
@@ -386,6 +457,89 @@ def _canonical_query(value: object) -> str:
 
 def _query_terms(query: str) -> tuple[str, ...]:
     return tuple(term.casefold() for term in query.split() if term)
+
+
+_FIXTURE_COPY_KEYS: Mapping[str, str] = {
+    "Fixture campaign": "l5.search.fixture.campaign_title",
+    "Validate the deterministic research path.": "l5.search.fixture.campaign_statement",
+    "Approved fixture campaign for read-only search.": "l5.search.fixture.campaign_summary",
+    "Fixture strategy": "l5.search.fixture.strategy_title",
+    "A deterministic strategy statement.": "l5.search.fixture.strategy_statement",
+    "Strategy metadata from an approved read model.": "l5.search.fixture.strategy_summary",
+    "Fixture run": "l5.search.fixture.run_title",
+    "Completed deterministic fixture run.": "l5.search.fixture.run_summary",
+    "Fixture research report": "l5.search.fixture.report_title",
+    "Documented evidence statement.": "l5.search.fixture.report_statement",
+    "Approved document title is searchable metadata only.": "l5.search.fixture.report_summary",
+}
+
+_FIXTURE_STATUS_KEYS: Mapping[str, str] = {
+    "The complete fixture contains all approved record and document search entries.": "l5.search.fixture.complete_reason",
+    "Only the current approved Search page is indexed; more entries may exist.": "l5.search.fixture.partial_reason",
+    "The approved Search index has more pages; no global no-match claim is allowed.": "l5.search.fixture.partial_error",
+    "No approved Search records are present in this fixture scope.": "l5.search.fixture.empty_reason",
+    "The approved Search API is unavailable in this environment.": "l5.search.fixture.api_reason",
+    "No private-storage fallback is permitted for global Search.": "l5.search.fixture.api_error",
+}
+
+
+def _is_search_fixture(model: ManagerReadModel) -> bool:
+    """Only localize owner prose for an exact shipped synthetic envelope."""
+
+    return any(model == build_search_fixture(state) for state in SearchFixtureState) or any(
+        model == build_fixture(state, resource=SEARCH_RESOURCE)
+        for state in FixtureState
+        if state.value not in SEARCH_FIXTURE_STATES
+    )
+
+
+def _localized_fixture_text(
+    value: str | None,
+    *,
+    translator: Translator,
+    fixture: bool,
+) -> str | None:
+    if value is None or not fixture:
+        return value
+    key = {**SHARED_FIXTURE_KEYS, **_FIXTURE_COPY_KEYS}.get(value)
+    return translator.t(key) if key is not None else value
+
+
+def _localized_fixture_model(model: ManagerReadModel, translator: Translator) -> ManagerReadModel:
+    if not _is_search_fixture(model):
+        return model
+    keys = {**SHARED_FIXTURE_KEYS, **_FIXTURE_STATUS_KEYS}
+    reason_key = keys.get(model.availability.reason or "")
+    availability = replace(
+        model.availability,
+        reason=translator.t(reason_key) if reason_key is not None else model.availability.reason,
+    )
+    errors = tuple(
+        replace(
+            error,
+            message=translator.t(keys[error.message])
+            if error.message in keys
+            else error.message,
+        )
+        for error in model.errors
+    )
+    return replace(model, availability=availability, errors=errors)
+
+
+def _search_value_label(
+    translator: Translator,
+    field_name: str,
+    value: str | None,
+    *,
+    fixture: bool,
+) -> str | None:
+    if value is None:
+        return None
+    if field_name == "type" and fixture:
+        return translator.label("l5_search_record_type", value)
+    if field_name == "status" and fixture:
+        return translator.label("l5_search_status", value)
+    return _localized_fixture_text(value, translator=translator, fixture=fixture)
 
 
 def _search_values(item: Mapping[str, object], *, kind: str, source_refs: Mapping[str, SourceReference], source_ids: Sequence[str]) -> dict[str, str]:
@@ -725,10 +879,14 @@ class SearchViewModel:
             pagination=pagination,
         )
         if query_context is not None:
-            context_values = query_values(query_context)
-            if selected_query:
-                context_values["q"] = selected_query
-            view = view.with_context(context_values)
+            view = view.with_context(
+                _search_context(
+                    query_context,
+                    query=selected_query,
+                    record_type=selected_type,
+                    source=selected_source,
+                )
+            )
         return view
 
     @property
@@ -812,16 +970,13 @@ class SearchViewModel:
         translator: Translator | None = None,
     ) -> str:
         selected_translator = _search_translator(translator)
-        context: str | Mapping[str, object] = query_context or base_path
-        values = query_values(context)
-        if self.query:
-            values["q"] = self.query
-        values["view"] = "search"
-        if self.record_type:
-            values["record_type"] = self.record_type
-        if self.source:
-            values["source"] = self.source
-        context = values
+        raw_context: str | Mapping[str, object] = query_context or base_path
+        context = _search_context(
+            raw_context,
+            query=self.query,
+            record_type=self.record_type,
+            source=self.source,
+        )
         contextual = self.with_context(context)
         window = PageWindow(
             page=PageWindow.from_query(context, total=len(self.hits)).page,
@@ -829,11 +984,14 @@ class SearchViewModel:
             total=len(self.hits),
         )
         paged_hits = contextual.hits[window.start : window.stop]
+        fixture_copy = _is_search_fixture(self.read_model)
+        display_model = _localized_fixture_model(self.read_model, selected_translator)
         filter_type = self.record_type or "all"
         filter_source = self.source or "all"
-        observed = self.as_of or "Unavailable"
-        snapshot = self.snapshot_token or "Unavailable"
-        source_summary = ", ".join(source.source_id for source in self.source_refs) or "None recorded"
+        observed = self.as_of or selected_translator.t("l5.search.unavailable")
+        snapshot = self.snapshot_token or selected_translator.t("l5.search.unavailable")
+        source_summary = ", ".join(source.source_id for source in self.source_refs) or selected_translator.t("l5.search.none_recorded")
+        query_controls = _search_hidden_controls(context, translator=selected_translator)
         pieces = [
             f'<section class="search-page" data-integration-hook="{SEARCH_INTEGRATION_HOOK}" '
             f'data-search-state="{self.state.value}" data-search-complete="{str(self.pagination.complete).lower()}" '
@@ -841,28 +999,35 @@ class SearchViewModel:
             f'data-search-query="{escape(self.query, quote=True)}" '
             f'data-search-record-type="{escape(filter_type, quote=True)}" '
             f'data-search-source="{escape(filter_source, quote=True)}">',
-            '<p class="eyebrow">Search · deterministic approved index</p>',
-            '<h1 class="page-title" data-page-title tabindex="-1">Search</h1>',
-            '<p class="page-intro">Literal, case-insensitive matching across approved records and document metadata; no semantic or LLM ranking is used.</p>',
-            f'<p class="context-line search-context"><span><strong>Query</strong> {escape(self.query or "None")}</span>'
-            f'<span><strong>Observed</strong> {escape(observed)}</span><span><strong>Snapshot</strong> {escape(snapshot)}</span>'
-            f'<span><strong>Sources</strong> {escape(source_summary)}</span></p>',
+            f'<p class="eyebrow">{selected_translator.html("l5.search.eyebrow")}</p>',
+            f'<h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l5.search.title")}</h1>',
+            f'<p class="page-intro">{selected_translator.html("l5.search.intro")}</p>',
+            f'<form class="search-form" method="get" action="/" aria-label="{selected_translator.html("l5.search.form_aria")}">'
+            f'{query_controls}<label for="search-query">{selected_translator.html("l5.search.query")}</label>'
+            f'<input id="search-query" name="q" type="search" value="{escape(self.query, quote=True)}" '
+            f'placeholder="{selected_translator.html("l5.search.query_placeholder")}" '
+            f'aria-label="{selected_translator.html("l5.search.query_aria")}" '
+            f'title="{selected_translator.html("l5.search.query_title")}">'
+            f'<button type="submit">{selected_translator.html("l5.search.submit")}</button></form>',
+            f'<p class="context-line search-context"><span><strong>{selected_translator.html("l5.search.query")}</strong> '
+            f'<span translate="no">{escape(self.query) if self.query else selected_translator.html("l5.search.none")}</span></span>'
+            f'<span><strong>{selected_translator.html("l5.search.observed")}</strong> <span translate="no">{escape(observed)}</span></span>'
+            f'<span><strong>{selected_translator.html("l5.search.snapshot")}</strong> <span translate="no">{escape(snapshot)}</span></span>'
+            f'<span><strong>{selected_translator.html("l5.search.sources")}</strong> <span translate="no">{escape(source_summary)}</span></span></p>',
             f'<p class="search-pagination-integrity" data-pagination-integrity="{"complete" if self.pagination.complete else "partial"}">'
-            + (
-                "The approved index is complete; an empty result is a global no-match only for this known snapshot."
-                if self.pagination.complete
-                else "Only the indexed page is available; an empty page is not a global no-match."
+            + selected_translator.html(
+                "l5.search.pagination_complete" if self.pagination.complete else "l5.search.pagination_partial"
             )
             + "</p>",
-            render_status_block(self.read_model, translator=selected_translator),
+            render_status_block(display_model, translator=selected_translator),
         ]
         if self.state is SearchState.EMPTY:
             detail = (
-                "No approved record or document matches this query in the complete snapshot."
+                selected_translator.t("l5.search.no_global_match")
                 if self.global_no_match
-                else "No matching entry is currently indexed in this scope."
+                else selected_translator.t("l5.search.no_match_scope")
                 if self.query
-                else "Enter a query to search the approved record and document index."
+                else selected_translator.t("l5.search.enter_query")
             )
             pieces.append(
                 render_operational_state(
@@ -877,9 +1042,9 @@ class SearchViewModel:
                     DisplayState.PARTIAL,
                     translator=selected_translator,
                     detail=(
-                        "The current indexed page has no matching entry; global no-match is not established."
+                        selected_translator.t("l5.search.partial_empty")
                         if not self.hits
-                        else "Search results cover only the current indexed page; more records may match."
+                        else selected_translator.t("l5.search.partial_hits")
                     ),
                 )
             )
@@ -888,7 +1053,7 @@ class SearchViewModel:
                 render_operational_state(
                     DisplayState.ERROR,
                     translator=selected_translator,
-                    detail="The approved Search API is unavailable; no private-storage fallback is used.",
+                    detail=selected_translator.t("l5.search.api_unavailable"),
                 )
             )
         elif self.state is SearchState.ERROR:
@@ -896,7 +1061,7 @@ class SearchViewModel:
                 render_operational_state(
                     DisplayState.ERROR,
                     translator=selected_translator,
-                    detail="The approved Search read model cannot be used as complete current truth.",
+                    detail=selected_translator.t("l5.search.error"),
                 )
             )
         elif not paged_hits:
@@ -904,22 +1069,22 @@ class SearchViewModel:
                 render_operational_state(
                     DisplayState.EMPTY,
                     translator=selected_translator,
-                    detail="No indexed entries are visible on this page.",
+                    detail=selected_translator.t("l5.search.page_empty"),
                 )
             )
         else:
             pieces.append(
-                '<ol class="search-result-list" aria-label="Deterministic search results">'
-                + "".join(_render_hit(hit) for hit in paged_hits)
+                f'<ol class="search-result-list" aria-label="{selected_translator.html("l5.search.results_aria")}">'
+                + "".join(
+                    _render_hit(hit, translator=selected_translator, fixture=fixture_copy)
+                    for hit in paged_hits
+                )
                 + "</ol>"
             )
-        pieces.append(window.render(context, view="search"))
+        pieces.append(window.render(context, view="search", translator=selected_translator))
         if self.pagination.next_cursor and self.pagination.has_more:
-            next_context = query_values(context)
-            next_context.pop("page", None)
-            next_context.pop("cursor", None)
             next_url = context_link(
-                next_context,
+                context,
                 view="search",
                 cursor=self.pagination.next_cursor,
                 page=2,
@@ -927,28 +1092,42 @@ class SearchViewModel:
             pieces.append(
                 f'<p class="search-cursor-pagination" data-search-next-cursor="{escape(self.pagination.next_cursor, quote=True)}">'
                 f'<a class="search-next-cursor" rel="next" href="{escape(next_url, quote=True)}" '
-                'aria-label="Load next indexed Search page / 加载下一页搜索索引">'
-                'Next indexed page / <span lang="zh-CN">下一页索引</span></a></p>'
+                f'aria-label="{selected_translator.html("l5.search.next_page_aria")}">'
+                f'{selected_translator.html("l5.search.next_page")}</a></p>'
             )
         pieces.append("</section>")
         return "".join(pieces)
 
 
-def _safe_source_link(source: SourceReference) -> str:
+def _safe_source_link(source: SourceReference, *, translator: Translator) -> str:
     """Render only public or fixture locators; never expose private paths as links."""
 
     locator = public_locator(source.locator)
     if locator is None:
-        return '<span class="search-source-locator">Missing / Unconfirmed</span>'
-    return f'<a class="search-source-link" data-source-id="{escape(source.source_id, quote=True)}" href="{escape(locator, quote=True)}">{escape(locator)}</a>'
+        return f'<span class="search-source-locator">{translator.html("l5.search.missing")}</span>'
+    return f'<a class="search-source-link" data-source-id="{escape(source.source_id, quote=True)}" href="{escape(locator, quote=True)}"><span translate="no">{escape(locator)}</span></a>'
+
+
+def _localized_match_reason(hit: SearchHit, translator: Translator) -> str:
+    if not hit.match_reasons:
+        return translator.t("l5.search.browse_reason")
+    reasons: list[str] = []
+    for reason in hit.match_reasons:
+        term, separator, raw_fields = reason.partition(" matched ")
+        if not separator:
+            reasons.append(reason)
+            continue
+        fields = tuple(field.strip() for field in raw_fields.split(",") if field.strip())
+        labels = translator.join(
+            translator.label("l5_search_field", field_name) for field_name in fields
+        )
+        reasons.append(translator.t("l5.search.match_reason_terms", query_term=term, fields=labels))
+    return "; ".join(reasons)
 
 
 def _hit_link(hit: SearchHit, context: str | Mapping[str, object]) -> str:
     """Build a local link to the mounted route that owns a hit identity."""
 
-    values = query_values(context)
-    for key in ("page", "page_size", "cursor", "record_id", "document_id", "genome_id", "memory_id", "evidence_id", "lineage_id", "report_id", "failure_id", "pattern_id", "artifact_id", "source_id"):
-        values.pop(key, None)
     selector = {
         ViewId.SOURCE_DOCUMENTS.value: "document_id",
         ViewId.STRATEGIES.value: "genome_id",
@@ -957,10 +1136,28 @@ def _hit_link(hit: SearchHit, context: str | Mapping[str, object]) -> str:
         ViewId.LINEAGE.value: "record_id",
         ViewId.PORTAL.value: "report_id",
     }.get(hit.target_view, "record_id")
-    updates: dict[str, object] = {key: None for key in ("record_id", "document_id", "genome_id", "memory_id", "evidence_id", "lineage_id", "report_id")}
+    updates: dict[str, object] = {
+        key: None
+        for key in (
+            "page",
+            "page_size",
+            "cursor",
+            "record_id",
+            "document_id",
+            "genome_id",
+            "memory_id",
+            "evidence_id",
+            "lineage_id",
+            "report_id",
+            "failure_id",
+            "pattern_id",
+            "artifact_id",
+            "source_id",
+        )
+    }
     updates[selector] = hit.target_id or hit.record_id
     updates["record_type"] = hit.record_type
-    return context_link(values, view=hit.target_view, **updates)
+    return context_link(context, view=hit.target_view, **updates)
 
 
 def search_result_link(
@@ -972,7 +1169,22 @@ def search_result_link(
     return _hit_link(hit, context or {})
 
 
-def _render_hit(hit: SearchHit) -> str:
+def _render_search_value(
+    value: str | None,
+    field_name: str,
+    *,
+    translator: Translator,
+    fixture: bool,
+) -> str:
+    if value is None:
+        return f'<span>{translator.html("l5.search.missing")}</span>'
+    if field_name in {"type", "status"} and fixture:
+        return _search_value_label(translator, field_name, value, fixture=fixture) or ""
+    localized = _search_value_label(translator, field_name, value, fixture=fixture)
+    return f'<span data-owner-text="true" translate="no">{escape(localized or "")}</span>'
+
+
+def _render_hit(hit: SearchHit, *, translator: Translator, fixture: bool) -> str:
     selector = {
         ViewId.SOURCE_DOCUMENTS.value: "document_id",
         ViewId.STRATEGIES.value: "genome_id",
@@ -984,21 +1196,25 @@ def _render_hit(hit: SearchHit) -> str:
     target = hit.stable_url or context_link(
         None, view=hit.target_view, **{selector: hit.target_id or hit.record_id}
     )
-    title = hit.title or hit.document_title or hit.record_id
-    fields = ", ".join(hit.matched_fields) or "none (browse entry)"
+    title = _localized_fixture_text(
+        hit.title or hit.document_title or hit.record_id, translator=translator, fixture=fixture
+    ) or hit.record_id
+    fields = translator.join(
+        translator.label("l5_search_field", field_name) for field_name in hit.matched_fields
+    ) or translator.html("l5.search.browse_entry")
     source_markup = (
         '<ul class="search-source-list">'
         + "".join(
-            f'<li data-source-id="{escape(source.source_id, quote=True)}"><strong>{escape(source.source_id)}</strong> · '
-            f'{escape(source.owner)} · { _safe_source_link(source) }</li>'
+            f'<li data-source-id="{escape(source.source_id, quote=True)}"><strong translate="no">{escape(source.source_id)}</strong> · '
+            f'<span translate="no">{translator.source_text(source.owner)}</span> · {_safe_source_link(source, translator=translator)}</li>'
             for source in hit.source_refs
         )
         + "</ul>"
         if hit.source_refs
-        else '<span class="search-source-missing">Missing / Unconfirmed source reference</span>'
+        else f'<span class="search-source-missing">{translator.html("l5.search.missing_source")}</span>'
     )
     values = (
-        ("record id", hit.record_id),
+        ("record_id", hit.record_id),
         ("type", hit.record_type),
         ("schema", hit.schema),
         ("hash", hit.hash),
@@ -1011,22 +1227,24 @@ def _render_hit(hit: SearchHit) -> str:
         ("date", hit.date),
         ("title", hit.title),
         ("statement", hit.statement),
-        ("safe summary", hit.safe_summary),
-        ("document title", hit.document_title),
+        ("safe_summary", hit.safe_summary),
+        ("document_title", hit.document_title),
     )
     details = "".join(
-        f'<div><dt>{escape(label)}</dt><dd>{escape(value) if value is not None else "Missing / Unconfirmed"}</dd></div>'
+        f'<div><dt>{translator.label("l5_search_field", label)}</dt><dd>'
+        f'{_render_search_value(value, label, translator=translator, fixture=fixture)}</dd></div>'
         for label, value in values
     )
+    owner_title_attr = "" if fixture else ' data-owner-text="true"'
     return (
         f'<li class="search-result" data-result-id="{escape(hit.result_id, quote=True)}" '
         f'data-result-kind="{escape(hit.result_kind, quote=True)}" data-record-type="{escape(hit.record_type, quote=True)}">'
         f'<h2><a class="search-result-link" data-link-kind="{escape(hit.result_kind, quote=True)}" '
-        f'href="{escape(target, quote=True)}">{escape(title)}</a></h2>'
-        f'<p class="search-hit-reason"><strong>Matched fields</strong> {escape(fields)} · '
-        f'<strong>Reason</strong> {escape(hit.reason)}</p>'
+        f'href="{escape(target, quote=True)}"><span{owner_title_attr}>{escape(title)}</span></a></h2>'
+        f'<p class="search-hit-reason"><strong>{translator.html("l5.search.matched_fields")}</strong> {fields} · '
+        f'<strong>{translator.html("l5.search.reason")}</strong> {escape(_localized_match_reason(hit, translator))}</p>'
         f'<dl class="search-result-details">{details}</dl>'
-        f'<div class="search-result-sources"><strong>Source</strong>{source_markup}</div>'
+        f'<div class="search-result-sources"><strong>{translator.html("l5.search.source")}</strong>{source_markup}</div>'
         "</li>"
     )
 

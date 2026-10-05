@@ -148,10 +148,10 @@ def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> N
             "evidence-object-comparison",
             "derived-failure-grouping",
         }
-    ) == MIGRATED_ROUTES
+    ) | frozenset({"search", "portal"}) == MIGRATED_ROUTES
     routes = tuple(item.view_id.value for item in NAVIGATION)
     assert len(routes) == 17
-    assert not {"search", "portal"} & MIGRATED_ROUTES
+    assert frozenset(routes) == MIGRATED_ROUTES
     count = 0
     for fixture in FixtureState:
         app = ManagerGUIApp(default_fixture=fixture)

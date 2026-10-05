@@ -765,8 +765,14 @@ def _artifact_link(
     return context_link(context, view="portal", report_id=report_id, artifact_id=artifact.artifact_id)
 
 
+def _owner_text(value: str) -> str:
+    """Mark machine/owner payload so locale audits never treat it as UI copy."""
+
+    return f'<span data-owner-text="true" translate="no">{escape(value)}</span>'
+
+
 def _display(value: str | None, *, missing: str) -> str:
-    return escape(value) if value is not None else missing
+    return _owner_text(value) if value is not None else missing
 
 
 def _p(translator: Translator, key: str) -> str:
@@ -798,7 +804,7 @@ def _render_publication(
     safe_locator = public_locator(publication.locator)
     locator = (
         f'<a class="portal-source-locator" href="{escape(safe_locator, quote=True)}">'
-        f"{escape(safe_locator)}</a>"
+        f"{_owner_text(safe_locator)}</a>"
         if safe_locator
         else _p(translator, "missing_unconfirmed")
     )
@@ -813,7 +819,7 @@ def _render_publication(
         'data-source-publication-state="published">'
         f"<h2>{_p(translator, 'source_publication')}</h2>"
         "<dl class=\"portal-details\">"
-        f"<div><dt>{_p(translator, 'publication_id')}</dt><dd>{escape(publication.publication_id)}</dd></div>"
+        f"<div><dt>{_p(translator, 'publication_id')}</dt><dd>{_owner_text(publication.publication_id)}</dd></div>"
         f"<div><dt>{_p(translator, 'title_field')}</dt><dd>{_display(publication.title, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
         f"<div><dt>{_p(translator, 'version')}</dt><dd>{_display(publication.version, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
         f"<div><dt>{_p(translator, 'revision')}</dt><dd>{_display(publication.revision, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
@@ -848,7 +854,7 @@ def _render_artifact(
     safe_locator = public_locator(artifact.locator)
     locator = (
         f'<a class="portal-artifact-locator" href="{escape(safe_locator, quote=True)}">'
-        f"{escape(safe_locator)}</a>"
+        f"{_owner_text(safe_locator)}</a>"
         if safe_locator
         else _p(translator, "missing_unconfirmed")
     )
@@ -863,7 +869,7 @@ def _render_artifact(
         f'data-artifact-state="{state.value}">'
         f"<h2>{_p(translator, 'generated_artifact')}</h2>"
         "<dl class=\"portal-details\">"
-        f"<div><dt>{_p(translator, 'artifact_id')}</dt><dd>{escape(artifact.artifact_id)}</dd></div>"
+        f"<div><dt>{_p(translator, 'artifact_id')}</dt><dd>{_owner_text(artifact.artifact_id)}</dd></div>"
         f"<div><dt>{_p(translator, 'title_field')}</dt><dd>{_display(artifact.title, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
         f"<div><dt>{_p(translator, 'artifact_locator')}</dt><dd>{locator}</dd></div>"
         f"<div><dt>{_p(translator, 'renderer')}</dt><dd>{_display(artifact.renderer, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
@@ -921,9 +927,9 @@ def render_portal(
     view = view_or_model if isinstance(view_or_model, PortalViewModel) else PortalViewModel.from_read_model(view_or_model)
     model = view.read_model
     unavailable = _p(selected_translator, "unavailable")
-    observed = escape(model.as_of) if model.as_of is not None else unavailable
-    snapshot = escape(model.snapshot_token) if model.snapshot_token is not None else unavailable
-    source_ids = escape(", ".join(source.source_id for source in model.source_refs)) if model.source_refs else _p(selected_translator, "none_recorded")
+    observed = _owner_text(model.as_of) if model.as_of is not None else unavailable
+    snapshot = _owner_text(model.snapshot_token) if model.snapshot_token is not None else unavailable
+    source_ids = _owner_text(", ".join(source.source_id for source in model.source_refs)) if model.source_refs else _p(selected_translator, "none_recorded")
     state_copy = {
         PortalArtifactState.MISSING: _p(selected_translator, "state_missing"),
         PortalArtifactState.NOT_GENERATED: _p(selected_translator, "state_not_generated"),
