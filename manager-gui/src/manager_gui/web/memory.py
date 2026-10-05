@@ -1380,12 +1380,16 @@ def render_memory_value(value: str | None, translator: Translator, domain: str |
         return translator.html(missing)
     if domain is None:
         return f'<span translate="no">{translator.source_text(value)}</span>'
-    label = translator.label(domain, value)
+    known_aliases = {"not excluded": "not_excluded", "not repeated": "not_repeated", "not required": "not_required"}
+    label = translator.label(domain, known_aliases.get(value, value) if domain == "decision" else value)
     return label.replace("<code>", '<code translate="no">', 1) if label.startswith("<code>") else label
 
 
 def render_filter_value(value: str, translator: Translator, domain: str | None = None) -> str:
-    return render_memory_value(value, translator, domain)
+    if domain is None:
+        return translator.source_text(value)
+    label = translator.label(domain, value)
+    return translator.source_text(value) if label.startswith("<code>") else label
 
 
 def memory_source_link(target: str, context: QueryContext) -> str:
@@ -1453,7 +1457,7 @@ def _render_policy(policy: MemoryPolicy | None, *, translator: Translator, model
 
 def _render_decisions(decisions: MemoryDecisions, *, translator: Translator) -> str:
     rows = "".join(
-        f'<div class="memory-decision"><dt>{translator.html(key)}</dt><dd>{render_memory_value(value, translator, "memory_decision", missing="l4.none_recorded")}</dd></div>'
+        f'<div class="memory-decision"><dt>{translator.html(key)}</dt><dd>{render_memory_value(value, translator, "decision", missing="l4.none_recorded")}</dd></div>'
         for key, value in (
             ("l4.inclusion_decision", decisions.inclusion),
             ("l4.exclusion_decision", decisions.exclusion),
