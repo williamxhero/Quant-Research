@@ -8,23 +8,23 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ..translator import M
-
 # Catalog templates are kept readable as bilingual pairs.
 # ruff: noqa: E501
+
+from ..translator import M
 
 
 ENTRIES: Mapping[str, M] = {
     # Closed values.  Unknown values are rendered by Translator.label as escaped
     # <code>verbatim</code>, rather than guessed or title-cased.
     "label.memory_authority.formal_research_memory": M("正式研究记忆", "Formal Research Memory"),
-    "label.memory_authority.gui_derived": M("GUI 派生视图", "GUI Derived view"),
+    "label.memory_authority.gui_derived": M("GUI 派生视图", "GUI-derived view"),
     "label.lineage_kind.campaign": M("研究活动", "Campaign"),
     "label.lineage_kind.candidate": M("候选对象", "Candidate"),
     "label.lineage_kind.run": M("运行", "Run"),
     "label.lineage_kind.evidence": M("证据", "Evidence"),
     "label.lineage_kind.artifact": M("制品", "Artifact"),
-    "label.lineage_kind.source_document": M("来源文档", "Source Document"),
+    "label.lineage_kind.source_document": M("来源文档", "Source document"),
     "label.failure_category.data_blocker": M("数据阻塞", "Data blocker"),
     "label.failure_category.adapter_failure": M("适配器失败", "Adapter failure"),
     "label.failure_category.runtime_failure": M("运行时失败", "Runtime failure"),
@@ -100,7 +100,7 @@ ENTRIES: Mapping[str, M] = {
     ),
     "l4.memory_derived_authority": M(
         "根据具名读模型输入可复现地形成的 GUI 派生视图，不是正式研究记忆。",
-        "A reproducible GUI-derived view shaped from named read-model inputs; it is not formal Research Memory.",
+        "A reproducible GUI-derived view shaped from named read-model inputs; it is not Formal Research Memory.",
     ),
     "l4.gui_derived": M("GUI 派生视图", "GUI-derived view"),
     "l4.formal_research_memory": M("正式研究记忆", "Formal Research Memory"),
@@ -151,7 +151,7 @@ ENTRIES: Mapping[str, M] = {
     ),
     "l4.no_formal_memory": M(
         "未记录正式研究记忆条目。普通失败记录仍属于独立层。",
-        "No formal Research Memory entries are recorded. Ordinary failure records remain a separate layer.",
+        "No Formal Research Memory entries are recorded. Ordinary failure records remain a separate layer.",
     ),
     "l4.no_formal_memory_scope": M(
         "此范围中未记录研究记忆条目。此快照没有可用的已发布正式研究记忆条目。",
@@ -188,7 +188,7 @@ ENTRIES: Mapping[str, M] = {
     "l4.failure_snapshot_missing": M("此快照中未记录 / 未确认", "Missing / Unconfirmed in this snapshot"),
     "l4.formal_failure_entries": M("正式研究记忆失败条目", "Formal Research Memory failure entries"),
     "l4.memory_layer_boundary": M("属主发布的记忆仍与 GUI 派生聚合保持区分。", "Owner-published Memory remains distinct from GUI-derived aggregation."),
-    "l4.raw_failure_boundary": M("未记录正式研究记忆条目。原始失败记录仍属于独立层。", "No formal Research Memory entries are recorded. Raw failure records remain a separate layer."),
+    "l4.raw_failure_boundary": M("未记录正式研究记忆条目。原始失败记录仍属于独立层。", "No Formal Research Memory entries are recorded. Raw failure records remain a separate layer."),
     "l4.partial_failure_scope": M("失败范围不完整：不可用条目不会被补全。", "Partial failure scope: unavailable entries are not filled in."),
     "l4.patterns_title": M("派生失败模式", "Derived failure patterns"),
     "l4.pattern_not_determined": M("读取模型状态为 {status} 时无法确定派生失败模式。", "Derived failure patterns are not determined while read-model status is {status}."),
@@ -294,11 +294,6 @@ ENTRIES: Mapping[str, M] = {
     "l4.fixture.failure_run_2": M("失败运行 2", "Failed run 2"),
     "l4.generated_success_title": M("派生成功记录", "Derived success records"),
     "l4.generated_failure_title": M("派生失败记录", "Derived failure records"),
-    "l4.open_memory": M("打开研究记忆", "Open Memory"),
-    "l4.back_failure_catalog": M("返回失败目录", "Back to failure catalog"),
-    "l4.failure": M("失败", "Failure"),
-    "l4.record_status": M("记录状态", "Record status"),
 }
-
 
 __all__ = ["ENTRIES"]
