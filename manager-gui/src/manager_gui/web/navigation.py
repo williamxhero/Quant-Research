@@ -227,7 +227,9 @@ def context_link(
 
     values = query_values(context)
     if values.get("view") != str(view) or any(
-        values.get(key) != str(value) for key, value in updates.items() if key != "page"
+        values.get(key) != str(value)
+        for key, value in updates.items()
+        if key not in {"page", "lang"}
     ):
         values.pop("page", None)
     values["view"] = str(view)

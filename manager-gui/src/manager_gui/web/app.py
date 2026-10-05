@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
-from html import escape
+from html import escape, unescape
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from ..fixtures import FixtureState, build_fixture
@@ -52,6 +53,7 @@ from .genome import (
     render_genome_view,
 )
 from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
+from .i18n import DEFAULT_LOCALE, Locale, resolve_locale, with_lang
 from .interaction import (
     export_json as render_current_view_export_json,
 )
@@ -74,6 +76,12 @@ from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE, render_search_view
 from .status import render_status_block
 
+_SWITCHER_LABELS: dict[Locale, tuple[str, str]] = {
+    Locale.ZH_CN: ("语言", "中文"),
+    Locale.EN: ("Language", "English"),
+}
+_INTERNAL_HREF = re.compile(r'''(?P<prefix>href=["'])(?P<url>/\?[^"']*)(?P<suffix>["'])''')
+
 
 @dataclass(frozen=True, slots=True)
 class WebRequestState:
@@ -85,15 +93,33 @@ class WebRequestState:
     panel: str | None
     mode: StoryMode = StoryMode.NARRATIVE
     context: tuple[tuple[str, str], ...] = ()
+    lang: Locale | None = None
+    default_locale: Locale = DEFAULT_LOCALE
+
+    @property
+    def locale(self) -> Locale:
+        """Return the explicit locale, or the app's configured default."""
+
+        return self.lang or self.default_locale
 
     @classmethod
-    def from_url(cls, url: str, *, default_fixture: FixtureState) -> WebRequestState:
+    def from_url(
+        cls,
+        url: str,
+        *,
+        default_fixture: FixtureState,
+        default_locale: Locale | str = DEFAULT_LOCALE,
+    ) -> WebRequestState:
+        resolved_default_locale = resolve_locale(default_locale)
+        if resolved_default_locale is None:
+            raise ValueError(f"unsupported default locale: {default_locale!r}")
         parsed = urlsplit(url)
         values = parse_qs(parsed.query, keep_blank_values=True)
         raw_view = values.get("view", [ViewId.ATLAS.value])[0]
         raw_fixture = values.get("fixture", [default_fixture.value])[0]
         raw_panel = values.get("panel", [""])[0]
         raw_mode = values.get("mode", [StoryMode.NARRATIVE.value])[0]
+        lang = resolve_locale(values.get("lang", [None])[0])
         try:
             view = ViewId(raw_view)
         except ValueError:
@@ -115,19 +141,23 @@ class WebRequestState:
             mode=mode,
             context=tuple(sorted(
                 (key, entries[0]) for key, entries in values.items()
-                if key not in {"view", "fixture", "panel", "q", "mode"}
+                if key not in {"view", "fixture", "panel", "q", "mode", "lang"}
             )),
+            lang=lang,
+            default_locale=resolved_default_locale,
         )
 
     def query_pairs(self, *, view: ViewId | None = None) -> tuple[tuple[str, str], ...]:
         """Canonical shared links/forms retain page-local opaque context."""
 
-        values = dict(self.context)
+        values = {key: value for key, value in self.context if key != "lang"}
         values.update(view=(view or self.view).value, fixture=self.fixture.value)
         if self.query:
             values["q"] = self.query
         if self.panel:
             values["panel"] = self.panel
+        if self.lang is not None:
+            values["lang"] = self.lang.value
         destination = view or self.view
         if destination is ViewId.STORIES:
             values["mode"] = self.mode.value
@@ -249,10 +279,15 @@ class ManagerGUIApp:
         provider: ManagerDataProvider | None = None,
         *,
         default_fixture: FixtureState | str = FixtureState.PARTIAL,
+        default_locale: Locale | str = DEFAULT_LOCALE,
         approved_directories: tuple[str, ...] = (),
     ) -> None:
         self._provider = provider
         self._default_fixture = FixtureState(default_fixture)
+        resolved_locale = resolve_locale(default_locale)
+        if resolved_locale is None:
+            raise ValueError(f"unsupported default locale: {default_locale!r}")
+        self._default_locale = resolved_locale
         self._approved_directories = tuple(approved_directories)
 
     @property
@@ -261,10 +296,20 @@ class ManagerGUIApp:
 
         return self._default_fixture
 
+    @property
+    def default_locale(self) -> Locale:
+        """Locale selected when a URL omits or invalidates ``lang``."""
+
+        return self._default_locale
+
     def request_state(self, url: str = "/") -> WebRequestState:
         """Parse stable query state without consulting owner storage."""
 
-        return WebRequestState.from_url(url, default_fixture=self._default_fixture)
+        return WebRequestState.from_url(
+            url,
+            default_fixture=self._default_fixture,
+            default_locale=self._default_locale,
+        )
 
     def read_model(self, state: WebRequestState) -> ManagerReadModel:
         """Read through the public seam; this method intentionally has no writes."""
@@ -317,10 +362,12 @@ class ManagerGUIApp:
         """Render a complete HTML document for the shell route."""
 
         state = self.request_state(url)
+        normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
         item = navigation_item(state.view)
-        page = self._render_page(state, model, url)
-        return self._render_document(state, model, item, page)
+        page = self._render_page(state, model, normalized_url)
+        page = self._localize_internal_links(page, state.lang)
+        return self._render_document(state, model, item, page, raw_url=url)
 
     def render_json(self, url: str = "/") -> str:
         """Return the current envelope for a future client-side integration."""
@@ -333,11 +380,29 @@ class ManagerGUIApp:
 
         state = self.request_state(url)
         model = self.read_model(state)
+        export_context = with_lang(state.url(), None)
         return render_current_view_export_json(
             model,
             view=state.view.value,
-            query_context=url,
+            query_context=export_context,
         )
+
+    @staticmethod
+    def _localize_internal_links(markup: str | None, locale: Locale | None) -> str | None:
+        """Apply explicit language state to owner-provided local links only."""
+
+        if markup is None:
+            return None
+
+        def replace_link(match: re.Match[str]) -> str:
+            raw_url = unescape(match.group("url"))
+            localized = with_lang(raw_url, locale)
+            return (
+                f'{match.group("prefix")}{escape(localized, quote=True)}'
+                f'{match.group("suffix")}'
+            )
+
+        return _INTERNAL_HREF.sub(replace_link, markup)
 
     def _render_page(self, state: WebRequestState, model: ManagerReadModel, url: str) -> str | None:
         """Mount a page hook while leaving all shell chrome in this app."""
@@ -500,6 +565,8 @@ class ManagerGUIApp:
         model: ManagerReadModel,
         item: NavigationItem,
         page: str | None,
+        *,
+        raw_url: str,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
         inspector_hidden = " hidden" if state.panel == "events" else ""
@@ -512,6 +579,11 @@ class ManagerGUIApp:
             f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
             for key, value in state.context
             if key != "q"
+        )
+        lang_hidden = (
+            f'<input type="hidden" name="lang" value="{escape(state.lang.value, quote=True)}">'
+            if state.lang is not None
+            else ""
         )
         panel_hidden = (
             f'<input type="hidden" name="panel" value="{escape(state.panel, quote=True)}">'
@@ -542,12 +614,14 @@ class ManagerGUIApp:
       </section>"""
         else:
             page_markup = page
+        export_context = with_lang(state.url(), None)
         export_control = render_export_control(
-            state.url(),
+            export_context,
             view=state.view.value,
             snapshot_token=model.snapshot_token,
             model=model,
         )
+        language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url)
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
             f"{opaque_copy_button(model.snapshot_token)}"
@@ -555,7 +629,7 @@ class ManagerGUIApp:
             else escape(snapshot)
         )
         return f"""<!doctype html>
-<html lang="en">
+<html lang="{state.locale.html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -573,13 +647,14 @@ class ManagerGUIApp:
     <div class="topbar-meta">
       <span class="workspace-note">Fixture workspace · snapshot {escape(snapshot)}</span>
       <span class="read-only-badge" aria-label="Read only; mutations are disabled / 只读, 已禁用变更">READ ONLY · 只读</span>
+      {language_switcher}
     </div>
     <form class="search-form" role="search" action="/" method="get" aria-label="Global search / 全局搜索">
       <label class="sr-only" for="global-search">Global search / 全局搜索</label>
       <input class="search-input" id="global-search" name="q" value="{query_value}"
         placeholder="Search read models… / 搜索只读模型…" autocomplete="off">
       <input type="hidden" name="view" value="{escape(state.view.value, quote=True)}">
-      <input type="hidden" name="fixture" value="{state_value}">{context_hidden}{panel_hidden}{mode_hidden}
+      <input type="hidden" name="fixture" value="{state_value}">{lang_hidden}{context_hidden}{panel_hidden}{mode_hidden}
     </form>
   </header>
   <nav class="nav-strip" aria-label="Manager GUI sections / 管理界面分区">{ManagerGUIApp._render_navigation_static(state)}</nav>
@@ -614,6 +689,31 @@ class ManagerGUIApp:
 <script>{JS}</script>
 </body>
 </html>"""
+
+    @staticmethod
+    def _render_language_switcher(state: WebRequestState, raw_url: str) -> str:
+        """Render a no-JavaScript switcher while preserving the raw query state."""
+
+        aria_label, _ = _SWITCHER_LABELS[state.locale]
+        choices: list[str] = []
+        for locale, (_, endonym) in _SWITCHER_LABELS.items():
+            if locale is state.locale:
+                choices.append(
+                    f'<span lang="{locale.html_lang}" aria-current="true">'
+                    f"{escape(endonym)}</span>"
+                )
+                continue
+            href = with_lang(raw_url, locale)
+            choices.append(
+                f'<a lang="{locale.html_lang}" hreflang="{locale.html_lang}" '
+                f'href="{escape(href, quote=True)}">{escape(endonym)}</a>'
+            )
+        return (
+            f'<nav class="language-switcher" aria-label="{escape(aria_label)}" '
+            'data-language-switcher>'
+            + '<span class="language-switcher-label" aria-hidden="true">·</span>'.join(choices)
+            + "</nav>"
+        )
 
     @staticmethod
     def _static_link(state: WebRequestState) -> str:

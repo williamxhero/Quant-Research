@@ -20,12 +20,16 @@ from manager_gui import (
 )
 from manager_gui.web import (
     DisplayState,
+    Locale,
     ManagerGUIApp,
     create_server,
     display_state_for,
     render_operational_state,
     render_status_block,
+    with_lang,
 )
+from manager_gui.web.navigation import context_link
+from manager_gui.web.server import build_parser
 
 
 def test_status_renderer_covers_every_read_model_status() -> None:
@@ -82,6 +86,79 @@ def test_shell_preserves_navigation_context_and_read_only_surface() -> None:
     assert 'data-integration-hook="evidence-view"' in document
     assert 'method="get"' in document
     assert "No mutation route" not in document
+
+
+def test_locale_request_state_normalizes_aliases_and_removes_invalid_context() -> None:
+    app = ManagerGUIApp()
+
+    assert app.request_state("/?lang=en").lang is Locale.EN
+    assert app.request_state("/?lang=EN-us").locale is Locale.EN
+    chinese = app.request_state("/?lang=zh")
+    assert chinese.lang is Locale.ZH_CN
+    assert chinese.locale is Locale.ZH_CN
+    assert dict(chinese.context).get("lang") is None
+    assert ("lang", "zh-CN") in chinese.query_pairs()
+
+    invalid = app.request_state("/?view=atlas&lang=fr&scope=")
+    assert invalid.lang is None
+    assert invalid.locale is Locale.ZH_CN
+    assert dict(invalid.context) == {"scope": ""}
+    assert all(key != "lang" for key, _ in invalid.query_pairs())
+
+    english_default = ManagerGUIApp(default_locale="en")
+    assert english_default.request_state("/").locale is Locale.EN
+    assert english_default.request_state("/?lang=fr").locale is Locale.EN
+
+
+def test_shell_language_switcher_and_explicit_search_state() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    raw_url = "/?view=search&fixture=complete&q=&tag=a&tag=b&tag=&page=2&lang=EN-us"
+    document = app.render(raw_url)
+    expected_chinese = with_lang(raw_url, Locale.ZH_CN)
+
+    assert '<html lang="en">' in document
+    assert 'name="lang" value="en"' in document
+    assert 'aria-label="Language"' in document
+    assert '<span lang="en" aria-current="true">English</span>' in document
+    assert f'hreflang="zh-CN" href="{expected_chinese.replace("&", "&amp;")}"' in document
+    assert 'name="lang" value="en"' in document
+    nav_hrefs = re.findall(r'class="nav-link"[^>]+href="([^"]+)"', document)
+    assert nav_hrefs and all("lang=en" in unescape(href) for href in nav_hrefs)
+
+    invalid = app.render("/?view=search&fixture=complete&lang=fr&q=term")
+    assert '<html lang="zh-CN">' in invalid
+    assert "lang=fr" not in unescape(invalid)
+    assert 'name="lang"' not in invalid
+    assert 'aria-label="语言"' in invalid
+
+
+def test_language_context_preserves_page_and_api_exports_strip_lang() -> None:
+    assert context_link("/?view=search&page=4&lang=en", view="search", lang="zh-CN") == (
+        "/?lang=zh-CN&page=4&view=search"
+    )
+
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    base = "/?view=atlas&fixture=complete&snapshot_token=s1&q=term"
+    payloads = [
+        app.render_export(base),
+        app.render_export(base + "&lang=zh-CN"),
+        app.render_export(base + "&lang=en"),
+    ]
+    assert payloads[0] == payloads[1] == payloads[2]
+    payload = json.loads(payloads[0])
+    assert "lang" not in payload["query"]
+    assert "lang" not in payload["query_params"]
+    assert app.render_json(base) == app.render_json(base + "&lang=en")
+
+
+def test_web_server_cli_accepts_a_default_language() -> None:
+    args = build_parser().parse_args(["--fixture", "complete", "--lang", "en"])
+    assert args.lang == "en"
+    server = create_server(port=0, fixture="complete", default_locale=args.lang)
+    try:
+        assert '<html lang="en">' in server.app.render("/")
+    finally:
+        server.server_close()
 
 
 def test_s5_integrated_routes_preserve_shell_links_and_scope_context() -> None:

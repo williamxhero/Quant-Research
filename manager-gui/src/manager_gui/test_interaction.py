@@ -259,7 +259,8 @@ def test_mounted_pages_pass_the_shared_accessibility_audit(view: str) -> None:
     for fixture in (FixtureState.COMPLETE, FixtureState.PARTIAL, FixtureState.BLOCKED):
         audit = _audit(app.render(_url(view, fixture.value, panel="events")))
 
-        assert audit.html_lang == "en"
+        # The default locale is now Chinese; explicit ``lang=en`` is tested below.
+        assert audit.html_lang == "zh-CN"
         assert audit.h1_count == 1
         assert len(audit.ids) == len(set(audit.ids)), "duplicate id attributes"
         for key, token in audit.references:
