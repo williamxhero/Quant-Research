@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from manager_gui import ManagerReadModel
 from manager_gui.models import ReadModelStatus
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
 from manager_gui.web.evidence_comparison import (
@@ -16,6 +17,19 @@ from manager_gui.web.evidence_comparison import (
     render_evidence_comparison,
     render_evidence_comparison_view,
 )
+from manager_gui.web.i18n import Locale, Translator
+
+
+def _render_evidence_comparison_en(
+    view_or_model: EvidenceComparisonViewModel | ManagerReadModel,
+    *,
+    query_context: str | None = None,
+) -> str:
+    return render_evidence_comparison(
+        view_or_model,
+        query_context=query_context,
+        translator=Translator(Locale.EN),
+    )
 
 
 def test_general_comparison_covers_all_declared_axes_and_is_not_s2_genome_comparison() -> None:
@@ -23,7 +37,7 @@ def test_general_comparison_covers_all_declared_axes_and_is_not_s2_genome_compar
 
     assert view.result is ComparisonOutcome.EQUAL
     assert tuple(axis.axis for axis in view.axes) == tuple(ComparisonAxis)
-    document = render_evidence_comparison(view)
+    document = _render_evidence_comparison_en(view)
     assert 'data-integration-hook="evidence-comparison-view"' in document
     assert 'data-comparison-kind="general-object"' in document
     assert "not the S2 Strategy Genome comparison" in document
@@ -43,7 +57,7 @@ def test_different_and_missing_axes_are_explicit_without_defaults() -> None:
         build_evidence_comparison_fixture(EvidenceComparisonFixtureState.MISSING)
     )
     assert missing.comparison is None
-    assert render_evidence_comparison(missing).count("Result: equal") == 0
+    assert _render_evidence_comparison_en(missing).count("Result: equal") == 0
 
     partial = EvidenceComparisonViewModel.from_read_model(
         build_evidence_comparison_fixture(EvidenceComparisonFixtureState.PARTIAL)
@@ -51,7 +65,7 @@ def test_different_and_missing_axes_are_explicit_without_defaults() -> None:
     assert partial.result is ComparisonOutcome.MISSING
     assert partial.comparison is not None
     assert partial.comparison.missing_axes == ("fills", "evidence_sections")
-    rendered = render_evidence_comparison(partial)
+    rendered = _render_evidence_comparison_en(partial)
     assert 'data-axis="fills" data-axis-state="missing"' in rendered
     assert 'data-axis="evidence_sections" data-axis-state="missing"' in rendered
 
@@ -65,7 +79,7 @@ def test_protocol_and_data_version_incompatibility_never_become_different_or_fai
         assert view.result is ComparisonOutcome.INCOMPARABLE
         assert view.comparison is not None
         assert view.comparison.incompatible_axes == (axis,)
-        rendered = render_evidence_comparison(view)
+        rendered = _render_evidence_comparison_en(view)
         assert f'data-axis="{axis}" data-axis-state="incomparable"' in rendered
         assert 'data-comparison-result="fail"' not in rendered
 
@@ -81,7 +95,7 @@ def test_blocked_integrity_and_api_unavailable_are_not_comparison_results() -> N
         view = EvidenceComparisonViewModel.from_read_model(model)
         assert model.availability.status is status
         assert view.comparison is None
-        rendered = render_evidence_comparison(view)
+        rendered = _render_evidence_comparison_en(view)
         assert f'data-read-status="{status.value}"' in rendered
         assert 'data-comparison-result="different"' not in rendered
         assert 'data-comparison-result="fail"' not in rendered
@@ -96,7 +110,7 @@ def test_comparison_does_not_generate_metrics_or_rankings_without_denominator() 
     assert view.comparison is not None
     assert view.comparison.success_rate is None
     assert view.comparison.ranking is None
-    rendered = render_evidence_comparison(view)
+    rendered = _render_evidence_comparison_en(view)
     assert 'data-statistics="not-generated"' in rendered
     assert "does not recalculate metrics" in rendered
     assert 'name="success_rate"' not in rendered
@@ -124,7 +138,9 @@ def test_provider_hook_reads_only_comparison_resource_and_fixture_is_read_only()
             return build_evidence_comparison_fixture("different")
 
     provider = CountingProvider()
-    rendered = render_evidence_comparison_view(provider, snapshot_token="comparison-request")
+    rendered = render_evidence_comparison_view(
+        provider, snapshot_token="comparison-request", translator=Translator(Locale.EN)
+    )
     assert provider.calls == [("evidence_comparison", "comparison-request")]
     assert 'data-comparison-result="different"' in rendered
 
@@ -142,3 +158,56 @@ def test_provider_hook_reads_only_comparison_resource_and_fixture_is_read_only()
         assert "does not serve resource" in str(error)
     else:  # pragma: no cover - the provider must keep the resource boundary
         raise AssertionError("comparison fixture provider served an unrelated resource")
+
+
+def test_comparison_localizes_all_eleven_axes_and_states_in_both_locales() -> None:
+    model = build_evidence_comparison_fixture("different")
+    zh = render_evidence_comparison(model, translator=Translator(Locale.ZH_CN))
+    en = render_evidence_comparison(model, translator=Translator(Locale.EN))
+
+    assert zh.count("data-axis=") == len(ComparisonAxis)
+    assert en.count("data-axis=") == len(ComparisonAxis)
+    assert "逐轴比较" in zh and "Axis-by-axis comparison" in en
+    assert "指标定义" in zh and "Metric definition" in en
+    assert "结果：不同" in zh and "Result: Different" in en
+    assert "没有明确的分母时" in zh and "does not recalculate metrics" in en
+    assert "Evidence/object comparison" not in zh
+    assert "证据 / 对象比较" in zh
+    assert 'data-axis="costs" data-axis-state="different"' in zh
+    assert 'data-axis="metric_definition" data-axis-state="different"' in zh
+
+
+def test_comparison_incomparable_and_missing_keep_distinct_chinese_labels() -> None:
+    incomparable = render_evidence_comparison(
+        build_evidence_comparison_fixture("incomparable"), translator=Translator(Locale.ZH_CN)
+    )
+    partial = render_evidence_comparison(
+        build_evidence_comparison_fixture("partial"), translator=Translator(Locale.ZH_CN)
+    )
+    assert "不可比较" in incomparable
+    assert 'data-axis-state="incomparable"' in incomparable
+    assert "未记录" in partial
+    assert 'data-axis-state="missing"' in partial
+    assert 'data-comparison-result="fail"' not in incomparable
+    assert 'data-comparison-result="fail"' not in partial
+
+
+def test_comparison_pseudo_dom_and_language_audits() -> None:
+    from manager_gui.testing.i18n import (
+        assert_dom_equivalent,
+        assert_language_text,
+        assert_pseudo_localized,
+    )
+
+    model = build_evidence_comparison_fixture("complete")
+    canonical_json = model.to_json()
+    zh = render_evidence_comparison(model, translator=Translator(Locale.ZH_CN))
+    en = render_evidence_comparison(model, translator=Translator(Locale.EN))
+    pseudo = render_evidence_comparison(model, translator=Translator(Locale.EN, pseudo=True))
+
+    assert_dom_equivalent(zh, en)
+    assert_language_text(zh, Locale.ZH_CN)
+    assert_language_text(en, Locale.EN)
+    assert_pseudo_localized(pseudo)
+    assert model.to_json() == canonical_json
+

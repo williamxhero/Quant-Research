@@ -29,7 +29,9 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
 from .locators import public_locator
+from .memory import memory_source_link, render_memory_text, render_memory_value
 from .status import render_operational_state, render_status_block
 
 FAILURE_GROUPING_RESOURCE = "failure_grouping"
@@ -575,42 +577,56 @@ DerivedFailureGroupingViewModel = FailureGroupingViewModel
 DerivedGroupingViewModel = FailureGroupingViewModel
 
 
-def _render_refs(refs: Sequence[GroupingSourceRef]) -> str:
+_GROUP_FIXTURE_COPY = {
+    "Published terminal successes": "group_success_title",
+    "Published terminal failures": "group_failure_title",
+    "bucket explicit terminal outcome by outcome and protocol": "group_rule",
+    "Successful run 1": "success_run_1",
+    "Successful run 2": "success_run_2",
+    "Failed run 1": "failure_run_1",
+    "Failed run 2": "failure_run_2",
+}
+
+
+def _group_text(value: str | None, translator: Translator, model: ManagerReadModel) -> str:
+    fixture = bool(model.source_refs) and all(source.schema == "manager-gui.failure-grouping.fixture.v0" for source in model.source_refs) and (model.snapshot_token or "").startswith("failure-grouping-")
+    if fixture and value in _GROUP_FIXTURE_COPY:
+        return translator.html("l4_memory.fixture." + _GROUP_FIXTURE_COPY[value])
+    return render_memory_text(value, translator, missing="l4_memory.none_recorded")
+
+
+def _render_refs(refs: Sequence[GroupingSourceRef], *, translator: Translator, context: QueryContext) -> str:
     if not refs:
-        return NOT_RECORDED
+        return translator.html("l4_memory.none_recorded")
     parts: list[str] = []
     for ref in refs:
-        label = escape(ref.source_id)
+        label = render_memory_value(ref.source_id, translator)
         if target := public_locator(ref.locator):
+            target = memory_source_link(target, context)
             parts.append(f'<a class="grouping-source-link" href="{escape(target, quote=True)}">{label}</a>')
         else:
-            parts.append(f'<span class="grouping-source-unconfirmed">{label} — {NOT_RECORDED}</span>')
+            parts.append(f'<span class="grouping-source-unconfirmed">{label} · {translator.html("l4_memory.missing_source")}</span>')
     return " · ".join(parts)
 
 
-def _render_group(group: DerivedFailureGrouping) -> str:
+def _render_group(group: DerivedFailureGrouping, *, translator: Translator, model: ManagerReadModel, context: QueryContext) -> str:
     participants = " · ".join(
-        f'<span class="grouping-participant" data-participant-id="{escape(item.record_id, quote=True)}">'
-        f'{escape(item.label or item.record_id)}</span>'
+        f'<span class="grouping-participant" data-participant-id="{escape(item.record_id, quote=True)}">{_group_text(item.label, translator, model) if item.label else render_memory_value(item.record_id, translator)}</span>'
         for item in group.participants
-    ) or NOT_RECORDED
+    ) or translator.html("l4_memory.none_recorded")
     outcome = group.outcome.value if group.outcome is not None else NOT_RECORDED
+    title = _group_text(group.title, translator, model)
+    reason = _group_text(group.reason, translator, model)
     return (
-        f'<article class="derived-failure-group" data-group-id="{escape(group.group_id, quote=True)}" '
-        f'data-group-outcome="{escape(outcome, quote=True)}" data-group-status="{group.status.value}">'
-        '<p class="eyebrow">Derived · read-only grouping · not an owner fact</p>'
-        f'<h3>{escape(group.title)}</h3>'
-        f'<p><strong>Status</strong> <span data-status="derived">Derived</span> · '
-        f'<strong>Outcome bucket</strong> {escape(outcome)}</p>'
-        '<dl class="grouping-facts">'
-        f'<div><dt>Rule</dt><dd>{escape(group.rule or NOT_RECORDED)}</dd></div>'
-        f'<div><dt>Input scope</dt><dd>{escape(", ".join(group.input_scope) or NOT_RECORDED)}</dd></div>'
-        f'<div><dt>Sample count</dt><dd>{escape(str(group.sample_count) if group.sample_count is not None else NOT_RECORDED)}</dd></div>'
-        f'<div><dt>Source refs</dt><dd>{_render_refs(group.source_refs)}</dd></div>'
-        '</dl>'
-        f'<p><strong>Participating records</strong> {participants}</p>'
-        f'<p class="grouping-reason">{escape(group.reason or NOT_RECORDED)}</p>'
-        '</article>'
+        f'<article class="derived-failure-group" data-group-id="{escape(group.group_id, quote=True)}" data-group-outcome="{escape(outcome, quote=True)}" data-group-status="{group.status.value}">'
+        f'<p class="eyebrow">{translator.html("l4_memory.derived_group_boundary")}</p><h3>{title}</h3>'
+        f'<p><strong>{translator.html("l4_memory.status")}</strong> <span data-status="derived">{translator.label("l4_memory_group_status", "derived")}</span> · '
+        f'<strong>{translator.html("l4_memory.outcome_bucket")}</strong> {render_memory_value(group.outcome.value if group.outcome else None, translator, "group_outcome", missing="l4_memory.none_recorded")}</p>'
+        f'<dl class="grouping-facts"><div><dt>{translator.html("l4_memory.rule")}</dt><dd>{_group_text(group.rule, translator, model)}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.input_scope")}</dt><dd>{translator.join(render_memory_value(value, translator) for value in group.input_scope) if group.input_scope else translator.html("l4_memory.none_recorded")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.sample_count")}</dt><dd>{group.sample_count if group.sample_count is not None else translator.html("l4_memory.none_recorded")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.source_refs")}</dt><dd>{_render_refs(group.source_refs, translator=translator, context=context)}</dd></div></dl>'
+        f'<p><strong>{translator.html("l4_memory.participating_records")}</strong> {participants}</p><p class="grouping-reason">{reason}</p></article>'
     )
 
 
@@ -619,10 +635,11 @@ def render_failure_grouping(
     *,
     query_context: QueryContext = None,
     include_raw_json: bool = True,
+    translator: Translator | None = None,
 ) -> str:
     """Render explicitly named Derived success/failure groups."""
 
-    del query_context
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, FailureGroupingViewModel)
@@ -632,36 +649,32 @@ def render_failure_grouping(
     pieces = [
         f'<section class="failure-grouping-page" data-integration-hook="{FAILURE_GROUPING_INTEGRATION_HOOK}" '
         f'data-grouping-status="{model.availability.status.value}" data-grouping-empty="{"true" if view.empty else "false"}">',
-        '<p class="eyebrow">Derived success/failure grouping · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Derived success/failure grouping</h1>',
-        '<p class="page-intro">Groups are structural, named, and source-linked. They are Derived GUI projections, not owner facts or formal Research Memory.</p>',
-        f'<p class="context-line grouping-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span>'
-        f'<span><strong>Snapshot</strong> {escape(model.snapshot_token or "Unavailable")}</span></p>',
-        render_status_block(model),
+        f'<p class="eyebrow">{selected_translator.html("l4_memory.derived_grouping_eyebrow")}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4_memory.derived_grouping_title")}</h1>',
+        f'<p class="page-intro">{selected_translator.html("l4_memory.derived_grouping_intro")}</p>',
+        f'<p class="context-line grouping-context"><span><strong>{selected_translator.html("l4_memory.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4_memory.unavailable")}</span>'
+        f'<span><strong>{selected_translator.html("l4_memory.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4_memory.unavailable")}</span></p>',
+        render_status_block(model, translator=selected_translator),
     ]
     if view.empty:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "error"
-        detail = (
-            "No explicitly named Derived group is published in this scope."
-            if state == "empty"
-            else f"Derived grouping is not determined while read-model status is {model.availability.status.value}."
-        )
-        pieces.append(render_operational_state(state, detail=detail))
+        detail = selected_translator.html("l4_memory.no_named_group") if state == "empty" else selected_translator.html("l4_memory.grouping_not_determined", status=selected_translator.t("label.status." + model.availability.status.value))
+        pieces.append(render_operational_state(state, translator=selected_translator))
+        pieces.append(f'<p class="grouping-unavailable">{detail}</p>')
     else:
         pieces.append(
             '<section class="derived-grouping-boundary" data-statistics="not-generated">'
-            '<p>No aggregate performance statistic or ordering is generated without an explicit denominator. '
-            'This view does not recalculate metrics, costs, fills, or evidence.</p></section>'
+            f'<p>{selected_translator.html("l4_memory.no_aggregate_stat")}</p></section>'
         )
         pieces.append(
-            '<section class="derived-groupings" data-grouping-state="ready"><h2>Named Derived groups</h2>'
-            + "".join(_render_group(group) for group in view.groups)
+            f'<section class="derived-groupings" data-grouping-state="ready"><h2>{selected_translator.html("l4_memory.named_derived_groups")}</h2>'
+            + "".join(_render_group(group, translator=selected_translator, model=model, context=query_context) for group in view.groups)
             + "</section>"
         )
     if include_raw_json:
         pieces.append(
-            '<details class="grouping-raw-json"><summary>Raw JSON</summary>'
-            f'<pre>{escape(view.raw_json)}</pre></details>'
+            f'<details class="grouping-raw-json"><summary>{selected_translator.html("l4_memory.raw_json")}</summary>'
+            f'<pre translate="no">{selected_translator.source_text(view.raw_json)}</pre></details>'
         )
     pieces.append("</section>")
     return "".join(pieces)
@@ -682,6 +695,7 @@ def render_failure_grouping_view(
     *,
     snapshot_token: str | None = None,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """S4-T3 integration hook accepting a provider or cached envelope."""
 
@@ -690,7 +704,9 @@ def render_failure_grouping_view(
         if isinstance(provider_or_model, ManagerReadModel)
         else failure_grouping_view(provider_or_model, snapshot_token=snapshot_token)
     )
-    return render_failure_grouping(view, query_context=query_context)
+    return render_failure_grouping(
+        view, query_context=query_context, translator=translator
+    )
 
 
 render_derived_failure_grouping = render_failure_grouping

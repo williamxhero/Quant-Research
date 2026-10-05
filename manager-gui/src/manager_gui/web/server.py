@@ -11,6 +11,7 @@ from ..fixtures import FixtureState
 from ..models import MANAGER_READ_MODEL_SCHEMA
 from ..provider import ManagerDataProvider
 from .app import ManagerGUIApp
+from .i18n import DEFAULT_LOCALE, Locale
 
 
 class ManagerGUIServer(ThreadingHTTPServer):
@@ -123,12 +124,17 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     fixture: FixtureState | str = FixtureState.PARTIAL,
+    default_locale: Locale | str = DEFAULT_LOCALE,
 ) -> ManagerGUIServer:
     """Create (but do not start) a local server for tests or embedding."""
 
     if app is not None and provider is not None:
         raise ValueError("pass app or provider, not both")
-    selected_app = app or ManagerGUIApp(provider, default_fixture=fixture)
+    selected_app = app or ManagerGUIApp(
+        provider,
+        default_fixture=fixture,
+        default_locale=default_locale,
+    )
     server = ManagerGUIServer((host, port), _RequestHandler)
     server.app = selected_app
     return server
@@ -140,10 +146,17 @@ def run_server(
     port: int = 8765,
     fixture: FixtureState | str = FixtureState.PARTIAL,
     provider: ManagerDataProvider | None = None,
+    default_locale: Locale | str = DEFAULT_LOCALE,
 ) -> None:
     """Serve until interrupted, with no mutation endpoint exposed."""
 
-    server = create_server(host=host, port=port, fixture=fixture, provider=provider)
+    server = create_server(
+        host=host,
+        port=port,
+        fixture=fixture,
+        provider=provider,
+        default_locale=default_locale,
+    )
     print(f"Manager GUI listening at http://{host}:{server.server_port}/", flush=True)
     try:
         server.serve_forever()
@@ -166,12 +179,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=FixtureState.PARTIAL.value,
         help="fixture availability state (default: partial)",
     )
+    parser.add_argument(
+        "--lang",
+        choices=[locale.value for locale in Locale],
+        default=DEFAULT_LOCALE.value,
+        help="default UI language (default: zh-CN)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    run_server(host=args.host, port=args.port, fixture=args.fixture)
+    run_server(host=args.host, port=args.port, fixture=args.fixture, default_locale=args.lang)
     return 0
 
 

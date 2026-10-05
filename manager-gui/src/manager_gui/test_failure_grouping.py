@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 from manager_gui.models import ReadModelStatus
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
 from manager_gui.web.failure_grouping import (
@@ -11,9 +13,19 @@ from manager_gui.web.failure_grouping import (
     build_failure_grouping_fixture,
     derive_success_failure_groupings,
     failure_grouping_fixture_provider,
-    render_failure_grouping,
-    render_failure_grouping_view,
 )
+from manager_gui.web.failure_grouping import (
+    render_failure_grouping as _render_failure_grouping,
+)
+from manager_gui.web.failure_grouping import (
+    render_failure_grouping_view as _render_failure_grouping_view,
+)
+from manager_gui.web.i18n import Translator
+from manager_gui.web.i18n.catalog import CATALOG
+
+EN_TRANSLATOR = Translator("en", strict=True, catalog=CATALOG)
+render_failure_grouping = partial(_render_failure_grouping, translator=EN_TRANSLATOR)
+render_failure_grouping_view = partial(_render_failure_grouping_view, translator=EN_TRANSLATOR)
 
 
 def test_complete_fixture_keeps_rule_scope_count_participants_and_source_refs() -> None:

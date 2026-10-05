@@ -39,6 +39,8 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
+from .i18n.catalog import l3_genome as _l3_genome_catalog  # noqa: F401
 from .navigation import clear_filters_link
 from .status import DisplayState, render_operational_state, render_status_block
 
@@ -192,18 +194,18 @@ def _value_state(value: object) -> str:
     return "known"
 
 
-def _display_value(value: object) -> str:
+def _display_value(value: object, translator: Translator) -> str:
     state = _value_state(value)
     if state == "missing":
-        return "Missing"
+        return translator.t("genome.value_missing")
     if state == "empty":
-        return "Empty"
+        return translator.t("genome.value_empty")
     if isinstance(value, str):
         return value
     try:
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
-        return "Missing"
+        return translator.t("genome.value_missing")
 
 
 def _query_pairs(context: QueryContext) -> list[tuple[str, str]]:
@@ -896,158 +898,160 @@ def _context_with_filters(view: GenomeViewModel, context: QueryContext) -> Query
     return "?" + _stable_query(pairs) if pairs else None
 
 
-def _render_sources(sources: Sequence[GenomeSourceRef]) -> str:
+def _render_sources(sources: Sequence[GenomeSourceRef], translator: Translator) -> str:
     if not sources:
-        return '<span class="genome-missing">Missing source ref</span>'
+        return f'<span class="genome-missing">{escape(translator.t("genome.sources_missing"))}</span>'
     rendered: list[str] = []
     for source in sources:
-        label = source.label or source.source_id
+        label = translator.source_text(source.label or source.source_id)
         if source.locator:
             rendered.append(
                 f'<a class="genome-source-link" data-source-id="{escape(source.source_id, quote=True)}" '
-                f'href="{escape(source.locator, quote=True)}">{escape(label)}</a>'
+                f'href="{escape(source.locator, quote=True)}" translate="no">{label}</a>'
             )
         else:
             rendered.append(
-                f'<span class="genome-source-unconfirmed" data-source-id="{escape(source.source_id, quote=True)}">'
-                f"{escape(label)} — Missing locator</span>"
+                f'<span class="genome-source-unconfirmed" data-source-id="{escape(source.source_id, quote=True)}" translate="no">'
+                f'{label} — {escape(translator.t("genome.locator_missing"))}</span>'
             )
     return " · ".join(rendered)
 
 
-def _render_value(value: object, *, state_class: bool = True) -> str:
+def _render_value(value: object, translator: Translator, *, state_class: bool = True) -> str:
     state = _value_state(value)
-    markup = escape(_display_value(value))
-    return f'<span class="genome-value genome-value-{state if state_class else "known"}" data-value-state="{state}">{markup}</span>'
+    markup = translator.source_text(_display_value(value, translator))
+    return f'<span class="genome-value genome-value-{state if state_class else "known"}" data-value-state="{state}" translate="no">{markup}</span>'
 
 
-def _render_identity(genome: GenomeRecord) -> str:
+def _render_identity(genome: GenomeRecord, translator: Translator) -> str:
     rows = (
-        ("Genome ID", genome.genome_id),
-        ("Schema", genome.schema),
-        ("Content hash", genome.content_hash),
-        ("Candidate revision", genome.candidate_revision),
-        ("Provenance", genome.provenance),
-        ("Explicit state", genome.state),
+        ("genome_id", genome.genome_id),
+        ("schema", genome.schema),
+        ("content_hash", genome.content_hash),
+        ("candidate_revision", genome.candidate_revision),
+        ("provenance", genome.provenance),
+        ("explicit_state", genome.state),
     )
+    def render_value(key: str, value: object) -> str:
+        if key == "explicit_state" and isinstance(value, str):
+            return translator.label("lifecycle_event", value)
+        return _render_value(value, translator)
     return (
         '<dl class="genome-identity">'
         + "".join(
-            f'<div data-identity-field="{escape(label.lower().replace(" ", "_"), quote=True)}"><dt>{escape(label)}</dt><dd>{_render_value(value)}</dd></div>'
-            for label, value in rows
+            f'<div data-identity-field="{escape(key, quote=True)}"><dt>{translator.label("genome_identity", key)}</dt><dd>{render_value(key, value)}</dd></div>'
+            for key, value in rows
         )
         + "</dl>"
     )
 
 
-def _render_catalog(view: GenomeViewModel, context: QueryContext) -> str:
+def _render_catalog(view: GenomeViewModel, context: QueryContext, translator: Translator) -> str:
     if not view.genomes:
-        return '<p class="genome-catalog-empty">No Genome records are present in this scope. Missing.</p>'
+        return f'<p class="genome-catalog-empty">{escape(translator.t("genome.no_records"))}</p>'
     rows = []
     for genome in view.genomes:
         detail_link = genome_link(genome.genome_id, query_context=context, filters=view.filters)
         rows.append(
             f'<li class="genome-catalog-row" data-genome-id="{escape(genome.genome_id or "", quote=True)}">'
-            f'<a class="genome-detail-link" href="{escape(detail_link, quote=True)}">{escape(genome.genome_id or "Missing")}</a>'
-            f'<span data-catalog-field="schema">{_render_value(genome.schema)}</span>'
-            f'<span data-catalog-field="content-hash">{_render_value(genome.content_hash)}</span>'
-            f'<span data-catalog-field="candidate-revision">{_render_value(genome.candidate_revision)}</span>'
-            f'<span data-catalog-field="state">{_render_value(genome.state)}</span></li>'
+            f'<a class="genome-detail-link" href="{escape(detail_link, quote=True)}" translate="no">{translator.source_text(genome.genome_id or translator.t("genome.value_missing"))}</a>'
+            f'<span data-catalog-field="schema">{_render_value(genome.schema, translator)}</span>'
+            f'<span data-catalog-field="content-hash">{_render_value(genome.content_hash, translator)}</span>'
+            f'<span data-catalog-field="candidate-revision">{_render_value(genome.candidate_revision, translator)}</span>'
+            f'<span data-catalog-field="state">{_render_value(genome.state, translator)}</span></li>'
         )
     return (
-        '<ul class="genome-catalog" aria-label="Strategy Genome catalog">' + "".join(rows) + "</ul>"
+        f'<ul class="genome-catalog" aria-label="{escape(translator.t("genome.catalog_aria"))}">' + "".join(rows) + "</ul>"
     )
 
 
-def _render_behavior(genome: GenomeRecord) -> str:
+def _render_behavior(genome: GenomeRecord, translator: Translator) -> str:
     rows = "".join(
-        f'<tr data-behavior-field="{escape(field.name, quote=True)}"><th scope="row">{escape(field.name)}</th><td>{_render_value(field.value)}</td></tr>'
+        f'<tr data-behavior-field="{escape(field.name, quote=True)}"><th scope="row">{translator.label("genome_behavior", field.name)}</th><td>{_render_value(field.value, translator)}</td></tr>'
         for field in genome.behavior_fields
     )
     return (
         '<section class="genome-section genome-behavior" aria-labelledby="genome-behavior-title">'
-        '<h3 id="genome-behavior-title">Behavior projection</h3>'
-        "<p>All fourteen behavior fields are shown from the published read model; missing fields are not inferred.</p>"
-        '<table><thead><tr><th scope="col">Field</th><th scope="col">Value</th></tr></thead>'
+        f'<h3 id="genome-behavior-title">{escape(translator.t("genome.behavior_title"))}</h3>'
+        f'<p>{escape(translator.t("genome.behavior_intro"))}</p>'
+        f'<table><caption>{escape(translator.t("genome.behavior_table"))}</caption><thead><tr><th scope="col">{escape(translator.t("genome.field"))}</th><th scope="col">{escape(translator.t("genome.value"))}</th></tr></thead>'
         f"<tbody>{rows}</tbody></table></section>"
     )
 
 
-def _render_validation(genome: GenomeRecord) -> str:
+def _render_validation(genome: GenomeRecord, translator: Translator) -> str:
     rows = "".join(
-        f'<tr data-validation-field="{escape(field.name, quote=True)}"><th scope="row">{escape(field.name.replace("_", " ").title())}</th><td>{_render_value(field.value)}</td></tr>'
+        f'<tr data-validation-field="{escape(field.name, quote=True)}"><th scope="row">{translator.label("genome_validation", field.name)}</th><td>{_render_value(field.value, translator)}</td></tr>'
         for field in genome.validation.fields
     )
     return (
         '<section class="genome-section genome-validation" aria-labelledby="genome-validation-title">'
-        '<h3 id="genome-validation-title">Validation binding</h3>'
-        "<p>Validation is a separate binding and does not change Genome content identity.</p>"
-        '<table><thead><tr><th scope="col">Binding</th><th scope="col">Value</th></tr></thead>'
+        f'<h3 id="genome-validation-title">{escape(translator.t("genome.validation_title"))}</h3>'
+        f'<p>{escape(translator.t("genome.validation_intro"))}</p>'
+        f'<table><caption>{escape(translator.t("genome.validation_table"))}</caption><thead><tr><th scope="col">{escape(translator.t("genome.binding"))}</th><th scope="col">{escape(translator.t("genome.value"))}</th></tr></thead>'
         f"<tbody>{rows}</tbody></table></section>"
     )
 
 
-def _render_events(genome: GenomeRecord) -> str:
+def _render_events(genome: GenomeRecord, translator: Translator) -> str:
     if not genome.events:
-        body = (
-            '<p class="genome-events-empty">No explicit lifecycle events are recorded. Missing.</p>'
-        )
+        body = f'<p class="genome-events-empty">{escape(translator.t("genome.no_events"))}</p>'
     else:
         items = []
         for event in genome.events:
             items.append(
                 f'<li class="genome-event" data-event-kind="{escape(event.event_kind, quote=True)}">'
-                f'<time datetime="{escape(event.occurred_at or "", quote=True)}">{escape(event.occurred_at or "Missing")}</time>'
-                f"<strong>{escape(event.event_kind)}</strong>"
-                f'<span class="genome-event-actor">{escape(event.actor or "Missing")}</span>'
-                f'<span class="genome-event-reason">{escape(event.reason or "Missing")}</span>'
-                f'<span class="genome-event-sources">{_render_sources(event.source_refs)}</span></li>'
+                f'<time datetime="{escape(event.occurred_at or "", quote=True)}" translate="no">{translator.source_text(event.occurred_at or translator.t("genome.value_missing"))}</time>'
+                f'<strong>{translator.label("lifecycle_event", event.event_kind)}</strong>'
+                f'<span class="genome-event-actor" translate="no">{translator.source_text(event.actor or translator.t("genome.value_missing"))}</span>'
+                f'<span class="genome-event-reason" translate="no">{translator.source_text(event.reason or translator.t("genome.value_missing"))}</span>'
+                f'<span class="genome-event-sources">{_render_sources(event.source_refs, translator)}</span></li>'
             )
-        body = f'<ol class="genome-event-timeline" aria-label="Genome lifecycle event timeline">{"".join(items)}</ol>'
+        body = f'<ol class="genome-event-timeline" aria-label="{escape(translator.t("genome.lifecycle_aria"))}">{"".join(items)}</ol>'
     return (
         '<section class="genome-section genome-lifecycle" aria-labelledby="genome-lifecycle-title">'
-        '<h3 id="genome-lifecycle-title">Lifecycle timeline</h3>'
-        "<p>Only explicit proposed, validated, published, revoked, and tombstoned source events are shown; no state is inferred.</p>"
+        f'<h3 id="genome-lifecycle-title">{escape(translator.t("genome.lifecycle_title"))}</h3>'
+        f'<p>{escape(translator.t("genome.lifecycle_intro"))}</p>'
         f"{body}</section>"
     )
 
 
-def _render_lineage(genome: GenomeRecord) -> str:
+def _render_lineage(genome: GenomeRecord, translator: Translator) -> str:
     sections: list[str] = []
     for kind in LINEAGE_ENTRY_KINDS:
         entries = tuple(entry for entry in genome.lineage if entry.kind == kind)
         if not entries:
-            body = f'<p class="genome-lineage-empty">No {escape(kind)} lineage entry recorded. Missing.</p>'
+            body = f'<p class="genome-lineage-empty">{escape(translator.t("genome.lineage_empty", kind=translator.label("lineage_kind", kind)))}</p>'
         else:
             body = (
                 "<ul>"
                 + "".join(
                     f'<li data-lineage-kind="{escape(entry.kind, quote=True)}" data-record-id="{escape(entry.record_id or "", quote=True)}">'
-                    f"<strong>{escape(entry.label or entry.record_id or 'Missing')}</strong>"
-                    f'<span class="genome-lineage-record">{escape(entry.record_id or "Missing")}</span>'
-                    f'<span class="genome-lineage-sources">{_render_sources(entry.source_refs)}</span></li>'
+                    f'<strong translate="no">{translator.source_text(entry.label or entry.record_id or translator.t("genome.value_missing"))}</strong>'
+                    f'<span class="genome-lineage-record" translate="no">{translator.source_text(entry.record_id or translator.t("genome.value_missing"))}</span>'
+                    f'<span class="genome-lineage-sources">{_render_sources(entry.source_refs, translator)}</span></li>'
                     for entry in entries
                 )
                 + "</ul>"
             )
         sections.append(
-            f'<section class="genome-lineage-group" data-lineage-group="{kind}"><h4>{escape(kind.title())}</h4>{body}</section>'
+            f'<section class="genome-lineage-group" data-lineage-group="{kind}"><h4>{translator.label("lineage_kind", kind)}</h4>{body}</section>'
         )
     return (
         '<section class="genome-section genome-lineage" aria-labelledby="genome-lineage-title">'
-        '<h3 id="genome-lineage-title">Lineage entry points</h3>'
-        "<p>These candidate, hypothesis, family, context, package, run, and evidence refs are source-backed entry points.</p>"
+        f'<h3 id="genome-lineage-title">{escape(translator.t("genome.lineage_title"))}</h3>'
+        f'<p>{escape(translator.t("genome.lineage_intro"))}</p>'
         + "".join(sections)
         + "</section>"
     )
 
 
-def _render_raw(genome: GenomeRecord) -> str:
+def _render_raw(genome: GenomeRecord, translator: Translator) -> str:
     raw = json.dumps(genome.raw, ensure_ascii=False, sort_keys=True, indent=2)
-    return f'<details class="genome-raw"><summary>Raw JSON</summary><pre data-raw-json>{escape(raw)}</pre></details>'
+    return f'<details class="genome-raw"><summary>{escape(translator.t("genome.raw_json"))}</summary><pre data-raw-json translate="no">{translator.source_text(raw)}</pre></details>'
 
 
-def _render_related_links(genome: GenomeRecord, context: QueryContext) -> str:
+def _render_related_links(genome: GenomeRecord, context: QueryContext, translator: Translator) -> str:
     """Link the published Genome identity into the S2 read-only subroutes."""
 
     if genome.genome_id is None:
@@ -1063,15 +1067,15 @@ def _render_related_links(genome: GenomeRecord, context: QueryContext) -> str:
     )
     conditions_href = genome_conditions_link(genome.genome_id, query_context=context)
     return (
-        '<nav class="genome-related-links" aria-label="Genome related views">'
+        f'<nav class="genome-related-links" aria-label="{escape(translator.t("genome.related_aria"))}">'
         f'<a class="genome-conditions-link" href="{escape(conditions_href, quote=True)}">'
-        "Condition evidence</a>"
+        f'{escape(translator.t("genome.condition_evidence"))}</a>'
         f'<a class="genome-comparison-link" href="{escape(comparison_href, quote=True)}">'
-        "Compare Genome</a></nav>"
+        f'{escape(translator.t("genome.compare"))}</a></nav>'
     )
 
 
-def _render_filters(view: GenomeViewModel, context: QueryContext) -> str:
+def _render_filters(view: GenomeViewModel, context: QueryContext, translator: Translator) -> str:
     values = {key: getattr(view.filters, key) or "" for key in _FILTER_KEYS}
     hidden = "".join(
         f'<input type="hidden" name="{escape(key, quote=True)}" value="{escape(value, quote=True)}">'
@@ -1080,18 +1084,18 @@ def _render_filters(view: GenomeViewModel, context: QueryContext) -> str:
     )
     controls = []
     for key in _FILTER_KEYS:
-        label = key.replace("_", " ").title()
+        label = translator.label("genome_filter", key)
         controls.append(
-            f'<label>{escape(label)} <input name="{escape(key, quote=True)}" value="{escape(values[key], quote=True)}"></label>'
+            f'<label>{label} <input name="{escape(key, quote=True)}" value="{escape(values[key], quote=True)}"></label>'
         )
     clear_href = clear_filters_link(
         context, view=GENOME_ROUTE, filter_keys=_FILTER_KEYS, selection_keys=("genome_id",)
     )
     return (
-        '<form class="genome-filters" action="/" method="get" aria-label="Genome filters">'
+        f'<form class="genome-filters" action="/" method="get" aria-label="{escape(translator.t("genome.filters_aria"))}">'
         f'<input type="hidden" name="view" value="{GENOME_ROUTE}">{hidden}{"".join(controls)}'
-        '<button type="submit">Apply filters</button>'
-        f'<a class="genome-clear" href="{escape(clear_href, quote=True)}">Clear</a></form>'
+        f'<button type="submit">{escape(translator.t("genome.apply_filters"))}</button>'
+        f'<a class="genome-clear" href="{escape(clear_href, quote=True)}">{escape(translator.t("genome.clear"))}</a></form>'
     )
 
 
@@ -1100,9 +1104,11 @@ def render_genome(
     *,
     query_context: QueryContext = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a mountable Genome catalog/detail fragment for the shared shell."""
 
+    selected_translator = translator or Translator()
     if isinstance(view_or_model, GenomeViewModel):
         view = view_or_model
         selected_id = genome_id or dict(_query_pairs(query_context)).get("genome_id")
@@ -1121,14 +1127,14 @@ def render_genome(
         )
     model = view.read_model
     context = _context_with_filters(view, query_context)
-    source_text = ", ".join(source.source_id for source in model.source_refs) or "None recorded"
+    source_text = ", ".join(source.source_id for source in model.source_refs) or selected_translator.t("genome.none_recorded")
     pieces = [
         f'<section class="genome-page" data-integration-hook="{GENOME_INTEGRATION_HOOK}" data-genome-route="{GENOME_ROUTE}">',
-        '<p class="eyebrow">Strategies / Genomes · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Strategy Genomes</h1>',
-        '<p class="page-intro">Inspect published Genome identity, behavior projection, validation binding, lifecycle events, and lineage without inferring owner facts.</p>',
-        f'<p class="context-line genome-context"><span><strong>Observed</strong> {escape(model.as_of or "Unavailable")}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or "Unavailable")}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>',
-        render_status_block(model),
+        f'<p class="eyebrow">{escape(selected_translator.t("genome.eyebrow"))}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("genome.title"))}</h1>',
+        f'<p class="page-intro">{escape(selected_translator.t("genome.intro"))}</p>',
+        f'<p class="context-line genome-context"><span><strong>{escape(selected_translator.t("genome.observed"))}</strong> <span translate="no">{escape(model.as_of or selected_translator.t("genome.unavailable"))}</span></span><span><strong>{escape(selected_translator.t("genome.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or selected_translator.t("genome.unavailable"))}</span></span><span><strong>{escape(selected_translator.t("genome.sources"))}</strong> <span translate="no">{escape(source_text)}</span></span></p>',
+        render_status_block(model, translator=selected_translator),
     ]
     if not view.genomes and (
         model.availability.status is ReadModelStatus.MISSING
@@ -1136,35 +1142,37 @@ def render_genome(
     ):
         pieces.append(
             render_operational_state(
-                DisplayState.EMPTY, detail="No Genome records are present in this scope."
+                DisplayState.EMPTY,
+                translator=selected_translator,
+                detail=selected_translator.t("genome.no_records"),
             )
         )
-    pieces.append(_render_filters(view, context))
+    pieces.append(_render_filters(view, context, selected_translator))
     pieces.append(
-        '<section class="genome-catalog-section" aria-labelledby="genome-catalog-title"><h2 id="genome-catalog-title">Genome catalog</h2>'
+        f'<section class="genome-catalog-section" aria-labelledby="genome-catalog-title"><h2 id="genome-catalog-title">{escape(selected_translator.t("genome.catalog"))}</h2>'
     )
-    pieces.append(_render_catalog(view, context))
+    pieces.append(_render_catalog(view, context, selected_translator))
     pieces.append("</section>")
     selected = view.selected
     if selected is not None:
         pieces.extend(
             (
                 f'<article class="genome-detail" data-genome-id="{escape(selected.genome_id or "", quote=True)}" aria-labelledby="genome-detail-title">',
-                f'<h2 id="genome-detail-title">Genome detail: {escape(selected.genome_id or "Missing")}</h2>',
-                _render_related_links(selected, context),
-                f'<p class="genome-detail-context"><a href="{escape(genome_link(None, query_context=context, filters=view.filters), quote=True)}">Back to catalog</a></p>',
-                _render_identity(selected),
-                _render_behavior(selected),
-                _render_validation(selected),
-                _render_events(selected),
-                _render_lineage(selected),
-                _render_raw(selected),
+                f'<h2 id="genome-detail-title">{escape(selected_translator.t("genome.detail_prefix"))}: <span translate="no">{selected_translator.source_text(selected.genome_id or selected_translator.t("genome.value_missing"))}</span></h2>',
+                _render_related_links(selected, context, selected_translator),
+                f'<p class="genome-detail-context"><a href="{escape(genome_link(None, query_context=context, filters=view.filters), quote=True)}">{escape(selected_translator.t("genome.back_catalog"))}</a></p>',
+                _render_identity(selected, selected_translator),
+                _render_behavior(selected, selected_translator),
+                _render_validation(selected, selected_translator),
+                _render_events(selected, selected_translator),
+                _render_lineage(selected, selected_translator),
+                _render_raw(selected, selected_translator),
                 "</article>",
             )
         )
     else:
         pieces.append(
-            '<p class="genome-detail-empty">Select a Genome for detail; if no Genome is available, detail is Missing.</p>'
+            f'<p class="genome-detail-empty">{escape(selected_translator.t("genome.detail_empty"))}</p>'
         )
     pieces.append("</section>")
     return "".join(pieces)
@@ -1196,6 +1204,7 @@ def render_genome_view(
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """T3 hook: read/render one Genome surface without shell or storage logic."""
 
@@ -1206,7 +1215,7 @@ def render_genome_view(
             filters=filters or GenomeFilters.from_query(query_context),
             selected_genome_id=selected_id,
         )
-        return render_genome(view, query_context=query_context)
+        return render_genome(view, query_context=query_context, translator=translator)
     return render_genome(
         genome_view(
             provider_or_model,
@@ -1216,6 +1225,7 @@ def render_genome_view(
             genome_id=genome_id,
         ),
         query_context=query_context,
+        translator=translator,
     )
 
 

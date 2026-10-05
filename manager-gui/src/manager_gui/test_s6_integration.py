@@ -24,6 +24,7 @@ from manager_gui import (
     public_provider_methods,
 )
 from manager_gui.models import Availability, Derivation, JSONValue
+from manager_gui.testing.i18n import assert_shared_shell_i18n
 from manager_gui.web import ManagerGUIApp, create_server
 from manager_gui.web.navigation import NAVIGATION
 from manager_gui.web.s4_fixtures import S4_RESOURCES, build_s4_fixture
@@ -115,6 +116,8 @@ def test_every_mounted_route_is_integrated_for_every_shared_fixture_state(
     for view, (hook, resource) in ROUTES.items():
         url = _url(view, fixture.value, q="regression", panel="events", opaque="keep")
         document = app.render(url)
+        english = app.render(url + "&lang=en")
+        assert_shared_shell_i18n(document, english, route=view, source_url=url)
         model = app.read_model(app.request_state(url))
         main = _main(document)
         assert f'data-integration-hook="{hook}"' in main, view
@@ -147,13 +150,18 @@ def test_s6_fixture_matrix_preserves_owner_status_and_round_trips() -> None:
             assert model.availability.status is shell_model.availability.status
 
 
-def test_navigation_has_search_and_portal_with_bilingual_accessible_labels() -> None:
+def test_navigation_has_search_and_portal_in_the_selected_locale() -> None:
     order = [item.view_id.value for item in NAVIGATION]
     assert order[-2:] == ["search", "portal"]
-    document = ManagerGUIApp(default_fixture="complete").render(_url("portal"))
-    assert 'aria-label="Search / 搜索"' in document
-    assert 'aria-label="Portal / 报告门户"' in document
-    assert 'aria-current="page"' in document
+    chinese = ManagerGUIApp(default_fixture="complete").render(_url("portal"))
+    assert 'aria-label="搜索"' in chinese
+    assert 'aria-label="报告门户"' in chinese
+    assert 'aria-current="page"' in chinese
+
+    english = ManagerGUIApp(default_fixture="complete").render(_url("portal") + "&lang=en")
+    assert 'aria-label="Search"' in english
+    assert 'aria-label="Portal"' in english
+    assert 'aria-current="page"' in english
 
 
 def test_search_links_each_declared_identity_to_a_real_mounted_route() -> None:
@@ -252,24 +260,24 @@ def test_search_links_each_declared_identity_to_a_real_mounted_route() -> None:
 
 def test_search_partial_pagination_and_unavailable_states_are_honest() -> None:
     app = ManagerGUIApp(default_fixture="complete")
-    partial = app.render(_url("search", "partial", q="absent"))
+    partial = app.render(_url("search", "partial", q="absent") + "&lang=en")
     assert 'data-search-state="partial"' in partial
     assert 'data-pagination-complete="false"' in partial
     assert 'data-search-next-cursor="fixture-search-next-v0"' in partial
     assert "global no-match is not established" in partial
     assert "complete snapshot" not in partial
-    unavailable = app.render(_url("search", "api_unavailable", q="absent"))
+    unavailable = app.render(_url("search", "api_unavailable", q="absent") + "&lang=en")
     assert 'data-status="api_unavailable"' in unavailable
     assert 'data-search-state="api_unavailable"' in unavailable
     assert 'data-display-state="empty"' not in _main(unavailable)
-    blocked = app.render(_url("search", "blocked"))
+    blocked = app.render(_url("search", "blocked") + "&lang=en")
     assert 'data-status="blocked"' in blocked
     assert 'data-display-state="error"' in _main(blocked)
 
 
 def test_portal_keeps_publication_artifact_and_boundary_distinct() -> None:
     app = ManagerGUIApp(default_fixture="complete")
-    complete = app.render(_url("portal"))
+    complete = app.render(_url("portal") + "&lang=en")
     assert 'data-portal-state="ready"' in complete
     assert 'data-source-publication-state="published"' in complete
     assert 'data-artifact-state="ready"' in complete
@@ -318,14 +326,38 @@ def test_cli_and_live_http_exit_gate_covers_every_route_and_read_only_verbs(
     served_app: str,
 ) -> None:
     for view, (hook, _) in ROUTES.items():
-        with urlopen(f"{served_app}{_url(view)}") as response:
+        query = f"view={view}&fixture=complete&panel=events&q=gate&tag=a&tag="
+        with urlopen(f"{served_app}/?{query}") as response:
             assert response.status == 200
-            assert f'data-integration-hook="{hook}"' in response.read().decode("utf-8")
-        with urlopen(f"{served_app}/api/read-model?view={view}&fixture=complete") as response:
-            assert json.loads(response.read())["schema"] == "manager-gui.manager-read-model.v0"
-        with urlopen(f"{served_app}/api/export?view={view}&fixture=complete") as response:
-            payload = json.loads(response.read())
-            assert payload["view"] == view and payload["read_only"] is True
+            document = response.read().decode("utf-8")
+            assert f'data-integration-hook="{hook}"' in document
+            assert '<html lang="zh-CN">' in document
+        with urlopen(f"{served_app}/?{query}&lang=en") as response:
+            assert response.status == 200
+            document = response.read().decode("utf-8")
+            assert f'data-integration-hook="{hook}"' in document
+            assert '<html lang="en">' in document
+
+        zh_model_url = f"{served_app}/api/read-model?{query}"
+        en_model_url = f"{served_app}/api/read-model?{query}&lang=en"
+        with urlopen(zh_model_url) as response:
+            zh_model = response.read()
+        with urlopen(en_model_url) as response:
+            en_model = response.read()
+        assert zh_model == en_model
+        assert json.loads(zh_model)["schema"] == "manager-gui.manager-read-model.v0"
+
+        zh_export_url = f"{served_app}/api/export?{query}"
+        en_export_url = f"{served_app}/api/export?{query}&lang=en"
+        with urlopen(zh_export_url) as response:
+            zh_export = response.read()
+        with urlopen(en_export_url) as response:
+            en_export = response.read()
+        assert zh_export == en_export
+        payload = json.loads(zh_export)
+        assert payload["view"] == view and payload["read_only"] is True
+        assert "lang" not in payload["query_params"]
+
     for path in ("/", "/api/read-model", "/api/export", "/health"):
         for verb in MUTATING_VERBS:
             with pytest.raises(HTTPError) as caught:

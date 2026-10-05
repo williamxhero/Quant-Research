@@ -32,3 +32,5 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+# Chinese UI text legitimately uses full-width punctuation (RUF001-RUF003).
+allowed-confusables = ["，", "：", "；", "（", "）", "！", "？", "、"]

@@ -16,6 +16,8 @@ from manager_gui.web.documents import (
     build_source_documents_fixture,
     render_source_documents_view,
 )
+from manager_gui.web.i18n import Locale, Translator
+from manager_gui.web.i18n.catalog.l3_method_history import ENTRIES
 
 
 def _documents_model(
@@ -79,7 +81,7 @@ def test_documents_expose_forward_and_reverse_record_citations() -> None:
     assert view.documents[0].record_citations == ("run-1", "publication-1")
     assert view.documents[0].reverse_citations == ("doc-retro",)
     assert view.reverse_citations["run-1"] == ("doc-report", "doc-retro")
-    rendered = view.render()
+    rendered = view.render(translator=Translator(Locale.EN))
     assert "record citations" in rendered
     assert "reverse citations" in rendered
     assert "doc-report" in rendered and "doc-retro" in rendered
@@ -111,7 +113,7 @@ def test_duplicate_versions_are_not_silently_selected() -> None:
 
     assert view.state is DocumentIndexState.VERSION_CONFLICT
     assert len(view.documents) == 2
-    assert "no version is silently selected" in view.render()
+    assert "no version is silently selected" in view.render(translator=Translator(Locale.EN))
 
 
 def test_missing_not_indexed_and_api_unavailable_states_stay_distinct() -> None:
@@ -162,6 +164,35 @@ def test_local_locator_requires_explicit_approved_directory_and_never_scans() ->
     rendered = view.render()
     assert "boundary" in rendered.lower()
     assert "D:/not-approved/secret.json" not in rendered
+
+
+def test_documents_catalog_localizes_english_and_chinese_page_copy() -> None:
+    model = build_source_documents_fixture("A0")
+    zh = render_source_documents_view(model, scope="A0", translator=Translator(Locale.ZH_CN))
+    en = render_source_documents_view(model, scope="A0", translator=Translator(Locale.EN))
+    assert Translator(Locale.ZH_CN, strict=True, catalog=ENTRIES).t("documents.title") == "来源文档"
+    assert "已批准索引" in zh
+    assert "approved index" in en
+    assert 'data-document-scope="A0"' in zh
+    assert '<span translate="no">A0</span> 计划' in zh
+    assert '<span translate="no">A0</span> plan' in en
+
+
+def test_documents_owner_text_is_not_translated_when_provenance_is_not_fixture() -> None:
+    model = _documents_model(
+        {
+            "documents": [
+                {
+                    "document_id": "doc-owner",
+                    "document_type": "report",
+                    "title": "Owner Report",
+                    "source_locator": "fixture://owner/report",
+                }
+            ]
+        }
+    )
+    rendered = render_source_documents_view(model, translator=Translator(Locale.ZH_CN))
+    assert "Owner Report" in rendered
 
 
 def test_source_document_hook_reads_public_resource_once() -> None:

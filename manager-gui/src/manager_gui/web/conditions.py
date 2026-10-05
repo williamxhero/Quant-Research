@@ -34,6 +34,8 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
+from .i18n.catalog import l3_genome as _l3_genome_catalog  # noqa: F401
 from .status import render_status_block
 
 CONDITIONS_RESOURCE = "genome_conditions"
@@ -621,35 +623,35 @@ def genome_conditions_link(
 condition_link = genome_conditions_link
 
 
-def _display(value: object) -> str:
+def _display(value: object, translator: Translator) -> str:
     if value is None or value == "" or value == [] or value == {}:
-        return NOT_RECORDED
+        return translator.t("conditions.not_recorded")
     if isinstance(value, str):
         return value
     try:
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     except (TypeError, ValueError):
-        return NOT_RECORDED
+        return translator.t("conditions.not_recorded")
 
 
-def _render_sources(sources: Sequence[ConditionSourceRef]) -> str:
+def _render_sources(sources: Sequence[ConditionSourceRef], translator: Translator) -> str:
     if not sources:
-        return f'<span class="condition-not-recorded">{NOT_RECORDED}</span>'
+        return f'<span class="condition-not-recorded">{escape(translator.t("conditions.not_recorded"))}</span>'
     parts: list[str] = []
     for source in sources:
-        label = escape(source.label or source.source_id)
+        label = translator.source_text(source.label or source.source_id)
         if source.locator:
             parts.append(
-                f'<a class="condition-source-link" data-source-id="{escape(source.source_id, quote=True)}" href="{escape(source.locator, quote=True)}">{label}</a>'
+                f'<a class="condition-source-link" data-source-id="{escape(source.source_id, quote=True)}" href="{escape(source.locator, quote=True)}" translate="no">{label}</a>'
             )
         else:
             parts.append(
-                f'<span class="condition-source-unconfirmed" data-source-id="{escape(source.source_id, quote=True)}">{label} — {NOT_RECORDED}</span>'
+                f'<span class="condition-source-unconfirmed" data-source-id="{escape(source.source_id, quote=True)}" translate="no">{label} — {escape(translator.t("conditions.locator_missing"))}</span>'
             )
     return " · ".join(parts)
 
 
-def _render_related_links(genome_id: str | None, context: QueryContext) -> str:
+def _render_related_links(genome_id: str | None, context: QueryContext, translator: Translator) -> str:
     """Keep condition evidence connected to Genome identity and comparison."""
 
     if genome_id is None:
@@ -665,35 +667,61 @@ def _render_related_links(genome_id: str | None, context: QueryContext) -> str:
     )
     genome_href = genome_link(genome_id, query_context=context)
     return (
-        '<nav class="conditions-related-links" aria-label="Condition related views">'
+        f'<nav class="conditions-related-links" aria-label="{escape(translator.t("conditions.related_aria"))}">'
         f'<a class="condition-genome-link" href="{escape(genome_href, quote=True)}">'
-        "Back to Genome</a>"
+        f'{escape(translator.t("conditions.back_genome"))} <span translate="no">{translator.source_text(genome_id)}</span></a>'
         f'<a class="condition-comparison-link" href="{escape(comparison_href, quote=True)}">'
-        "Compare Genome</a></nav>"
+        f'{escape(translator.t("conditions.compare"))}</a></nav>'
     )
 
 
-def _render_card(record: ConditionEvidence) -> str:
+_FIXTURE_COPY_KEYS = {
+    "liquidity threshold is met": "conditions.fixture_liquidity",
+    "data quality gate fails": "conditions.fixture_quality",
+    "high-volatility regime": "conditions.fixture_regime",
+    "fixture study window": "conditions.fixture_window",
+    "Synthetic fixture; no conclusion beyond the published record.": "conditions.fixture_limitation",
+}
+
+
+def _fixture_or_owner(value: object, translator: Translator) -> str:
+    if isinstance(value, str) and value in _FIXTURE_COPY_KEYS:
+        return translator.t(_FIXTURE_COPY_KEYS[value])
+    if isinstance(value, tuple) and len(value) == 1 and value[0] in _FIXTURE_COPY_KEYS:
+        return translator.t(_FIXTURE_COPY_KEYS[value[0]])
+    return _display(value, translator)
+
+
+def _render_card(record: ConditionEvidence, translator: Translator) -> str:
     outcome = record.outcome.value if record.outcome is not None else NOT_RECORDED
     rows = (
-        ("Condition", record.condition),
-        ("Scope", record.scope),
-        ("Outcome", outcome),
-        ("Evidence level", record.evidence_level.value.replace("_", " ")),
-        ("Time range", record.time_range.label or record.time_range.to_dict()),
-        ("Data version", record.data_version),
-        ("Sample", record.sample),
-        ("Limitations", record.limitations),
-        ("Source refs", _render_sources(record.source_refs)),
+        ("condition", record.condition),
+        ("scope", record.scope),
+        ("outcome", outcome),
+        ("evidence_level", record.evidence_level.value),
+        ("time_range", record.time_range.label or record.time_range.to_dict()),
+        ("data_version", record.data_version),
+        ("sample", record.sample),
+        ("limitations", record.limitations),
+        ("source_refs", _render_sources(record.source_refs, translator)),
     )
+    def render_value(key: str, value: object) -> str:
+        if key == "source_refs":
+            return str(value)
+        if key == "outcome":
+            return translator.t("conditions.not_recorded") if value == NOT_RECORDED else translator.label("condition_outcome", str(value))
+        if key == "evidence_level":
+            return translator.label("evidence_level", str(value))
+        return f'<span translate="no">{translator.source_text(_fixture_or_owner(value, translator))}</span>'
     body = "".join(
-        f'<div class="condition-field" data-field="{escape(label.lower().replace(" ", "_"), quote=True)}"><dt>{escape(label)}</dt><dd>{value if label == "Source refs" else escape(_display(value))}</dd></div>'
-        for label, value in rows
+        f'<div class="condition-field" data-field="{escape(key, quote=True)}"><dt>{translator.t("conditions." + key) if key != "source_refs" else escape(translator.t("conditions.source_refs"))}</dt><dd>{render_value(key, value)}</dd></div>'
+        for key, value in rows
     )
+    condition = translator.source_text(_fixture_or_owner(record.condition, translator)) if record.condition else translator.t("conditions.not_recorded")
     return (
         f'<article class="condition-card" data-category="{record.category.value}" '
         f'data-outcome="{escape(outcome, quote=True)}" data-record-id="{escape(record.record_id or "", quote=True)}">'
-        f'<h4>{escape(record.condition or NOT_RECORDED)}</h4><dl>{body}</dl></article>'
+        f'<h3 translate="no">{condition}</h3><dl>{body}</dl></article>'
     )
 
 
@@ -701,11 +729,12 @@ def _render_group(
     title: str,
     category: ConditionCategory,
     records: Sequence[ConditionEvidence],
+    translator: Translator,
 ) -> str:
     if not records:
-        body = f'<p class="conditions-not-recorded" data-category="{category.value}">{NOT_RECORDED}</p>'
+        body = f'<p class="conditions-not-recorded" data-category="{category.value}">{escape(translator.t("conditions.not_recorded"))}</p>'
     else:
-        body = "".join(_render_card(record) for record in records)
+        body = "".join(_render_card(record, translator) for record in records)
     return (
         f'<section class="condition-group" data-condition-group="{category.value}" aria-label="{escape(title)}">'
         f'<h2>{escape(title)}</h2>{body}</section>'
@@ -717,9 +746,11 @@ def render_genome_conditions(
     *,
     query_context: QueryContext = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render the condition evidence fragment for S2-T3 to mount."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, ConditionViewModel)
@@ -728,9 +759,9 @@ def render_genome_conditions(
     if isinstance(view_or_model, ConditionViewModel) and genome_id is not None and genome_id != view.genome_id:
         view = ConditionViewModel.from_read_model(view.read_model, genome_id=genome_id)
     model = view.read_model
-    source_text = ", ".join(source.source_id for source in model.source_refs) or NOT_RECORDED
+    source_text = ", ".join(source.source_id for source in model.source_refs) or selected_translator.t("conditions.not_recorded")
     context_href = genome_conditions_link(view.genome_id, query_context=query_context)
-    descriptor_group = _render_group("", ConditionCategory.DESCRIPTOR, view.descriptors)
+    descriptor_group = _render_group("", ConditionCategory.DESCRIPTOR, view.descriptors, selected_translator)
     descriptor_group = descriptor_group.replace(
         '<section class="condition-group" data-condition-group="descriptor" aria-label="">',
         '<div class="condition-descriptor-list">',
@@ -739,16 +770,16 @@ def render_genome_conditions(
     return "".join(
         (
             f'<section class="genome-conditions-page" data-integration-hook="{CONDITIONS_INTEGRATION_HOOK}" data-genome-id="{escape(view.genome_id or "", quote=True)}">',
-            '<p class="eyebrow">Strategies / Conditions · read-only</p>',
-            '<h1 class="page-title" data-page-title tabindex="-1">Genome conditions and evidence</h1>',
-            '<p class="page-intro">Applicability and invalidation conditions are shown only when an owner record publishes evidence. Regime and behaviour descriptors remain observations.</p>',
-            f'<p class="context-line condition-context"><span><strong>Observed</strong> {escape(model.as_of or NOT_RECORDED)}</span><span><strong>Snapshot</strong> {escape(model.snapshot_token or NOT_RECORDED)}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>',
-            f'<a class="conditions-context-link" href="{escape(context_href, quote=True)}">Stable condition context</a>',
-            _render_related_links(view.genome_id, query_context),
-            render_status_block(model),
-            _render_group("Evidence-supported applicability conditions", ConditionCategory.APPLICABILITY, view.applicability),
-            _render_group("Evidence-supported invalidation / failure conditions", ConditionCategory.INVALIDATION, view.invalidation),
-            '<section class="condition-group condition-descriptors" data-condition-group="descriptor" aria-label="Contextual descriptors and regime observations"><h2>Contextual descriptors / regime observations</h2><p>Descriptors are observations only; they are not validated conditions.</p>',
+            f'<p class="eyebrow">{escape(selected_translator.t("conditions.eyebrow"))}</p>',
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("conditions.title"))}</h1>',
+            f'<p class="page-intro">{escape(selected_translator.t("conditions.intro"))}</p>',
+            f'<p class="context-line condition-context"><span><strong>{escape(selected_translator.t("conditions.observed"))}</strong> <span translate="no">{escape(model.as_of or selected_translator.t("conditions.not_recorded"))}</span></span><span><strong>{escape(selected_translator.t("conditions.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or selected_translator.t("conditions.not_recorded"))}</span></span><span><strong>{escape(selected_translator.t("conditions.sources"))}</strong> <span translate="no">{escape(source_text)}</span></span></p>',
+            f'<a class="conditions-context-link" href="{escape(context_href, quote=True)}">{escape(selected_translator.t("conditions.stable_context"))}</a>',
+            _render_related_links(view.genome_id, query_context, selected_translator),
+            render_status_block(model, translator=selected_translator),
+            _render_group(selected_translator.t("conditions.applicability_group"), ConditionCategory.APPLICABILITY, view.applicability, selected_translator),
+            _render_group(selected_translator.t("conditions.invalidation_group"), ConditionCategory.INVALIDATION, view.invalidation, selected_translator),
+            f'<section class="condition-group condition-descriptors" data-condition-group="descriptor" aria-label="{escape(selected_translator.t("conditions.descriptor_group"))}"><h2>{escape(selected_translator.t("conditions.descriptor_group"))}</h2><p>{escape(selected_translator.t("conditions.descriptor_intro"))}</p>',
             descriptor_group,
             '</section>',
             '</section>',
@@ -775,6 +806,7 @@ def render_genome_conditions_view(
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
     genome_id: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """S2-T3 hook accepting either a provider or an already-read envelope."""
 
@@ -783,7 +815,12 @@ def render_genome_conditions_view(
         view = ConditionViewModel.from_read_model(provider_or_model, genome_id=selected_id)
     else:
         view = condition_view(provider_or_model, snapshot_token=snapshot_token, genome_id=selected_id)
-    return render_genome_conditions(view, query_context=query_context, genome_id=selected_id)
+    return render_genome_conditions(
+        view,
+        query_context=query_context,
+        genome_id=selected_id,
+        translator=translator,
+    )
 
 
 render_conditions_view = render_genome_conditions_view

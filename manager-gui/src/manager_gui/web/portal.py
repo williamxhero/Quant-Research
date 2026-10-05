@@ -34,9 +34,21 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from .i18n import Translator
+from .i18n.catalog.l5_portal import ENTRIES as PORTAL_CATALOG
 from .locators import public_locator
 from .navigation import context_link
 from .status import DisplayState, render_operational_state, render_status_block
+
+
+def _portal_translator(translator: Translator | None) -> Translator:
+    """Use the request locale with the Portal's additive catalog entries."""
+
+    selected = translator or Translator()
+    from .i18n.catalog import CATALOG
+
+    return Translator(selected.locale, pseudo=selected.pseudo, catalog={**CATALOG, **PORTAL_CATALOG})
+
 
 REPORT_SOURCE_RESOURCE = "report_source"
 """The versioned public read resource for Strategy Reporting metadata."""
@@ -753,8 +765,19 @@ def _artifact_link(
     return context_link(context, view="portal", report_id=report_id, artifact_id=artifact.artifact_id)
 
 
-def _display(value: str | None, *, missing: str = "Missing / Unconfirmed") -> str:
+def _display(value: str | None, *, missing: str) -> str:
     return escape(value) if value is not None else missing
+
+
+def _p(translator: Translator, key: str) -> str:
+    return translator.html(f"l5.portal.{key}")
+
+
+def _status_label(translator: Translator, domain: str, value: str | None) -> str:
+    if value is None:
+        return _p(translator, "missing_unconfirmed")
+    key = _normalise(value) or value
+    return translator.label(f"l5_portal_{domain}", key)
 
 
 def _render_publication(
@@ -762,12 +785,13 @@ def _render_publication(
     *,
     query_context: str | Mapping[str, object] | None,
     report_id: str | None,
+    translator: Translator,
 ) -> str:
     if publication is None:
         return (
             '<article class="portal-source-publication" data-source-publication-state="missing">'
-            "<h2>Source publication</h2>"
-            '<p class="portal-missing">Missing / Unconfirmed: no published report source is recorded.</p>'
+            f"<h2>{_p(translator, 'source_publication')}</h2>"
+            f'<p class="portal-missing">{_p(translator, "missing_source")}</p>'
             "</article>"
         )
     internal = _source_link(publication, query_context, report_id=report_id)
@@ -776,26 +800,26 @@ def _render_publication(
         f'<a class="portal-source-locator" href="{escape(safe_locator, quote=True)}">'
         f"{escape(safe_locator)}</a>"
         if safe_locator
-        else "Missing / Unconfirmed"
+        else _p(translator, "missing_unconfirmed")
     )
     stable = (
         f'<a class="portal-source-link" data-link-kind="source-publication" href="{escape(internal or "#", quote=True)}">'
-        "Open source metadata</a>"
+        f"{_p(translator, 'open_source')}</a>"
         if internal
         else ""
     )
     return (
         f'<article class="portal-source-publication" data-source-publication-id="{escape(publication.publication_id, quote=True)}" '
         'data-source-publication-state="published">'
-        "<h2>Source publication</h2>"
+        f"<h2>{_p(translator, 'source_publication')}</h2>"
         "<dl class=\"portal-details\">"
-        f"<div><dt>Publication id</dt><dd>{escape(publication.publication_id)}</dd></div>"
-        f"<div><dt>Title</dt><dd>{_display(publication.title)}</dd></div>"
-        f"<div><dt>Version</dt><dd>{_display(publication.version)}</dd></div>"
-        f"<div><dt>Revision</dt><dd>{_display(publication.revision)}</dd></div>"
-        f"<div><dt>Published at</dt><dd>{_display(publication.published_at)}</dd></div>"
-        f"<div><dt>Source locator</dt><dd>{locator}</dd></div>"
-        f"<div><dt>Stable link</dt><dd>{stable or 'Missing / Unconfirmed'}</dd></div>"
+        f"<div><dt>{_p(translator, 'publication_id')}</dt><dd>{escape(publication.publication_id)}</dd></div>"
+        f"<div><dt>{_p(translator, 'title_field')}</dt><dd>{_display(publication.title, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'version')}</dt><dd>{_display(publication.version, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'revision')}</dt><dd>{_display(publication.revision, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'published_at')}</dt><dd>{_display(publication.published_at, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'source_locator')}</dt><dd>{locator}</dd></div>"
+        f"<div><dt>{_p(translator, 'stable_link')}</dt><dd>{stable or _p(translator, 'missing_unconfirmed')}</dd></div>"
         "</dl></article>"
     )
 
@@ -806,17 +830,18 @@ def _render_artifact(
     state: PortalArtifactState,
     query_context: str | Mapping[str, object] | None,
     report_id: str | None,
+    translator: Translator,
 ) -> str:
     if artifact is None:
-        message = {
-            PortalArtifactState.MISSING: "Missing / Unconfirmed: no generated report artifact is recorded.",
-            PortalArtifactState.NOT_GENERATED: "Not generated: the source publication exists, but no static artifact is published.",
-            PortalArtifactState.API_UNAVAILABLE: "API unavailable: generated artifact metadata cannot be read from the approved seam.",
-        }.get(state, "No generated report artifact metadata is available.")
+        message_key = {
+            PortalArtifactState.MISSING: "missing_artifact",
+            PortalArtifactState.NOT_GENERATED: "not_generated_copy",
+            PortalArtifactState.API_UNAVAILABLE: "api_artifact_unavailable",
+        }.get(state, "no_artifact_metadata")
         return (
             f'<article class="portal-generated-artifact" data-artifact-state="{state.value}">'
-            "<h2>Generated artifact</h2>"
-            f'<p class="portal-missing">{escape(message)}</p>'
+            f"<h2>{_p(translator, 'generated_artifact')}</h2>"
+            f'<p class="portal-missing">{_p(translator, message_key)}</p>'
             "</article>"
         )
     internal = _artifact_link(artifact, query_context, report_id=report_id)
@@ -825,29 +850,29 @@ def _render_artifact(
         f'<a class="portal-artifact-locator" href="{escape(safe_locator, quote=True)}">'
         f"{escape(safe_locator)}</a>"
         if safe_locator
-        else "Missing / Unconfirmed"
+        else _p(translator, "missing_unconfirmed")
     )
     stable = (
         f'<a class="portal-artifact-link" data-link-kind="generated-artifact" href="{escape(internal or "#", quote=True)}">'
-        "Open artifact metadata</a>"
+        f"{_p(translator, 'open_artifact')}</a>"
         if internal
         else ""
     )
     return (
         f'<article class="portal-generated-artifact" data-artifact-id="{escape(artifact.artifact_id, quote=True)}" '
         f'data-artifact-state="{state.value}">'
-        "<h2>Generated artifact</h2>"
+        f"<h2>{_p(translator, 'generated_artifact')}</h2>"
         "<dl class=\"portal-details\">"
-        f"<div><dt>Artifact id</dt><dd>{escape(artifact.artifact_id)}</dd></div>"
-        f"<div><dt>Title</dt><dd>{_display(artifact.title)}</dd></div>"
-        f"<div><dt>Artifact locator</dt><dd>{locator}</dd></div>"
-        f"<div><dt>Renderer</dt><dd>{_display(artifact.renderer)}</dd></div>"
-        f"<div><dt>Renderer version</dt><dd>{_display(artifact.renderer_version)}</dd></div>"
-        f"<div><dt>Generated at</dt><dd>{_display(artifact.generated_at)}</dd></div>"
-        f"<div><dt>Verify status</dt><dd>{_display(artifact.verify_status)}</dd></div>"
-        f"<div><dt>Rebuild status</dt><dd>{_display(artifact.rebuild_status)}</dd></div>"
-        f"<div><dt>Digest</dt><dd>{_display(artifact.digest)}</dd></div>"
-        f"<div><dt>Stable link</dt><dd>{stable or 'Missing / Unconfirmed'}</dd></div>"
+        f"<div><dt>{_p(translator, 'artifact_id')}</dt><dd>{escape(artifact.artifact_id)}</dd></div>"
+        f"<div><dt>{_p(translator, 'title_field')}</dt><dd>{_display(artifact.title, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'artifact_locator')}</dt><dd>{locator}</dd></div>"
+        f"<div><dt>{_p(translator, 'renderer')}</dt><dd>{_display(artifact.renderer, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'renderer_version')}</dt><dd>{_display(artifact.renderer_version, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'generated_at')}</dt><dd>{_display(artifact.generated_at, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'verify_status')}</dt><dd>{_status_label(translator, 'verify_status', artifact.verify_status)}</dd></div>"
+        f"<div><dt>{_p(translator, 'rebuild_status')}</dt><dd>{_status_label(translator, 'rebuild_status', artifact.rebuild_status)}</dd></div>"
+        f"<div><dt>{_p(translator, 'digest')}</dt><dd>{_display(artifact.digest, missing=_p(translator, 'missing_unconfirmed'))}</dd></div>"
+        f"<div><dt>{_p(translator, 'stable_link')}</dt><dd>{stable or _p(translator, 'missing_unconfirmed')}</dd></div>"
         "</dl></article>"
     )
 
@@ -856,6 +881,7 @@ def _render_report_index(
     entries: Sequence[ReportPortalEntry],
     *,
     query_context: str | Mapping[str, object] | None,
+    translator: Translator,
 ) -> str:
     if len(entries) <= 1:
         return ""
@@ -865,12 +891,12 @@ def _render_report_index(
         rows.append(
             f'<article class="portal-report-entry" data-report-id="{escape(entry.report_id or "", quote=True)}" '
             f'data-portal-state="{escape(state_copy, quote=True)}">'
-            f"<h2>{_display(entry.title or entry.report_id, missing='Untitled report')}</h2>"
-            f"{_render_publication(entry.source_publication, query_context=query_context, report_id=entry.report_id)}"
-            f"{_render_artifact(entry.generated_artifact, state=entry.artifact_state, query_context=query_context, report_id=entry.report_id)}"
+            f"<h2>{_display(entry.title or entry.report_id, missing=_p(translator, 'untitled_report'))}</h2>"
+            f"{_render_publication(entry.source_publication, query_context=query_context, report_id=entry.report_id, translator=translator)}"
+            f"{_render_artifact(entry.generated_artifact, state=entry.artifact_state, query_context=query_context, report_id=entry.report_id, translator=translator)}"
             "</article>"
         )
-    return '<section class="portal-report-index" aria-label="Report index">' + "".join(rows) + "</section>"
+    return f'<section class="portal-report-index" aria-label="{_p(translator, "report_index")}">' + "".join(rows) + "</section>"
 
 
 def render_portal(
@@ -879,6 +905,7 @@ def render_portal(
     base_path: str = "/",
     query: str | Mapping[str, object] | None = None,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render a read-only Strategy Reporting Portal metadata fragment.
 
@@ -887,22 +914,25 @@ def render_portal(
     No link is an instruction to rebuild, run, publish, or mutate a report.
     """
 
+    selected_translator = _portal_translator(translator)
     context = (
         query_context if query_context is not None else query if query is not None else base_path
     )
     view = view_or_model if isinstance(view_or_model, PortalViewModel) else PortalViewModel.from_read_model(view_or_model)
     model = view.read_model
-    observed = model.as_of or "Unavailable"
-    snapshot = model.snapshot_token or "Unavailable"
-    source_ids = ", ".join(source.source_id for source in model.source_refs) or "None recorded"
+    unavailable = _p(selected_translator, "unavailable")
+    observed = escape(model.as_of) if model.as_of is not None else unavailable
+    snapshot = escape(model.snapshot_token) if model.snapshot_token is not None else unavailable
+    source_ids = escape(", ".join(source.source_id for source in model.source_refs)) if model.source_refs else _p(selected_translator, "none_recorded")
     state_copy = {
-        PortalArtifactState.MISSING: "No Strategy Reporting source publication or generated artifact is recorded.",
-        PortalArtifactState.NOT_GENERATED: "The source publication is available, but the static artifact has not been generated.",
-        PortalArtifactState.INTEGRITY_FAILURE: "The generated artifact failed its declared integrity verification.",
-        PortalArtifactState.API_UNAVAILABLE: "The approved public report-source seam is unavailable.",
-        PortalArtifactState.PARTIAL: "Some Portal metadata is available, but the publication is incomplete.",
-        PortalArtifactState.READY: "The published source and generated static artifact metadata are available.",
+        PortalArtifactState.MISSING: _p(selected_translator, "state_missing"),
+        PortalArtifactState.NOT_GENERATED: _p(selected_translator, "state_not_generated"),
+        PortalArtifactState.INTEGRITY_FAILURE: _p(selected_translator, "state_integrity_failure"),
+        PortalArtifactState.API_UNAVAILABLE: _p(selected_translator, "state_api_unavailable"),
+        PortalArtifactState.PARTIAL: _p(selected_translator, "state_partial"),
+        PortalArtifactState.READY: _p(selected_translator, "state_ready"),
     }[view.artifact_state]
+    state_label = _status_label(selected_translator, "artifact_state", view.artifact_state.value)
     operational_state = (
         DisplayState.READY
         if view.artifact_state is PortalArtifactState.READY
@@ -912,33 +942,38 @@ def render_portal(
         if view.artifact_state is PortalArtifactState.PARTIAL
         else DisplayState.ERROR
     )
-    report_sections = _render_report_index(view.reports, query_context=context)
+    report_sections = _render_report_index(view.reports, query_context=context, translator=selected_translator)
     if not report_sections:
         report_sections = (
-            _render_publication(view.source_publication, query_context=context, report_id=view.report_id)
+            _render_publication(view.source_publication, query_context=context, report_id=view.report_id, translator=selected_translator)
             + _render_artifact(
                 view.generated_artifact,
                 state=view.artifact_state,
                 query_context=context,
                 report_id=view.report_id,
+                translator=selected_translator,
             )
         )
     pieces = [
         f'<section class="portal-page" data-integration-hook="portal-view" '
         f'data-portal-state="{view.artifact_state.value}" data-boundary="static-publication-not-canonical">',
-        '<p class="eyebrow">Strategy Reporting Portal · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Strategy Reporting Portal</h1>',
-        '<p class="page-intro">This static Portal index separates a published report source from its generated artifact, renderer identity, and verification metadata.</p>',
-        '<p class="boundary-note" data-boundary="static-publication-not-canonical"><strong>Read-only publication</strong> '
-        "is not canonical research state. This view never triggers rebuild/run or infers owner facts from an artifact.</p>",
-        f'<p class="context-line portal-context"><span><strong>Report</strong> {_display(view.report_id)}</span>'
-        f'<span><strong>Observed</strong> {escape(observed)}</span>'
-        f'<span><strong>Snapshot</strong> {escape(snapshot)}</span>'
-        f'<span><strong>Sources</strong> {escape(source_ids)}</span></p>',
-        render_status_block(model),
+        f'<p class="eyebrow">{_p(selected_translator, "eyebrow")}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{_p(selected_translator, "title")}</h1>',
+        f'<p class="page-intro">{_p(selected_translator, "intro")}</p>',
+        f'<p class="boundary-note" data-boundary="static-publication-not-canonical"><strong>{_p(selected_translator, "boundary_heading")}</strong> '
+        f"{_p(selected_translator, 'boundary')}</p>",
+        f'<p class="context-line portal-context"><span><strong>{_p(selected_translator, "report")}</strong> {_display(view.report_id, missing=_p(selected_translator, "missing_unconfirmed"))}</span>'
+        f'<span><strong>{_p(selected_translator, "observed")}</strong> {observed}</span>'
+        f'<span><strong>{_p(selected_translator, "snapshot")}</strong> {snapshot}</span>'
+        f'<span><strong>{_p(selected_translator, "sources")}</strong> {source_ids}</span></p>',
+        render_status_block(model, translator=selected_translator),
         f'<section class="portal-state-summary" data-portal-state-summary="{view.artifact_state.value}">'
-        f"<strong>Portal state</strong> {escape(state_copy)}</section>",
-        render_operational_state(operational_state, detail=state_copy),
+        f"<strong>{_p(selected_translator, 'state')}</strong> {state_label} · {state_copy}</section>",
+        render_operational_state(
+            operational_state,
+            translator=selected_translator,
+            detail=state_copy,
+        ),
         report_sections,
         "</section>",
     ]
@@ -974,6 +1009,7 @@ def render_portal_view(
     base_path: str = "/",
     query: str | Mapping[str, object] | None = None,
     query_context: str | Mapping[str, object] | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """Public S6 integration hook accepting a provider or cached envelope."""
 
@@ -987,6 +1023,7 @@ def render_portal_view(
         base_path=base_path,
         query=query,
         query_context=query_context,
+        translator=translator,
     )
 
 

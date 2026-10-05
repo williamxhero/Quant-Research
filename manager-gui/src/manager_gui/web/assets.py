@@ -6,6 +6,11 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
+
+from .i18n import Translator
+
 CSS = r"""
 :root {
   color-scheme: light;
@@ -26,6 +31,22 @@ CSS = r"""
   --shadow: 0 18px 42px rgb(28 48 52 / 8%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+}
+
+:lang(zh-CN) {
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Inter, ui-sans-serif,
+    system-ui, sans-serif;
+}
+
+:lang(zh-CN) .eyebrow,
+:lang(zh-CN) .status-label,
+:lang(zh-CN) .display-state,
+:lang(zh-CN) .panel-kicker,
+:lang(zh-CN) .nav-short,
+:lang(zh-CN) .page-title,
+:lang(zh-CN) .panel-heading h2 {
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 * { box-sizing: border-box; }
@@ -65,6 +86,7 @@ a { color: inherit; }
   background: #f2a65a; border-radius: 4px;
 }
 .read-only-badge::before { width: 6px; height: 6px; content: ""; background: #18343a; border-radius: 50%; }
+:lang(zh-CN) .read-only-badge { letter-spacing: normal; text-transform: none; }
 .search-form { display: flex; flex: 0 1 280px; min-width: 150px; }
 .search-input {
   width: 100%; padding: 9px 12px; color: white; background: #24474d;
@@ -83,7 +105,6 @@ a { color: inherit; }
 }
 .nav-link:hover, .nav-link[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
 .nav-short { display: none; color: var(--accent); font-size: 10px; letter-spacing: .08em; }
-.nav-label-zh { color: var(--muted); font-size: 10px; font-weight: 600; }
 
 .workspace {
   display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 22px;
@@ -106,13 +127,14 @@ a { color: inherit; }
 .status-line { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
 .status-mark { width: 9px; height: 9px; background: var(--accent); border-radius: 50%; }
 .status-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.status-label-zh { color: var(--muted); font-size: 12px; font-weight: 650; }
 .display-state {
   margin-left: auto; padding: 3px 7px; color: var(--muted); font-size: 10px; font-weight: 750;
   letter-spacing: .08em; text-transform: uppercase; background: var(--surface-alt); border-radius: 3px;
 }
 .status-block h2 { max-width: 720px; margin: 0 0 7px; font-size: 18px; letter-spacing: -.02em; line-height: 1.35; }
 .status-block p { max-width: 760px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.status-source-note { margin-top: 12px !important; }
+.status-source-note strong { color: var(--ink); }
 .status-errors { margin: 14px 0 0; padding: 12px 12px 12px 28px; color: var(--danger); font-size: 12px;
   background: var(--danger-soft); border-radius: 4px; line-height: 1.55; }
 .tone-positive { border-left-color: var(--positive); }
@@ -190,7 +212,7 @@ a { color: inherit; }
   .inspector { position: static; }
   .nav-short { display: inline; }
   .nav-link { padding: 0 10px; }
-  .nav-label, .nav-label-zh { display: none; }
+  .nav-label { display: none; }
   .event-drawer { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 480px) {
@@ -202,8 +224,9 @@ a { color: inherit; }
 }
 """
 
-JS = r"""
+JS_TEMPLATE = r"""
 (() => {
+  const messages = JSON.parse(document.getElementById("gui-messages")?.textContent || "{}");
   const links = [...document.querySelectorAll("[data-nav-link]")];
   const inspector = document.querySelector("#inspector");
   const drawer = document.querySelector("#event-drawer");
@@ -291,16 +314,20 @@ JS = r"""
     area.select();
     const copied = document.execCommand("copy");
     area.remove();
-    if (!copied) throw new Error("copy unavailable");
+    if (!copied) throw new Error();
+  }
+
+  function announce(key) {
+    if (copyStatus) copyStatus.textContent = messages[key] || "";
   }
 
   document.querySelectorAll("[data-copy-value]").forEach((button) => {
     button.addEventListener("click", async () => {
       try {
         await copyValue(button.dataset.copyValue || "");
-        if (copyStatus) copyStatus.textContent = "Copied opaque reference / 已复制不透明引用";
+        announce("copy_success");
       } catch (error) {
-        if (copyStatus) copyStatus.textContent = "Copy unavailable / 无法复制引用";
+        announce("copy_unavailable");
       }
     });
   });
@@ -342,7 +369,7 @@ JS = r"""
     button.addEventListener("click", () => {
       const payload = button.dataset.exportPayload;
       if (!payload) {
-        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+        announce("export_unavailable");
         return;
       }
       try {
@@ -354,9 +381,9 @@ JS = r"""
         link.click();
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
-        if (copyStatus) copyStatus.textContent = "Current view exported locally / 当前视图已导出到本地";
+        announce("export_success");
       } catch (error) {
-        if (copyStatus) copyStatus.textContent = "Export unavailable / 无法导出";
+        announce("export_unavailable");
       }
     });
   });
@@ -371,4 +398,59 @@ JS = r"""
 })();
 """
 
-__all__ = ["CSS", "JS"]
+JS_MESSAGE_KEYS = (
+    "copy_success",
+    "copy_unavailable",
+    "export_success",
+    "export_unavailable",
+)
+_JS_MESSAGE_CATALOG = {
+    "copy_success": "client.copy_success",
+    "copy_unavailable": "client.copy_unavailable",
+    "export_success": "client.export_success",
+    "export_unavailable": "client.export_unavailable",
+}
+
+
+def js_messages(translator: Translator) -> dict[str, str]:
+    """Return the explicit client-message map for one request locale."""
+
+    return {name: translator.t(_JS_MESSAGE_CATALOG[name]) for name in JS_MESSAGE_KEYS}
+
+
+def render_js(
+    messages: Mapping[str, str] | None = None, *, translator: Translator | None = None
+) -> str:
+    """Return static JS, or its safe per-request message/data script pair.
+
+    With no arguments this returns the executable source used by ``JS``.  Passing
+    a translator or explicit message map returns two script elements: an inert
+    JSON data element followed by that unchanged executable source.  Keeping the
+    data out of executable JS means user-facing copy never becomes a JS literal.
+    """
+
+    if messages is None and translator is None:
+        return JS_TEMPLATE
+    if messages is not None and translator is not None:
+        raise TypeError("pass messages or translator, not both")
+    selected = js_messages(translator) if translator is not None else dict(messages or {})
+    payload = json.dumps(selected, ensure_ascii=False, separators=(",", ":"))
+    payload = (
+        payload.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace(chr(0x2028), "\\u2028")
+        .replace(chr(0x2029), "\\u2029")
+    )
+    return (
+        '<script type="application/json" id="gui-messages">'
+        f"{payload}</script>"
+        f"<script>{JS_TEMPLATE}</script>"
+    )
+
+
+# Keep the current shell contract static and safe; a locale-aware shell can use
+# ``render_js(translator=...)`` without changing the JavaScript source.
+JS = render_js()
+
+__all__ = ["CSS", "JS", "JS_MESSAGE_KEYS", "js_messages", "render_js"]

@@ -13,13 +13,16 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from html import escape
 from typing import TypeAlias, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
+from .i18n import Translator
+from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import clear_filters_link
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -35,14 +38,8 @@ LIFECYCLE_SPINE: tuple[str, ...] = (
 )
 
 LIFECYCLE_LABELS: Mapping[str, str] = {
-    "campaign": "Campaign",
-    "hypothesis": "Hypothesis",
-    "candidate": "Candidate",
-    "run": "Run",
-    "evidence": "Evidence",
-    "qualification": "Qualification",
-    "replication": "Replication",
-    "revalidation": "Revalidation",
+    record_type: f"label.atlas.lifecycle.{record_type}"
+    for record_type in LIFECYCLE_SPINE
 }
 
 _FILTER_KEYS: tuple[str, ...] = (
@@ -70,6 +67,35 @@ _CONTEXT_ORDER: tuple[str, ...] = (
 )
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
+
+
+def _is_fixture(model: ManagerReadModel) -> bool:
+    """Only localize owner prose for an exact shipped synthetic envelope."""
+
+    if not (model.snapshot_token or "").startswith("fixture-") and model.data != {}:
+        return False
+    return any(model == build_fixture(state, resource="atlas") for state in FixtureState)
+
+
+def _fixture_text(value: str | None, *, translator: Translator, fixture: bool) -> str:
+    if value is None:
+        return ""
+    key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value) if fixture else None
+    if key is not None:
+        return escape(translator.t(key))
+    return f'<span data-owner-text="true">{translator.source_text(value)}</span>'
+
+
+def _fixture_status_model(model: ManagerReadModel, translator: Translator) -> ManagerReadModel:
+    def localize(value: str | None) -> str | None:
+        key = _l3_atlas_story_catalog.FIXTURE_KEYS.get(value or "")
+        return translator.t(key) if key is not None else value
+
+    return replace(
+        model,
+        availability=replace(model.availability, reason=localize(model.availability.reason)),
+        errors=tuple(replace(error, message=localize(error.message) or "") for error in model.errors),
+    )
 
 
 def _text(value: object) -> str | None:
@@ -217,7 +243,7 @@ class AtlasRecord:
 
     @property
     def lifecycle_label(self) -> str:
-        return LIFECYCLE_LABELS.get(self.record_type, self.record_type.replace("_", " ").title())
+        return LIFECYCLE_LABELS.get(self.record_type, self.record_type)
 
     @property
     def is_blocked_or_unavailable(self) -> bool:
@@ -535,39 +561,70 @@ def _story_link(record: AtlasRecord, query_context: QueryContext) -> str:
     return "/?" + query if query else "/?view=stories"
 
 
-def _render_record(record: AtlasRecord, *, query_context: QueryContext) -> str:
+def _render_record(
+    record: AtlasRecord,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
+) -> str:
     state = (
-        f'<span class="atlas-record-state">{escape(record.state)}</span>' if record.state else ""
+        f'<span class="atlas-record-state">{translator.label("atlas.state", record.state)}</span>'
+        if record.state
+        else ""
     )
     changed = (
-        f'<time datetime="{escape(record.changed_at, quote=True)}">{escape(record.changed_at)}</time>'
+        f'<time translate="no" datetime="{escape(record.changed_at, quote=True)}">'
+        f'{translator.source_text(record.changed_at)}</time>'
         if record.changed_at
         else ""
     )
     source = (
-        f'<span class="atlas-record-source">{escape(record.source)}</span>' if record.source else ""
+        f'<span class="atlas-record-source" translate="no">'
+        f'{translator.source_text(record.source)}</span>'
+        if record.source
+        else ""
     )
     metadata = " · ".join(part for part in (state, changed, source) if part)
     meta_markup = f'<span class="atlas-record-meta">{metadata}</span>' if metadata else ""
     return (
         f'<li class="atlas-record" data-record-id="{escape(record.record_id, quote=True)}" '
         f'data-record-type="{escape(record.record_type, quote=True)}">'
-        f'<a href="{escape(_record_link(record, query_context), quote=True)}">{escape(record.title)}</a>'
+        f'<a href="{escape(_record_link(record, query_context), quote=True)}">'
+        f'{_fixture_text(record.title, translator=translator, fixture=fixture)}</a>'
         f'<a class="atlas-story-link" data-record-story="{escape(record.record_id, quote=True)}" '
-        f'href="{escape(_story_link(record, query_context), quote=True)}">Open Research Story</a>'
+        f'href="{escape(_story_link(record, query_context), quote=True)}">'
+        f'{escape(translator.t("atlas.record.open_story"))}</a>'
         f"{meta_markup}</li>"
     )
 
 
-def _render_record_list(records: Sequence[AtlasRecord], *, query_context: QueryContext) -> str:
+def _render_record_list(
+    records: Sequence[AtlasRecord],
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
+) -> str:
     return (
         '<ul class="atlas-record-list">'
-        + "".join(_render_record(record, query_context=query_context) for record in records)
+        + "".join(
+            _render_record(
+                record, query_context=query_context, translator=translator, fixture=fixture
+            )
+            for record in records
+        )
         + "</ul>"
     )
 
 
-def _render_lifecycle(view: AtlasViewModel, *, query_context: QueryContext) -> str:
+def _render_lifecycle(
+    view: AtlasViewModel,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    fixture: bool,
+) -> str:
     by_type: dict[str, list[AtlasRecord]] = {record_type: [] for record_type in LIFECYCLE_SPINE}
     extras: list[AtlasRecord] = []
     for record in view.records:
@@ -578,39 +635,80 @@ def _render_lifecycle(view: AtlasViewModel, *, query_context: QueryContext) -> s
     sections: list[str] = []
     for index, record_type in enumerate(LIFECYCLE_SPINE, start=1):
         records = by_type[record_type]
-        count = len(records)
         body = (
-            _render_record_list(records, query_context=query_context)
+            _render_record_list(
+                records, query_context=query_context, translator=translator, fixture=fixture
+            )
             if records
-            else '<p class="atlas-muted">No records in this scope.</p>'
+            else f'<p class="atlas-muted">{escape(translator.t("atlas.lifecycle.empty"))}</p>'
         )
         sections.append(
             f'<article class="atlas-spine-step" data-record-type="{record_type}">'
             f'<div class="atlas-step-heading"><span class="atlas-step-index">{index}</span>'
-            f'<h3>{LIFECYCLE_LABELS[record_type]}</h3><span class="atlas-count">{count} records</span></div>{body}</article>'
+            f'<h3>{translator.label("atlas.lifecycle", record_type)}</h3>'
+            f'<span class="atlas-count">{escape(translator.count("atlas.count.records", len(records)))}'
+            f'</span></div>{body}</article>'
         )
     if extras:
         sections.append(
             '<article class="atlas-spine-step atlas-extra-records"><div class="atlas-step-heading">'
-            '<h3>Other record types</h3><span class="atlas-count">'
-            f"{len(extras)} records</span></div>{_render_record_list(extras, query_context=query_context)}</article>"
+            f'<h3>{escape(translator.t("atlas.lifecycle.other"))}</h3>'
+            f'<span class="atlas-count">{escape(translator.count("atlas.count.records", len(extras)))}</span>'
+            f'</div>{_render_record_list(extras, query_context=query_context, translator=translator, fixture=fixture)}</article>'
         )
     return (
-        '<section class="atlas-spine" aria-labelledby="atlas-spine-title"><h2 id="atlas-spine-title">Research lifecycle</h2>'
+        '<section class="atlas-spine" aria-labelledby="atlas-spine-title">'
+        f'<h2 id="atlas-spine-title">{escape(translator.t("atlas.lifecycle.title"))}</h2>'
         + "".join(sections)
         + "</section>"
     )
 
 
 def _render_special_records(
-    title: str, records: Sequence[AtlasRecord], *, query_context: QueryContext, section_id: str
+    title_key: str,
+    records: Sequence[AtlasRecord],
+    *,
+    query_context: QueryContext,
+    section_id: str,
+    translator: Translator,
+    fixture: bool,
 ) -> str:
     if not records:
         return ""
-    return f'<section class="atlas-section" id="{section_id}" aria-labelledby="{section_id}-title"><h2 id="{section_id}-title">{escape(title)}</h2>{_render_record_list(records, query_context=query_context)}</section>'
+    return (
+        f'<section class="atlas-section" id="{section_id}" aria-labelledby="{section_id}-title">'
+        f'<h2 id="{section_id}-title">{escape(translator.t(title_key))}</h2>'
+        f'{_render_record_list(records, query_context=query_context, translator=translator, fixture=fixture)}</section>'
+    )
 
 
-def _render_filters(view: AtlasViewModel, *, query_context: QueryContext) -> str:
+def _filter_option_label(key: str, value: str, translator: Translator) -> tuple[str, bool]:
+    domains = {"record_type": "atlas.lifecycle", "state": "atlas.state", "availability": "status"}
+    if key not in domains:
+        return translator.source_text(value), True
+    label = translator.label(domains[key], value)
+    if label.startswith("<code>") and label.endswith("</code>"):
+        # Native option elements accept text, not the <code> wrapper used for
+        # unknown open vocabulary elsewhere.
+        return label.removeprefix("<code>").removesuffix("</code>"), True
+    return label, False
+
+
+def _render_filter_option(
+    key: str, value: str, *, selected: bool, translator: Translator
+) -> str:
+    label, owner_text = _filter_option_label(key, value, translator)
+    selected_attr = " selected" if selected else ""
+    owner_attr = ' data-owner-text="true"' if owner_text else ""
+    return (
+        f'<option value="{escape(value, quote=True)}"{selected_attr}{owner_attr}>'
+        f'{label}</option>'
+    )
+
+
+def _render_filters(
+    view: AtlasViewModel, *, query_context: QueryContext, translator: Translator
+) -> str:
     values = {key: getattr(view.filters, key) or "" for key in _FILTER_KEYS}
     context_pairs = [
         (key, value)
@@ -639,23 +737,31 @@ def _render_filters(view: AtlasViewModel, *, query_context: QueryContext) -> str
     for key in _FILTER_KEYS:
         if key == "date":
             controls.append(
-                f'<label>Date <input name="date" value="{escape(values[key], quote=True)}" placeholder="YYYY-MM-DD"></label>'
+                f'<label>{escape(translator.t("atlas.filters.date"))} '
+                f'<input name="date" value="{escape(values[key], quote=True)}" '
+                f'placeholder="{escape(translator.t("atlas.filters.date_placeholder"), quote=True)}"></label>'
             )
             continue
         choices = "".join(
-            f'<option value="{escape(choice, quote=True)}"{(" selected" if values[key] == choice else "")}>{escape(choice)}</option>'
+            _render_filter_option(
+                key, choice, selected=values[key] == choice, translator=translator
+            )
             for choice in options[key]
         )
-        label = key.replace("_", " ").title()
+        label = translator.t(f"atlas.filters.{key}")
         controls.append(
-            f'<label>{escape(label)} <select name="{key}"><option value="">All</option>{choices}</select></label>'
+            f'<label>{escape(label)} <select name="{key}">'
+            f'<option value="">{escape(translator.t("atlas.filters.all"))}</option>'
+            f'{choices}</select></label>'
         )
     return (
-        '<form class="atlas-filters" action="/" method="get" aria-label="Atlas filters">'
+        f'<form class="atlas-filters" action="/" method="get" '
+        f'aria-label="{escape(translator.t("atlas.filters.aria"), quote=True)}">'
         '<input type="hidden" name="view" value="atlas">'
         f"{hidden}{''.join(controls)}"
-        '<button type="submit">Apply filters</button>'
-        f'<a class="atlas-clear" href="{escape(clear_href, quote=True)}">Clear</a></form>'
+        f'<button type="submit">{escape(translator.t("atlas.filters.apply"))}</button>'
+        f'<a class="atlas-clear" href="{escape(clear_href, quote=True)}">'
+        f'{escape(translator.t("atlas.filters.clear"))}</a></form>'
     )
 
 
@@ -663,9 +769,11 @@ def render_atlas(
     view_or_model: AtlasViewModel | ManagerReadModel,
     *,
     query_context: QueryContext = None,
+    translator: Translator | None = None,
 ) -> str:
     """Render an Atlas page fragment; the shared shell owns the document chrome."""
 
+    selected_translator = translator or Translator()
     view = (
         view_or_model
         if isinstance(view_or_model, AtlasViewModel)
@@ -674,74 +782,123 @@ def render_atlas(
         )
     )
     model = view.read_model
+    fixture = _is_fixture(model)
     context = _context_with_filters(view, query_context)
-    source_text = ", ".join(source.source_id for source in model.source_refs) or "None recorded"
-    observed = model.as_of or "Unavailable"
-    snapshot = model.snapshot_token or "Unavailable"
+    source_ids = [source.source_id for source in model.source_refs]
+    source_text = (
+        f'<span translate="no">{selected_translator.source_text(selected_translator.join(source_ids))}</span>'
+        if source_ids
+        else escape(selected_translator.t("atlas.none_recorded"))
+    )
+    observed = (
+        f'<span translate="no">{selected_translator.source_text(model.as_of)}</span>'
+        if model.as_of
+        else escape(selected_translator.t("atlas.unavailable"))
+    )
+    snapshot = (
+        f'<span translate="no">{selected_translator.source_text(model.snapshot_token)}</span>'
+        if model.snapshot_token
+        else escape(selected_translator.t("atlas.unavailable"))
+    )
+    intro = selected_translator.html(
+        "atlas.intro",
+        start=selected_translator.t("label.atlas.lifecycle.campaign"),
+        end=selected_translator.t("label.atlas.lifecycle.revalidation"),
+    )
     pieces = [
         '<div class="atlas-page" data-integration-hook="atlas-view">',
-        '<p class="eyebrow">Atlas overview · read-only</p>',
-        '<h1 class="page-title" data-page-title tabindex="-1">Atlas</h1>',
-        '<p class="page-intro">Navigate the research lifecycle from Campaign through Revalidation. '
-        "Counts describe recorded objects only; they do not establish success, ranking, or advice.</p>",
-        f'<p class="context-line atlas-context"><span><strong>Observed</strong> {escape(observed)}</span>'
-        f"<span><strong>Snapshot</strong> {escape(snapshot)}</span><span><strong>Sources</strong> {escape(source_text)}</span></p>",
-        render_status_block(model),
+        f'<p class="eyebrow">{escape(selected_translator.t("atlas.eyebrow"))}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">'
+        f'{escape(selected_translator.t("atlas.title"))}</h1>',
+        f'<p class="page-intro">{intro}</p>',
+        f'<p class="context-line atlas-context"><span><strong>'
+        f'{escape(selected_translator.t("atlas.observed"))}</strong> {observed}</span>'
+        f'<span><strong>{escape(selected_translator.t("atlas.snapshot"))}</strong> {snapshot}</span>'
+        f'<span><strong>{escape(selected_translator.t("atlas.sources"))}</strong> '
+        f'{source_text}</span></p>',
+        render_status_block(
+            _fixture_status_model(model, selected_translator) if fixture else model,
+            translator=selected_translator,
+        ),
     ]
     state = display_state_for(model)
     if state is DisplayState.EMPTY:
+        pieces.append(render_operational_state(DisplayState.EMPTY, translator=selected_translator))
+    pieces.append(_render_filters(view, query_context=context, translator=selected_translator))
+    if view.records:
         pieces.append(
-            render_operational_state(
-                DisplayState.EMPTY, detail="No records are present in this Atlas scope."
+            _render_lifecycle(
+                view, query_context=context, translator=selected_translator, fixture=fixture
             )
         )
-    pieces.append(_render_filters(view, query_context=context))
-    if view.records:
-        pieces.append(_render_lifecycle(view, query_context=context))
     if view.status_groups:
         rows = "".join(
-            f"<li><span>{escape(group.state)}</span><strong>{group.count}</strong></li>"
+            f'<li><span>{translator_label}</span><strong>{group.count}</strong></li>'
             for group in view.status_groups
+            if (translator_label := selected_translator.label("atlas.state", group.state))
         )
         pieces.append(
-            f'<section class="atlas-section" id="status-groups"><h2>Status groups</h2><ul class="atlas-count-list">{rows}</ul></section>'
+            f'<section class="atlas-section" id="status-groups">'
+            f'<h2>{escape(selected_translator.t("atlas.section.status_groups"))}</h2>'
+            f'<ul class="atlas-count-list">{rows}</ul></section>'
         )
     pieces.append(
         _render_special_records(
-            "Recently changed",
+            "atlas.section.recently_changed",
             view.recently_changed,
             query_context=context,
             section_id="recently-changed",
+            translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append(
         _render_special_records(
-            "Blocked or unavailable",
+            "atlas.section.blocked_or_unavailable",
             view.blocked_or_unavailable,
             query_context=context,
             section_id="blocked-unavailable",
+            translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append(
         _render_special_records(
-            "Unresolved conclusions",
+            "atlas.section.unresolved_conclusions",
             view.unresolved_conclusions,
             query_context=context,
             section_id="unresolved-conclusions",
+            translator=selected_translator,
+            fixture=fixture,
         )
     )
     if view.research_gaps:
-        gaps = "".join(
-            f'<li data-gap-id="{escape(gap.gap_id, quote=True)}"><strong>{escape(gap.title)}</strong>'
-            f"{f'<span>{escape(gap.detail)}</span>' if gap.detail else ''}</li>"
-            for gap in view.research_gaps
-        )
+        gap_markup: list[str] = []
+        for gap in view.research_gaps:
+            detail = (
+                _fixture_text(gap.detail, translator=selected_translator, fixture=fixture)
+                if gap.detail
+                else ""
+            )
+            gap_markup.append(
+                f'<li data-gap-id="{escape(gap.gap_id, quote=True)}">'
+                f'<strong>{_fixture_text(gap.title, translator=selected_translator, fixture=fixture)}</strong>'
+                f"{detail}</li>"
+            )
+        gaps = "".join(gap_markup)
         pieces.append(
-            f'<section class="atlas-section" id="research-gaps"><h2>Research gaps</h2><ul class="atlas-gap-list">{gaps}</ul></section>'
+            f'<section class="atlas-section" id="research-gaps">'
+            f'<h2>{escape(selected_translator.t("atlas.section.research_gaps"))}</h2>'
+            f'<ul class="atlas-gap-list">{gaps}</ul></section>'
         )
     pieces.append(
         _render_special_records(
-            "Navigable frontier", view.frontier, query_context=context, section_id="frontier"
+            "atlas.section.frontier",
+            view.frontier,
+            query_context=context,
+            section_id="frontier",
+            translator=selected_translator,
+            fixture=fixture,
         )
     )
     pieces.append("</div>")
@@ -769,6 +926,7 @@ def render_atlas_view(
     filters: AtlasFilters | None = None,
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
+    translator: Translator | None = None,
 ) -> str:
     """T5 integration hook: read and render the Atlas view without shell logic."""
 
@@ -780,6 +938,7 @@ def render_atlas_view(
             snapshot_token=snapshot_token,
         ),
         query_context=query_context,
+        translator=translator,
     )
 
 

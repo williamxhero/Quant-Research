@@ -35,6 +35,96 @@ uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
 uv run --directory manager-gui python -m manager_gui.web --fixture complete --port 8765
 ```
 
+## 语言与 `lang` 查询参数
+
+WebUI 只从 URL 的 `lang` 查询参数读取界面语言，不使用 cookie 或
+`Accept-Language`。默认语言为 `zh-CN`；`zh`、`zh_CN`、`zh-Hans`、`en-US` 和
+`en-GB` 会规范化为 `zh-CN` 或 `en`。未指定、空值和非法值回退到应用默认语言，
+并且不会继续出现在生成的内部链接或 GET 表单中。显式有效的语言会以规范值保留在
+内部链接、分页、筛选表单和语言切换器中；切换器使用普通链接，并保留原 URL 的全部
+查询状态（包括重复参数与空值）。可用 `manager-gui-web --lang {zh-CN,en}` 设置
+应用默认语言，URL 中显式的有效 `lang` 仍优先于该默认值。
+
+`/api/read-model` 的 ManagerReadModel v0 响应不包含语言状态，在不同 `lang` 或未
+指定语言时逐字节相同。`/api/export` 以及页面内嵌的导出载荷会从 `query` 和
+`query_params` 中剥离 `lang`，因此导出内容也与界面语言无关。
+
+## L2 共用层契约与 Exit Gate
+
+L2-T4 只验证共用层，不翻译页面专属正文。`ManagerGUIApp.render()` 为每个请求创建
+一个 `Translator`，并以关键字参数传给 17 个页面入口；`render_status_block`、
+`render_common_state`、`render_operational_state`、复制/导出/图谱表格 helper 的
+`translator` 也是必填关键字参数。页面入口可以继续保留默认值以兼容独立调用，但
+集成 shell 必须显式传递请求语言，不能在页面内重新推导语言。
+
+共用目录由 `web/i18n/catalog/` 按命名空间拥有：`shell.py`、`nav.py`、`status.py`、
+`interaction.py`、`client.py` 和 `pagination.py` 只能通过 `CatalogRegistry` 追加注册，
+不得覆盖已有键。L3 页面目录由 `l3_atlas_story.py`、`l3_genome.py` 和
+`l3_method_history.py` 分别拥有；三个目录只在 `catalog/__init__.py` 中各注册一次。
+L4 页面目录由 `l4_memory.py`、`l4_evidence.py` 和 `l4_lineage.py` 分别拥有；三个目录也只在
+`catalog/__init__.py` 中各注册一次。注册表拒绝重复键，页面 helper 可接受 shell 传入的请求
+`Translator` 并仅补齐完全相同的页面目录项。L3/L4 页面不得修改共用目录、`models.py` 或共享
+shell；L5 Search 与 Portal 页面文案及 Exit Gate 保留给后续 ticket，不纳入 L4 页面迁移。
+
+L3 已迁移路由集合位于 `testing/i18n.py`，固定为八条：`atlas`、`stories`、
+`strategies`、`strategy-conditions`、`strategy-genome-comparison`、`methodology`、
+`history` 和 `source-documents`。因此 17 路由的 11 个 fixture 状态 × 2 种语言
+（374 份文档）执行共用 shell 与已迁移页面的伪语言泄漏、DOM 骨架、语言文字、
+链接/表单和可访问性审计。L3 专项还覆盖 Stories 的 `narrative`、`evidence`、
+`timeline` 三种模式，以及 History/Source Documents 的 `A0`、`S3`、`CPA`、`V1.x`
+四个范围；Atlas 到 Research Story 的内部链接必须保留 `fixture`、记录 ID 和显式
+语言状态。
+
+L4 新增迁移 `memory`、`memory-failures`、`failure-patterns`、`evidence`、`lineage`、
+`evidence-object-comparison` 和 `derived-failure-grouping` 七条路由，加入同一伪语言、DOM、
+语言文字、链接/表单及可访问性审计。17 条路由 × 11 种共用 fixture 状态 × 2 种语言仍执行
+374 份文档；Search 与 Portal 保持在 L5，不纳入已迁移页面文案审计。L4 页面专项还覆盖记忆、
+失败和证据详情，Lineage 边界/错误状态、Evidence 比较分页及 Derived 分组筛选。Evidence Trace
+必须使用 shell 的请求 `Translator`，其视图不改读模型、API 或导出内容。
+
+L5 handoff：Search 与 Portal 页面目录、页面专属中英文文案审计及其 Exit Gate 仍待 #660；
+后续集成在现有注册表中追加各自目录，不修改 L2 共用目录、L3/L4 目录或 `models.py`。
+
+L3 页面入口接收 shell 创建的请求 `Translator`，不可在页面内重新推导语言。封闭枚举
+（生命周期、模式、事件类型、文档类型和索引状态）通过 `translator.label`，计数通过
+`translator.count`；程序生成的说明使用目录键和具名参数。属主标题、摘要、reason、
+错误信息、ID、locator、范围和时间戳保持原文并只转义一次，机器值用
+`translate="no"` 标记。Qualification 仍表示历史研究成熟度，不表示生产资格或交易准入。
+
+页面属主自由文本（标题、摘要、`reason`、错误信息、ID、locator 和时间戳）原样保留，
+由 `Translator.source_text()` 只转义一次；L2 不翻译、不猜测其源语言。程序生成的
+共用文案必须走目录，状态块必须用当前语言的状态标题和说明，再以带标签的“来源说明”
+显示属主 `reason`。内联客户端文案通过 `<script type="application/json" id="gui-messages">`
+注入；可执行 JS 保持静态且不含用户可见文案。CSS 在 `:lang(zh-CN)` 下使用中文字体
+栈并取消中文标签的大写/字距规则，不保留双语 `X / 中文` 或旧的 `*-label-zh` 选择器。
+
+L2 Exit Gate 的精确检查命令（均从 QuantResearch 根目录执行）为：
+
+```console
+uv run --directory manager-gui pytest -q
+uv run --directory manager-gui ruff check .
+uv run --directory manager-gui --with mypy --with pytest mypy --python-version 3.11 src
+uv build --directory manager-gui
+python -m compileall -q manager-gui/src
+git diff --check
+```
+
+此外必须运行 wheel 安装后的无源码 shell 冒烟：安装刚构建的
+`manager-gui/dist/quantresearch_manager_gui-*.whl` 到临时环境，分别渲染默认
+`zh-CN` 和 `?lang=en`；并启动 `manager-gui-web --fixture complete`，对全部 17 个
+`view` 执行中文/英文 HTML、`/api/read-model`、`/api/export` GET，确认 API 与导出
+逐字节一致，且 `/`、两个 API、`/health` 的 `POST`/`PUT`/`PATCH`/`DELETE` 均返回
+`405 Allow: GET, HEAD`。这些检查不改变 fixture 的只读性质，也不接触 SQLite、私有存储
+或任意文件系统。
+
+## 中文排版与术语规范
+
+- 中文文案使用全角标点；不得写成 ASCII 逗号紧跟汉字。并列项目使用「、」，句内连接使用「和」或「与」，不以斜线代替连接词。
+- 中文与拉丁词之间保留一个半角空格，例如「原始 JSON」「API 不可用」；`ID`、`JSON`、`API`、`URL`、`SHA-256`、`Schema`、`GUI` 和 `ManagerReadModel v0` 是允许保留的拉丁词。
+- 术语统一从 `manager_gui.web.i18n.glossary.TERMS` 取值：`artifact` 为「制品」，`lineage` 为「谱系」，`Evidence Ledger` 为「证据账本」，`Candidate` 为「候选对象」，`Known` 为「已记录」，`Blocked` 为「已阻塞」，`Stale` 为「已过时」，`fixture` 为「样例数据」，`reverse citations` 为「被引用于」，`Portal` 为「报告门户」。
+- `Candidate` 是 Factor、Model、Strategy 的共同总称；「候选策略」只用于明确的 Strategy 子类。`Qualification` 暂定为「资格评定」，其关口语义仍待 owner 确认。
+- 术语禁用译法由 glossary 的 `forbidden_zh` 冻结并由测试审计；页面目录不得自行创造同义译法。
+
 Open `http://127.0.0.1:8765/`. The shared shell mounts Atlas, Research Story,
 Genome, Genome Conditions, Genome Comparison, Memory, Memory Failures,
 Failure Patterns, Evidence, Lineage, Evidence Comparison, Derived Failure
@@ -552,3 +642,20 @@ Evidence/lineage/comparison reads, S5 consumes Methodology/History/document-inde
 reads, and S6 composes those read seams for Search and Portal integration. S6-T4
 owns the shared-route mounts and final regression/accessibility exit gate without
 changing any domain repository or adding a mutation seam.
+
+## Locale-aware shared shell
+
+The shared shell defaults to Simplified Chinese (`zh-CN`). Add `?lang=en` to any
+HTML route for English; the locale is URL state, not a cookie or an
+`Accept-Language` negotiation. Supported aliases (`zh`, `zh-Hans`, `en-US`, and
+`en-GB`) are normalized to the canonical URL tokens.
+
+Shell and navigation labels are resolved through the per-request `Translator`.
+The no-JavaScript language switcher preserves the full query string, including
+repeated opaque parameters, and exposes `lang`, `hreflang`, and the current
+locale state. Internal navigation and GET controls retain explicit language state
+when it was requested; raw JSON and API/export payloads remain language-neutral.
+
+Page-specific prose is intentionally not translated by the shared shell slice.
+Its page hooks receive the same request translator so later route migrations can
+add catalog entries without introducing a second i18n layer.
