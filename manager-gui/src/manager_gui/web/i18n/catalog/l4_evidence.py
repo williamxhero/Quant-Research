@@ -139,7 +139,7 @@ ENTRIES: Mapping[str, M] = {
     "comparison.title": M("证据 / 对象比较", "Evidence/object comparison"),
     "comparison.intro": M(
         "这是通用对象比较协议，不是策略基因组比较。这里只显示声明的 11 个比较轴；缺失值不会用默认值填充。",
-        "This is the general object comparison contract, not the Strategy Genome comparison. Only the eleven declared axes are shown; no missing value is filled with a default.",
+        "This is the general object comparison contract, not the S2 Strategy Genome comparison. Only the eleven declared axes are shown; no missing value is filled with a default.",
     ),
     "comparison.observed": M("截至时间", "Observed"),
     "comparison.snapshot": M("快照", "Snapshot"),

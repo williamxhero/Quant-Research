@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from html import escape
 from typing import TypeAlias, cast
@@ -872,6 +872,23 @@ def _reason(
     return f'<span data-owner-text="true">{escape(value)}</span>'
 
 
+def _fixture_status_model(
+    model: ManagerReadModel, translator: Translator, *, is_fixture: bool
+) -> ManagerReadModel:
+    if not is_fixture:
+        return model
+
+    def localize(value: str | None) -> str | None:
+        if value is None:
+            return None
+        key = _COMPARISON_FIXTURE_TEXT.get(value)
+        return translator.t(key) if key is not None else value
+
+    availability = replace(model.availability, reason=localize(model.availability.reason))
+    errors = tuple(replace(error, message=localize(error.message) or error.message) for error in model.errors)
+    return replace(model, availability=availability, errors=errors)
+
+
 def render_evidence_comparison(
     view_or_model: EvidenceComparisonViewModel | ManagerReadModel,
     *,
@@ -911,9 +928,12 @@ def render_evidence_comparison(
         f'<p class="eyebrow">{escape(t("comparison.eyebrow"))}</p>',
         f'<h1 class="page-title" data-page-title tabindex="-1">{escape(t("comparison.title"))}</h1>',
         f'<p class="page-intro">{escape(t("comparison.intro"))}</p>',
-        f'<p class="context-line comparison-context"><span><strong>{escape(t("comparison.observed"))}</strong> {escape(model.as_of or t("comparison.unavailable"))}</span>'
-        f'<span><strong>{escape(t("comparison.snapshot"))}</strong> {escape(model.snapshot_token or t("comparison.unavailable"))}</span></p>',
-        render_status_block(model, translator=selected_translator),
+        f'<p class="context-line comparison-context"><span><strong>{escape(t("comparison.observed"))}</strong> <span translate="no">{escape(model.as_of or t("comparison.unavailable"))}</span></span>'
+        f'<span><strong>{escape(t("comparison.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or t("comparison.unavailable"))}</span></span></p>',
+        render_status_block(
+            _fixture_status_model(model, selected_translator, is_fixture=is_fixture),
+            translator=selected_translator,
+        ),
     ]
     if comparison is None:
         status = model.availability.status
