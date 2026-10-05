@@ -799,13 +799,13 @@ def _owner_display(
     *,
     fixture: bool,
     missing_key: str = "l5.portal.missing_unconfirmed",
-    fixture_key: str | None = None,
     opaque: bool = False,
 ) -> str:
     if value is None:
         return escape(translator.t(missing_key))
-    if fixture and fixture_key is not None:
-        return escape(translator.t(fixture_key))
+    translated = _fixture_copy(value, translator, fixture=fixture)
+    if translated is not None:
+        return escape(translated)
     attribute = 'translate="no"' if opaque else 'data-owner-text="true"'
     return f'<span {attribute}>{translator.source_text(value)}</span>'
 
@@ -858,7 +858,7 @@ def _render_publication(
         f"<h2>{escape(translator.t('l5.portal.source.heading'))}</h2>"
         "<dl class=\"portal-details\">"
         f'<div><dt>{escape(translator.t("l5.portal.source.publication_id"))}</dt><dd><span translate="no">{translator.source_text(publication.publication_id)}</span></dd></div>'
-        f'<div><dt>{escape(translator.t("l5.portal.source.title"))}</dt><dd>{_owner_display(publication.title, translator, fixture=fixture, fixture_key="l5.portal.fixture.source_title")}</dd></div>'
+        f'<div><dt>{escape(translator.t("l5.portal.source.title"))}</dt><dd>{_owner_display(publication.title, translator, fixture=fixture)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.source.version"))}</dt><dd>{_owner_display(publication.version, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.source.revision"))}</dt><dd>{_owner_display(publication.revision, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.source.published_at"))}</dt><dd>{_owner_display(publication.published_at, translator, fixture=fixture, opaque=True)}</dd></div>'
@@ -911,7 +911,7 @@ def _render_artifact(
         f"<h2>{escape(translator.t('l5.portal.artifact.heading'))}</h2>"
         "<dl class=\"portal-details\">"
         f'<div><dt>{escape(translator.t("l5.portal.artifact.id"))}</dt><dd><span translate="no">{translator.source_text(artifact.artifact_id)}</span></dd></div>'
-        f'<div><dt>{escape(translator.t("l5.portal.artifact.title"))}</dt><dd>{_owner_display(artifact.title, translator, fixture=fixture, fixture_key="l5.portal.fixture.artifact_title")}</dd></div>'
+        f'<div><dt>{escape(translator.t("l5.portal.artifact.title"))}</dt><dd>{_owner_display(artifact.title, translator, fixture=fixture)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.locator"))}</dt><dd>{locator}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.renderer"))}</dt><dd>{_owner_display(artifact.renderer, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.renderer_version"))}</dt><dd>{_owner_display(artifact.renderer_version, translator, fixture=fixture, opaque=True)}</dd></div>'
@@ -939,7 +939,7 @@ def _render_report_index(
         rows.append(
             f'<article class="portal-report-entry" data-report-id="{escape(entry.report_id or "", quote=True)}" '
             f'data-portal-state="{escape(state_copy, quote=True)}">'
-            f"<h2>{_owner_display(entry.title or entry.report_id, translator, fixture=fixture, fixture_key='l5.portal.fixture.artifact_title', missing_key='l5.portal.untitled_report', opaque=entry.title is None)}</h2>"
+            f"<h2>{_owner_display(entry.title or entry.report_id, translator, fixture=fixture, missing_key='l5.portal.untitled_report', opaque=entry.title is None)}</h2>"
             f"{_render_publication(entry.source_publication, query_context=query_context, report_id=entry.report_id, translator=translator, fixture=fixture)}"
             f"{_render_artifact(entry.generated_artifact, state=entry.artifact_state, query_context=query_context, report_id=entry.report_id, translator=translator, fixture=fixture)}"
             "</article>"

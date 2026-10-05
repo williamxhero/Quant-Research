@@ -231,3 +231,139 @@ def test_public_hook_has_stable_contract_marker() -> None:
         ),
         query_context={"fixture": "complete", "page": 4},
     )
+
+
+def test_complete_fixture_localizes_page_copy_and_preserves_opaque_values() -> None:
+    model = build_portal_fixture("complete")
+    chinese = render_portal(model)
+    english = render_portal(model, translator=Translator("en"))
+
+    assert "报告门户" in chinese
+    assert "来源发布记录" in chinese
+    assert "生成制品" in chinese
+    assert "渲染器" in chinese
+    assert "核验状态" in chinese
+    assert "重建状态" in chinese
+    assert "摘要哈希" in chinese
+    assert "样例策略报告来源发布记录" in chinese
+    assert "样例静态策略报告" in chinese
+    assert "Strategy Reporting Portal" not in chinese
+    assert "Source publication" not in chinese
+    assert "Generated artifact" not in chinese
+    assert "Strategy Reporting Portal" in english
+    assert "Source publication" in english
+    assert "Generated artifact" in english
+    assert "Fixture Strategy Reporting source publication" in english
+    assert "Fixture static Strategy Report" in english
+    for opaque in (
+        "source-publication-fixture-1",
+        "generated-artifact-fixture-1",
+        "strategy-reporting-static",
+        "renderer-v1",
+        "sha256:fixture-report-artifact-v1",
+        "fixture://strategy-reporting/source/publication-1",
+    ):
+        assert opaque in chinese
+        assert opaque in english
+    assert 'data-boundary="static-publication-not-canonical"' in chinese
+    assert "rebuild" not in chinese.lower() or "重建" in chinese
+    assert "run" not in chinese.lower()
+
+
+def test_portal_states_have_localized_labels_in_both_locales() -> None:
+    expected = {
+        "complete": ("ready", "就绪", "Ready"),
+        "missing": ("missing", "未记录", "Missing"),
+        "not_generated": ("not-generated", "尚未生成", "Not generated"),
+        "partial": ("partial", "部分可用", "Partial"),
+        "integrity_failure": ("integrity-failure", "完整性校验失败", "Integrity failure"),
+        "api_unavailable": ("api-unavailable", "API 不可用", "API unavailable"),
+    }
+    for fixture, (state, chinese_label, english_label) in expected.items():
+        chinese = render_portal(build_portal_fixture(fixture))
+        english = render_portal(build_portal_fixture(fixture), translator=Translator("en"))
+        assert f'data-portal-state="{state}"' in chinese
+        assert chinese_label in chinese
+        assert english_label in english
+        assert f'data-portal-state="{state}"' in english
+
+
+def test_portal_index_aria_and_context_links_are_localized_and_stable() -> None:
+    model = _portal_model(
+        {
+            "reports": [
+                {
+                    "report_id": "report-a",
+                    "title": "Report A",
+                    "source_publication": {"publication_id": "publication-a"},
+                    "generated_artifact": {"artifact_id": "artifact-a"},
+                },
+                {
+                    "report_id": "report-b",
+                    "title": "Report B",
+                    "source_publication": {"publication_id": "publication-b"},
+                    "artifact_state": "not_generated",
+                },
+            ]
+        }
+    )
+    context = "/?view=portal&fixture=complete&lang=en&panel=events&report=keep"
+    english = render_portal(model, query_context=context, translator=Translator("en"))
+    chinese = render_portal(model, query_context=context)
+    assert 'aria-label="Report index"' in english
+    assert 'aria-label="报告索引"' in chinese
+    for document in (english, chinese):
+        assert "panel=events" in document
+        assert "report=keep" in document
+        assert "report_id=report-a" in document
+        assert "artifact_id=artifact-a" in document
+        assert "source_publication_id=publication-b" in document
+        assert '<button' not in document
+
+
+def test_portal_pseudo_locale_marks_every_page_owned_string() -> None:
+    pseudo = render_portal(
+        build_portal_fixture("complete"), translator=Translator("en", pseudo=True)
+    )
+    assert "⟦Strategy Reporting Portal" in pseudo
+    assert "⟦Source publication" in pseudo
+    assert "⟦Generated artifact" in pseudo
+    assert "source-publication-fixture-1" in pseudo
+
+
+def test_portal_keeps_owner_text_escaped_and_raw_model_language_neutral() -> None:
+    owner_title = '<script>alert("owner")</script> & owner'
+    owner_digest = 'sha256:<x>&"'
+    model = _portal_model(
+        {
+            "report_id": 'report-<id>"',
+            "title": owner_title,
+            "source_publication": {
+                "publication_id": 'publication-<id>"',
+                "title": owner_title,
+                "locator": "https://example.test/source?a=1&b=2",
+            },
+            "generated_artifact": {
+                "artifact_id": 'artifact-<id>"',
+                "title": owner_title,
+                "locator": "javascript:alert(1)",
+                "renderer": owner_title,
+                "renderer_version": "owner-v1",
+                "verify_status": "verified",
+                "rebuild_status": "not_requested",
+                "digest": owner_digest,
+            },
+        }
+    )
+    before = model.to_json()
+    chinese = render_portal(model)
+    english = render_portal(model, translator=Translator("en"))
+    assert model.to_json() == before
+    for document in (chinese, english):
+        assert owner_title not in document
+        assert "&lt;script&gt;alert(&quot;owner&quot;)&lt;/script&gt; &amp; owner" in document
+        assert "javascript:alert(1)" not in document
+        assert "owner-v1" in document
+        assert "sha256:&lt;x&gt;&amp;&quot;" in document
+        assert 'data-owner-text="true"' in document
+        assert "report-&lt;id&gt;" in document

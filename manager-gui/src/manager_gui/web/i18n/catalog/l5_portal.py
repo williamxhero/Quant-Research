@@ -11,18 +11,19 @@ from collections.abc import Mapping
 
 from ..translator import M, Translator, validate_entry
 
-
 ENTRIES: Mapping[str, M] = {
     # Portal page chrome and the static-publication boundary.
     "l5.portal.eyebrow": M("报告门户 · 只读", "Strategy Reporting Portal · read-only"),
     "l5.portal.title": M("报告门户", "Strategy Reporting Portal"),
     "l5.portal.intro": M(
         "此静态报告门户索引将来源发布记录与生成制品、渲染器身份和核验元数据分开显示。",
-        "This static report portal index separates a source publication from its generated artifact, renderer identity, and verification metadata.",
+        "This static report portal index separates a source publication from its generated "
+        "artifact, renderer identity, and verification metadata.",
     ),
     "l5.portal.boundary": M(
         "只读发布内容不是规范研究状态。此视图不会触发重建或运行，也不会从制品推断属主事实。",
-        "Read-only publication is not canonical research state. This view never triggers rebuild or run, and never infers owner facts from an artifact.",
+        "Read-only publication is not canonical research state. This view never triggers "
+        "rebuild or run, and never infers owner facts from an artifact.",
     ),
     "l5.portal.boundary_heading": M("只读发布", "Read-only publication"),
     "l5.portal.report": M("报告", "Report"),
@@ -159,7 +160,8 @@ ENTRIES: Mapping[str, M] = {
     ),
     "l5.portal.fixture.partial_reason": M(
         "来源发布记录和制品均存在，但渲染器核验元数据不完整。",
-        "The publication and artifact are present, but renderer verification metadata is incomplete.",
+        "The publication and artifact are present, but renderer verification metadata "
+        "is incomplete.",
     ),
     "l5.portal.fixture.partial_error": M(
         "未记录渲染器版本和核验状态。",
@@ -175,7 +177,7 @@ ENTRIES: Mapping[str, M] = {
 def page_translator(translator: Translator | None = None) -> Translator:
     """Return a translator extended with the additive Portal namespace."""
 
-    from .. import CatalogError, REGISTRY, merge
+    from .. import REGISTRY, CatalogError
 
     base = translator or Translator()
     catalog = dict(REGISTRY.entries)
