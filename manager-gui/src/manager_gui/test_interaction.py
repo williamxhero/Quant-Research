@@ -240,7 +240,7 @@ def test_status_vocabulary_is_identical_on_every_mounted_page(
     assert (
         f'data-status="{status}" data-display-state="{expected_display}"'
     ) in main
-    assert 'lang="zh-CN"' in main
+    assert 'lang="zh-CN"' in document
     if fixture in UNUSABLE:
         # A source that could not be determined must never be relabeled as an empty scope.
         assert 'data-display-state="empty"' not in main
