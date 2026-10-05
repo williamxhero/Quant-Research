@@ -89,6 +89,8 @@ def _label(
         domain = "evidence_outcome"
     else:
         domain = "artifact_verification"
+    if isinstance(value, EvidenceLevel):
+        return translator.t(f"label.l4_evidence_level.{value.value}")
     return translator.label(domain, value.value)
 
 

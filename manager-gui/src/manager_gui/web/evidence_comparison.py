@@ -801,13 +801,13 @@ EvidenceObjectComparisonViewModel = EvidenceComparisonViewModel
 
 def _owner(value: object, translator: Translator) -> str:
     if value is None or value is _MISSING:
-        return f'<span>{escape(translator.t("comparison.not_recorded_value"))}</span>'
+        return f'<span>{escape(translator.t("l4.evidence_comparison.not_recorded_value"))}</span>'
     return f'<span data-owner-text="true">{escape(_display(value))}</span>'
 
 
 def _render_refs(refs: Sequence[ComparisonSourceRef], translator: Translator) -> str:
     if not refs:
-        return escape(translator.t("comparison.not_recorded_value"))
+        return escape(translator.t("l4.evidence_comparison.not_recorded_value"))
     values: list[str] = []
     for ref in refs:
         label = f'<span data-owner-text="true" translate="no">{escape(ref.source_id)}</span>'
@@ -822,36 +822,36 @@ def _render_refs(refs: Sequence[ComparisonSourceRef], translator: Translator) ->
 
 
 def _axis_label(axis: ComparisonAxis, translator: Translator) -> str:
-    return translator.label("comparison_axis", axis.value)
+    return translator.t(f"label.l4_comparison_axis.{axis.value}")
 
 
 def _state_label(state: AxisComparisonState, translator: Translator) -> str:
-    return translator.label("comparison_state", state.value)
+    return translator.t(f"label.l4_comparison_state.{state.value}")
 
 
 def _outcome_label(outcome: ComparisonOutcome, translator: Translator) -> str:
-    return translator.label("comparison_outcome", outcome.value)
+    return translator.t(f"label.l4_comparison_outcome.{outcome.value}")
 
 
 _REASON_KEYS: Mapping[str, str] = {
-    "The published axis values are equal.": "comparison.reason.equal",
-    "The published axis values differ.": "comparison.reason.different",
-    "The axis is not published for both objects.": "comparison.reason.missing",
-    "The published axis values are incompatible.": "comparison.reason.incomparable",
-    "The published comparison marks this axis incompatible.": "comparison.reason.declared_incompatible",
-    "The declared object axes are not complete or compatible.": "comparison.reason.declared",
-    "Synthetic public object comparison fixture.": "comparison.fixture_reason",
+    "The published axis values are equal.": "l4.evidence_comparison.reason.equal",
+    "The published axis values differ.": "l4.evidence_comparison.reason.different",
+    "The axis is not published for both objects.": "l4.evidence_comparison.reason.missing",
+    "The published axis values are incompatible.": "l4.evidence_comparison.reason.incomparable",
+    "The published comparison marks this axis incompatible.": "l4.evidence_comparison.reason.declared_incompatible",
+    "The declared object axes are not complete or compatible.": "l4.evidence_comparison.reason.declared",
+    "Synthetic public object comparison fixture.": "l4.evidence_comparison.fixture_reason",
 }
 
 
 _COMPARISON_FIXTURE_TEXT: Mapping[str, str] = {
-    "The approved object comparison read seam is blocked.": "fixture.comparison.blocked_reason",
-    "The object comparison source is stale.": "fixture.comparison.stale_reason",
-    "The object comparison artifact failed integrity validation.": "fixture.comparison.integrity_reason",
-    "The approved public object comparison API is unavailable.": "fixture.comparison.api_reason",
-    "No explicit object comparison is recorded in this scope.": "comparison.no_explicit",
-    "The fixture contains the published general object comparison.": "fixture.comparison.read_reason",
-    "Only part of the object comparison is published in this scope.": "fixture.comparison.partial_reason",
+    "The approved object comparison read seam is blocked.": "fixture.l4_evidence_comparison.blocked_reason",
+    "The object comparison source is stale.": "fixture.l4_evidence_comparison.stale_reason",
+    "The object comparison artifact failed integrity validation.": "fixture.l4_evidence_comparison.integrity_reason",
+    "The approved public object comparison API is unavailable.": "fixture.l4_evidence_comparison.api_reason",
+    "No explicit object comparison is recorded in this scope.": "l4.evidence_comparison.no_explicit",
+    "The fixture contains the published general object comparison.": "fixture.l4_evidence_comparison.read_reason",
+    "Only part of the object comparison is published in this scope.": "fixture.l4_evidence_comparison.partial_reason",
 }
 
 
@@ -863,7 +863,7 @@ def _reason(
     generated: bool,
 ) -> str:
     if value is None:
-        return escape(translator.t("comparison.not_recorded_value"))
+        return escape(translator.t("l4.evidence_comparison.not_recorded_value"))
     key = _COMPARISON_FIXTURE_TEXT.get(value) if is_fixture else None
     if key is None and generated:
         key = _REASON_KEYS.get(value)
@@ -911,7 +911,7 @@ def render_evidence_comparison(
     outcome = comparison.result if comparison is not None else None
     result = outcome.value if outcome is not None else NOT_RECORDED
     result_label = _outcome_label(outcome, selected_translator) if outcome is not None else escape(
-        selected_translator.t("comparison.not_recorded_value")
+        selected_translator.t("l4.evidence_comparison.not_recorded_value")
     )
     refs = (
         comparison.source_refs
@@ -925,11 +925,11 @@ def render_evidence_comparison(
     pieces = [
         f'<section class="evidence-comparison-page" data-integration-hook="{EVIDENCE_COMPARISON_INTEGRATION_HOOK}" '
         f'data-comparison-result="{escape(result, quote=True)}" data-read-status="{model.availability.status.value}">',
-        f'<p class="eyebrow">{escape(t("comparison.eyebrow"))}</p>',
-        f'<h1 class="page-title" data-page-title tabindex="-1">{escape(t("comparison.title"))}</h1>',
-        f'<p class="page-intro">{escape(t("comparison.intro"))}</p>',
-        f'<p class="context-line comparison-context"><span><strong>{escape(t("comparison.observed"))}</strong> <span translate="no">{escape(model.as_of or t("comparison.unavailable"))}</span></span>'
-        f'<span><strong>{escape(t("comparison.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or t("comparison.unavailable"))}</span></span></p>',
+        f'<p class="eyebrow">{escape(t("l4.evidence_comparison.eyebrow"))}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{escape(t("l4.evidence_comparison.title"))}</h1>',
+        f'<p class="page-intro">{escape(t("l4.evidence_comparison.intro"))}</p>',
+        f'<p class="context-line comparison-context"><span><strong>{escape(t("l4.evidence_comparison.observed"))}</strong> <span translate="no">{escape(model.as_of or t("l4.evidence_comparison.unavailable"))}</span></span>'
+        f'<span><strong>{escape(t("l4.evidence_comparison.snapshot"))}</strong> <span translate="no">{escape(model.snapshot_token or t("l4.evidence_comparison.unavailable"))}</span></span></p>',
         render_status_block(
             _fixture_status_model(model, selected_translator, is_fixture=is_fixture),
             translator=selected_translator,
@@ -939,15 +939,15 @@ def render_evidence_comparison(
         status = model.availability.status
         if status is ReadModelStatus.MISSING:
             state = "empty"
-            heading = t("comparison.not_recorded")
-            detail = t("comparison.no_explicit")
+            heading = t("l4.evidence_comparison.not_recorded")
+            detail = t("l4.evidence_comparison.no_explicit")
         else:
             if status not in _READABLE_STATUSES:
                 state = "error"
             else:
                 state = "empty" if model.availability.complete else "partial"
-            heading = t("comparison.not_recorded") if state == "empty" else t("comparison.not_determined")
-            detail = model.availability.reason or t("comparison.not_determined")
+            heading = t("l4.evidence_comparison.not_recorded") if state == "empty" else t("l4.evidence_comparison.not_determined")
+            detail = model.availability.reason or t("l4.evidence_comparison.not_determined")
             if is_fixture and (fixture_key := _COMPARISON_FIXTURE_TEXT.get(detail)) is not None:
                 detail = t(fixture_key)
         pieces.append(
@@ -963,17 +963,17 @@ def render_evidence_comparison(
             generated=generated_reason,
         )
         left_type = _owner(comparison.left_object_type, selected_translator)
-        left_id = f'<span data-owner-text="true" translate="no">{escape(comparison.left_object_id or t("comparison.not_recorded_value"))}</span>'
+        left_id = f'<span data-owner-text="true" translate="no">{escape(comparison.left_object_id or t("l4.evidence_comparison.not_recorded_value"))}</span>'
         right_type = _owner(comparison.right_object_type, selected_translator)
-        right_id = f'<span data-owner-text="true" translate="no">{escape(comparison.right_object_id or t("comparison.not_recorded_value"))}</span>'
+        right_id = f'<span data-owner-text="true" translate="no">{escape(comparison.right_object_id or t("l4.evidence_comparison.not_recorded_value"))}</span>'
         pieces.append(
             f'<section class="comparison-summary" data-comparison-kind="general-object">'
             f'<p class="comparison-result" data-comparison-result="{comparison.result.value}">'
-            f'{selected_translator.html("comparison.result_line", result=result_label)}</p>'
+            f'{selected_translator.html("l4.evidence_comparison.result_line", result=result_label)}</p>'
             f'<p>{reason_text}</p>'
-            f'<dl class="comparison-provenance"><div><dt>{escape(t("comparison.left_object"))}</dt><dd>{left_type} / {left_id}</dd></div>'
-            f'<div><dt>{escape(t("comparison.right_object"))}</dt><dd>{right_type} / {right_id}</dd></div>'
-            f'<div><dt>{escape(t("comparison.source_refs"))}</dt><dd>{_render_refs(refs, selected_translator)}</dd></div></dl></section>'
+            f'<dl class="comparison-provenance"><div><dt>{escape(t("l4.evidence_comparison.left_object"))}</dt><dd>{left_type} / {left_id}</dd></div>'
+            f'<div><dt>{escape(t("l4.evidence_comparison.right_object"))}</dt><dd>{right_type} / {right_id}</dd></div>'
+            f'<div><dt>{escape(t("l4.evidence_comparison.source_refs"))}</dt><dd>{_render_refs(refs, selected_translator)}</dd></div></dl></section>'
         )
         rows_list: list[str] = []
         for axis in comparison.axes:
@@ -994,21 +994,21 @@ def render_evidence_comparison(
                 f'<td>{reason}</td><td>{_render_refs(axis.source_refs, selected_translator)}</td></tr>'
             )
         pieces.append(
-            f'<section class="comparison-axes"><h2>{escape(t("comparison.axes_heading"))}</h2>'
-            f'<table><caption>{escape(t("comparison.axes_caption"))}</caption><thead><tr>'
-            f'<th>{escape(t("comparison.axis"))}</th><th>{escape(t("comparison.state"))}</th>'
-            f'<th>{escape(t("comparison.left"))}</th><th>{escape(t("comparison.right"))}</th>'
-            f'<th>{escape(t("comparison.reason"))}</th><th>{escape(t("comparison.source_refs"))}</th></tr></thead>'
+            f'<section class="comparison-axes"><h2>{escape(t("l4.evidence_comparison.axes_heading"))}</h2>'
+            f'<table><caption>{escape(t("l4.evidence_comparison.axes_caption"))}</caption><thead><tr>'
+            f'<th>{escape(t("l4.evidence_comparison.axis"))}</th><th>{escape(t("l4.evidence_comparison.state"))}</th>'
+            f'<th>{escape(t("l4.evidence_comparison.left"))}</th><th>{escape(t("l4.evidence_comparison.right"))}</th>'
+            f'<th>{escape(t("l4.evidence_comparison.reason"))}</th><th>{escape(t("l4.evidence_comparison.source_refs"))}</th></tr></thead>'
             f'<tbody>{"".join(rows_list)}</tbody></table></section>'
         )
         pieces.append(
             f'<section class="comparison-boundary" data-statistics="not-generated">'
-            f'<h2>{escape(t("comparison.interpretation"))}</h2>'
-            f'<p>{escape(t("comparison.boundary"))}</p></section>'
+            f'<h2>{escape(t("l4.evidence_comparison.interpretation"))}</h2>'
+            f'<p>{escape(t("l4.evidence_comparison.boundary"))}</p></section>'
         )
     if include_raw_json:
         pieces.append(
-            f'<details class="raw-json comparison-raw-json"><summary>{escape(t("comparison.raw_json"))}</summary>'
+            f'<details class="raw-json comparison-raw-json"><summary>{escape(t("l4.evidence_comparison.raw_json"))}</summary>'
             f'<pre>{escape(view.raw_json)}</pre></details>'
         )
     pieces.append("</section>")
