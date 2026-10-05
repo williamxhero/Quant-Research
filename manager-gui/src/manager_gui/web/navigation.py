@@ -8,7 +8,7 @@ from enum import StrEnum
 from html import escape
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-from .i18n import DEFAULT_LOCALE, Locale, Translator, resolve_locale
+from .i18n import DEFAULT_LOCALE, Translator, resolve_locale
 
 
 class ViewId(StrEnum):
@@ -89,12 +89,6 @@ def navigation_description(
 
     view = ViewId(value)
     return _resolved_translator(translator).t(f"nav.{view.value}.description")
-
-
-def navigation_label_zh(value: ViewId | str) -> str:
-    """Compatibility helper returning the catalog's Chinese navigation label."""
-
-    return navigation_label(value, Translator(Locale.ZH_CN))
 
 
 def navigation_item(value: ViewId | str) -> NavigationItem:
@@ -257,6 +251,5 @@ __all__ = [
     "navigation_description",
     "navigation_item",
     "navigation_label",
-    "navigation_label_zh",
     "query_values",
 ]

@@ -686,6 +686,32 @@ def assert_enum_vocabulary(
             assert translator.t(key).strip(), f"empty enum label: {key}"
 
 
+def assert_l5_vocabulary(*, catalog: Mapping[str, M] | None = None) -> None:
+    """Audit every closed Search/Portal sample value in both locales."""
+
+    from manager_gui.web.portal import (
+        PortalArtifactState,
+        ReportRebuildStatus,
+        ReportVerifyStatus,
+    )
+    from manager_gui.web.search import SEARCH_FIELDS
+
+    field_values = tuple(dict.fromkeys(("type", *SEARCH_FIELDS)))
+    domains = {
+        "l5_search_field": field_values,
+        "l5_search_kind": ("record", "document", "all", "none"),
+        "l5_search_record_type": ("campaign", "strategy", "run", "report"),
+        "l5_search_status": ("active", "validated", "completed", "published"),
+        "l5_portal_artifact_state": tuple(
+            state.value.replace("-", "_") for state in PortalArtifactState
+        ),
+        "l5_portal_verify_status": tuple(status.value for status in ReportVerifyStatus),
+        "l5_portal_rebuild_status": tuple(status.value for status in ReportRebuildStatus),
+    }
+    for domain, values in domains.items():
+        assert_enum_vocabulary(domain, values, catalog=catalog)
+
+
 def assert_fixture_vocabulary(
     document: HTMLDocument | str,
     *,
@@ -696,6 +722,8 @@ def assert_fixture_vocabulary(
     document = parse_html(document) if isinstance(document, str) else document
     assert_enum_vocabulary("status", tuple(status.value for status in ReadModelStatus))
     assert_enum_vocabulary("display_state", tuple(state.value for state in DisplayState))
+    if route in {"search", "portal"}:
+        assert_l5_vocabulary()
     translator = Translator(document.html_lang or Locale.ZH_CN, strict=True)
     for node in document.elements:
         if node.tag == "input" and node.attrs.get("name") == "fixture":
@@ -798,6 +826,7 @@ __all__ = [
     "assert_exactly_once_owner_text_escaping",
     "assert_fixture_vocabulary",
     "assert_internal_language_propagation",
+    "assert_l5_vocabulary",
     "assert_lang_propagation",
     "assert_language_text",
     "assert_no_pseudo_locale_leaks",

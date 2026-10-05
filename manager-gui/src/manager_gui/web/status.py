@@ -29,15 +29,6 @@ DISPLAY_STATE_LABELS = {
     DisplayState.ERROR: "Error",
 }
 
-DISPLAY_STATE_LABELS_ZH = {
-    DisplayState.READY: "就绪",
-    DisplayState.LOADING: "加载中",
-    DisplayState.EMPTY: "空结果",
-    DisplayState.PARTIAL: "部分可用",
-    DisplayState.ERROR: "错误",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class StatusDescriptor:
     """Localized rendering metadata while preserving the machine status."""
@@ -46,25 +37,6 @@ class StatusDescriptor:
     label: str
     tone: str
     explanation: str
-
-    @property
-    def label_zh(self) -> str:
-        """Return the frozen Chinese status label for compatibility callers."""
-
-        return _STATUS_LABELS_ZH[self.status]
-
-
-_STATUS_LABELS_ZH = {
-    ReadModelStatus.KNOWN: "已记录",
-    ReadModelStatus.DERIVED: "已派生",
-    ReadModelStatus.INTERPRETED: "已解读",
-    ReadModelStatus.MISSING: "未记录",
-    ReadModelStatus.BLOCKED: "已阻塞",
-    ReadModelStatus.STALE: "已过时",
-    ReadModelStatus.INCOMPARABLE: "不可比较",
-    ReadModelStatus.INTEGRITY_FAILURE: "完整性校验失败",
-    ReadModelStatus.API_UNAVAILABLE: "API 不可用",
-}
 
 _STATUS_TONES = {
     ReadModelStatus.KNOWN: "positive",
@@ -119,18 +91,6 @@ def describe_status(
         tone=_STATUS_TONES[selected],
         explanation=_catalog_status_explanation(selected, selected_translator),
     )
-
-
-def status_label_zh(status: ReadModelStatus | str) -> str:
-    """Return the frozen Chinese status label for compatibility and audit callers."""
-
-    return _STATUS_LABELS_ZH[ReadModelStatus(status)]
-
-
-def display_state_label_zh(state: DisplayState | str) -> str:
-    """Return the frozen Chinese operational-state label."""
-
-    return DISPLAY_STATE_LABELS_ZH[DisplayState(state)]
 
 
 def display_state_for(model: ManagerReadModel) -> DisplayState:
@@ -291,14 +251,11 @@ def render_status_block(
 
 __all__ = [
     "DISPLAY_STATE_LABELS",
-    "DISPLAY_STATE_LABELS_ZH",
     "DisplayState",
     "StatusDescriptor",
     "describe_status",
     "display_state_for",
-    "display_state_label_zh",
     "render_common_state",
     "render_operational_state",
     "render_status_block",
-    "status_label_zh",
 ]

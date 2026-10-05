@@ -28,7 +28,6 @@ QueryContext: TypeAlias = str | Mapping[str, object] | None
 EVIDENCE_TRACE_HOOK = "evidence-trace"
 MAX_TRACE_ROWS = 20
 MISSING = "Missing / Unconfirmed"
-MISSING_ZH = "缺失 / 未确认"
 
 # Page state that belongs to one resource and must not leak into another resource's page.
 _PAGE_STATE: Mapping[str, None] = {

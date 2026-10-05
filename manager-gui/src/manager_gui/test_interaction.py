@@ -46,12 +46,7 @@ from manager_gui.web.interaction import (
     render_export_control,
 )
 from manager_gui.web.lineage import _truncate
-from manager_gui.web.navigation import NAVIGATION, ViewId, navigation_label_zh
-from manager_gui.web.status import (
-    DISPLAY_STATE_LABELS_ZH,
-    display_state_label_zh,
-    status_label_zh,
-)
+from manager_gui.web.navigation import NAVIGATION, ViewId, navigation_label
 
 # Every page hook that S1-S5 already mounts in the shared shell.
 MOUNTED_VIEWS: dict[str, str] = {
@@ -182,23 +177,28 @@ def served_app() -> Iterator[str]:
 # --- common states -----------------------------------------------------------------
 
 
-def test_every_status_and_display_state_has_a_stable_chinese_label() -> None:
+def test_every_status_and_display_state_has_a_catalog_label() -> None:
+    status_labels = set()
     for status in ReadModelStatus:
-        label = status_label_zh(status)
+        label = TRANSLATOR.t(f"label.status.{status.value}")
         rendered = render_status_block(
             status, translator=TRANSLATOR, reason=f"reason-{status.value}"
         )
         assert label.strip()
+        status_labels.add(label)
         assert f'<span class="status-label">{label}</span>' in rendered
         assert 'data-status-label-zh=' not in rendered
         assert 'status-label-zh' not in rendered
-    assert len({status_label_zh(status) for status in ReadModelStatus}) == len(ReadModelStatus)
+    assert len(status_labels) == len(ReadModelStatus)
+    display_labels = set()
     for state in DisplayState:
-        label = display_state_label_zh(state)
+        label = TRANSLATOR.t(f"label.display_state.{state.value}")
         rendered = render_operational_state(state, translator=TRANSLATOR)
-        assert label == DISPLAY_STATE_LABELS_ZH[state]
+        assert label.strip()
+        display_labels.add(label)
         assert f'<span class="status-label">{label}</span>' in rendered
         assert 'data-display-state-label-zh=' not in rendered
+    assert len(display_labels) == len(DisplayState)
 
 
 def test_common_state_dispatches_loading_status_and_envelope_without_a_second_taxonomy() -> None:
@@ -318,8 +318,10 @@ def test_shell_exposes_chinese_labels_and_keyboard_landmarks() -> None:
     current = [values for values, _ in audit.links if values.get("aria-current") == "page"]
     assert len(current) == 1
     for item in NAVIGATION:
-        assert f'aria-label="{navigation_label_zh(item.view_id)}"' in document
-    assert len({navigation_label_zh(item.view_id) for item in NAVIGATION}) == len(NAVIGATION)
+        assert f'aria-label="{navigation_label(item.view_id, TRANSLATOR)}"' in document
+    assert len(
+        {navigation_label(item.view_id, TRANSLATOR) for item in NAVIGATION}
+    ) == len(NAVIGATION)
     # panel buttons are linked to the panels they control and report their state
     assert 'aria-controls="event-drawer" aria-expanded="true"' in document
     assert 'aria-controls="inspector" aria-expanded="false"' in document
