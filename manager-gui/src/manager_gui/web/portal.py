@@ -815,7 +815,6 @@ def _status_label(
     translator: Translator,
     *,
     domain: str,
-    fixture: bool,
 ) -> str:
     if value is None:
         return escape(translator.t("l5.portal.missing_unconfirmed"))
@@ -916,8 +915,8 @@ def _render_artifact(
         f'<div><dt>{escape(translator.t("l5.portal.artifact.renderer"))}</dt><dd>{_owner_display(artifact.renderer, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.renderer_version"))}</dt><dd>{_owner_display(artifact.renderer_version, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.generated_at"))}</dt><dd>{_owner_display(artifact.generated_at, translator, fixture=fixture, opaque=True)}</dd></div>'
-        f'<div><dt>{escape(translator.t("l5.portal.artifact.verify_status"))}</dt><dd>{_status_label(artifact.verify_status, translator, domain="l5_portal_verify", fixture=fixture)}</dd></div>'
-        f'<div><dt>{escape(translator.t("l5.portal.artifact.rebuild_status"))}</dt><dd>{_status_label(artifact.rebuild_status, translator, domain="l5_portal_rebuild", fixture=fixture)}</dd></div>'
+        f'<div><dt>{escape(translator.t("l5.portal.artifact.verify_status"))}</dt><dd>{_status_label(artifact.verify_status, translator, domain="l5_portal_verify")}</dd></div>'
+        f'<div><dt>{escape(translator.t("l5.portal.artifact.rebuild_status"))}</dt><dd>{_status_label(artifact.rebuild_status, translator, domain="l5_portal_rebuild")}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.digest"))}</dt><dd>{_owner_display(artifact.digest, translator, fixture=fixture, opaque=True)}</dd></div>'
         f'<div><dt>{escape(translator.t("l5.portal.artifact.stable_link"))}</dt><dd>{stable or escape(translator.t("l5.portal.missing_unconfirmed"))}</dd></div>'
         "</dl></article>"
@@ -1054,7 +1053,7 @@ def render_portal(
         f'<p class="page-intro">{escape(selected_translator.t("l5.portal.intro"))}</p>',
         f'<p class="boundary-note" data-boundary="static-publication-not-canonical"><strong>{escape(selected_translator.t("l5.portal.boundary_heading"))}</strong> '
         f'{escape(selected_translator.t("l5.portal.boundary"))}</p>',
-        f'<p class="context-line portal-context"><span><strong>{escape(selected_translator.t("l5.portal.report"))}</strong> {_owner_display(view.report_id, selected_translator, fixture=fixture)}</span>'
+        f'<p class="context-line portal-context"><span><strong>{escape(selected_translator.t("l5.portal.report"))}</strong> {_owner_display(view.report_id, selected_translator, fixture=fixture, opaque=True)}</span>'
         f'<span><strong>{escape(selected_translator.t("l5.portal.observed"))}</strong> {observed}</span>'
         f'<span><strong>{escape(selected_translator.t("l5.portal.snapshot"))}</strong> {snapshot}</span>'
         f'<span><strong>{escape(selected_translator.t("l5.portal.sources"))}</strong> {source_ids}</span></p>',
