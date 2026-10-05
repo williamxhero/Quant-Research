@@ -30,8 +30,6 @@ from ..models import (
 )
 from ..provider import ManagerDataProvider
 from .i18n import Translator
-from .i18n.catalog import CATALOG, merge
-from .i18n.catalog.l4_memory import ENTRIES
 from .locators import public_locator
 from .memory import memory_source_link, render_memory_text, render_memory_value
 from .status import render_operational_state, render_status_block
@@ -45,12 +43,6 @@ FAILURE_GROUPING_INTEGRATION_HOOK_PATH = (
 NOT_RECORDED = "not recorded"
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
-
-
-def _page_translator(translator: Translator | None) -> Translator:
-    selected = translator or Translator()
-    missing = {key: value for key, value in ENTRIES.items() if key not in CATALOG}
-    return Translator(selected.locale, strict=selected.strict, pseudo=selected.pseudo, catalog=merge(CATALOG, missing))
 JSONMapping: TypeAlias = Mapping[str, JSONValue]
 
 
@@ -647,7 +639,6 @@ def render_failure_grouping(
 ) -> str:
     """Render explicitly named Derived success/failure groups."""
 
-    del query_context
     selected_translator = translator or Translator()
     view = (
         view_or_model
@@ -658,38 +649,32 @@ def render_failure_grouping(
     pieces = [
         f'<section class="failure-grouping-page" data-integration-hook="{FAILURE_GROUPING_INTEGRATION_HOOK}" '
         f'data-grouping-status="{model.availability.status.value}" data-grouping-empty="{"true" if view.empty else "false"}">',
-        f'<p class="eyebrow">{translator.html("l4.derived_grouping_eyebrow")}</p>',
-        f'<h1 class="page-title" data-page-title tabindex="-1">{translator.html("l4.derived_grouping_title")}</h1>',
-        '<p class="page-intro">Groups are structural, named, and source-linked. They are Derived GUI projections, not owner facts or formal Research Memory.</p>',
-        f'<p class="context-line grouping-context"><span><strong>{translator.html("l4.observed")}</strong> {escape(model.as_of or "Unavailable")}</span>'
-        f'<span><strong>{translator.html("l4.snapshot")}</strong> {escape(model.snapshot_token or "Unavailable")}</span></p>',
+        f'<p class="eyebrow">{selected_translator.html("l4.derived_grouping_eyebrow")}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4.derived_grouping_title")}</h1>',
+        f'<p class="page-intro">{selected_translator.html("l4.derived_grouping_intro")}</p>',
+        f'<p class="context-line grouping-context"><span><strong>{selected_translator.html("l4.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4.unavailable")}</span>'
+        f'<span><strong>{selected_translator.html("l4.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4.unavailable")}</span></p>',
         render_status_block(model, translator=selected_translator),
     ]
     if view.empty:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "error"
-        detail = (
-            "No explicitly named Derived group is published in this scope."
-            if state == "empty"
-            else f"Derived grouping is not determined while read-model status is {model.availability.status.value}."
-        )
-        pieces.append(
-            render_operational_state(state, translator=selected_translator, detail=detail)
-        )
+        detail = selected_translator.html("l4.no_named_group") if state == "empty" else selected_translator.html("l4.grouping_not_determined", status=selected_translator.t("label.status." + model.availability.status.value))
+        pieces.append(render_operational_state(state, translator=selected_translator))
+        pieces.append(f'<p class="grouping-unavailable">{detail}</p>')
     else:
         pieces.append(
             '<section class="derived-grouping-boundary" data-statistics="not-generated">'
-            '<p>No aggregate performance statistic or ordering is generated without an explicit denominator. '
-            'This view does not recalculate metrics, costs, fills, or evidence.</p></section>'
+            f'<p>{selected_translator.html("l4.no_aggregate_stat")}</p></section>'
         )
         pieces.append(
-            f'<section class="derived-groupings" data-grouping-state="ready"><h2>{translator.html("l4.named_derived_groups")}</h2>'
-            + "".join(_render_group(group) for group in view.groups)
+            f'<section class="derived-groupings" data-grouping-state="ready"><h2>{selected_translator.html("l4.named_derived_groups")}</h2>'
+            + "".join(_render_group(group, translator=selected_translator, model=model, context=query_context) for group in view.groups)
             + "</section>"
         )
     if include_raw_json:
         pieces.append(
-            f'<details class="grouping-raw-json"><summary>{translator.html("l4.raw_json")}</summary>'
-            f'<pre>{escape(view.raw_json)}</pre></details>'
+            f'<details class="grouping-raw-json"><summary>{selected_translator.html("l4.raw_json")}</summary>'
+            f'<pre translate="no">{selected_translator.source_text(view.raw_json)}</pre></details>'
         )
     pieces.append("</section>")
     return "".join(pieces)
