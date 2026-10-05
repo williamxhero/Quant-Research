@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..translator import M, label_key
 
-
 _RECORD_TYPES: dict[str, M] = {
     "conclusion": M("结论", "Conclusion"),
     "evidence": M("证据", "Evidence"),
@@ -109,9 +108,7 @@ _TEXT: dict[str, M] = {
     "lineage.no_owner_page": M("其他属主页面", "other owner page"),
     "lineage.other_page": M("其他页面", "other page"),
     "lineage.other_page_missing": M("此快照页面未记录该记录", "not recorded on this snapshot page"),
-    "lineage.edge_sentence": M(
-        "{source} —{relation}→ {target}", "{source} —{relation}→ {target}"
-    ),
+    "lineage.edge_sentence": M("{source} —{relation}→ {target}", "{source} —{relation}→ {target}"),
     "lineage.node_accessible": M(
         "{label}，{record_type}，深度 {depth}{root}{path}",
         "{label}, {record_type}, depth {depth}{root}{path}",
@@ -125,7 +122,8 @@ _TEXT: dict[str, M] = {
     ),
     "lineage.graph_caption": M(
         "谱系图：本页有 {nodes} 条记录和 {edges} 个关系。箭头指向数据流动方向。",
-        "Lineage graph: {nodes} records and {edges} relations on this page. Arrows point in the direction value flows.",
+        "Lineage graph: {nodes} records and {edges} relations on this page. "
+        "Arrows point in the direction value flows.",
     ),
     "lineage.skip_table": M("跳转到等价表格", "Skip to the equivalent table"),
     "lineage.graph_region": M("谱系图，可滚动", "Lineage graph, scrollable"),
@@ -136,16 +134,24 @@ _TEXT: dict[str, M] = {
     "lineage.edges_caption": M(
         "本页记录之间的关系（{count}）", "Relations among the records on this page ({count})"
     ),
-    "lineage.no_edges": M("本页记录之间没有关系。", "No relations connect the records on this page."),
+    "lineage.no_edges": M(
+        "本页记录之间没有关系。",
+        "No relations connect the records on this page.",
+    ),
     "lineage.off_page": M(
         "还有 {count} 个关系连接到此视图其他页面的记录；可通过分页链接查看。",
-        "{count} further relation(s) connect these records to records on other pages of this view; use the page links to reach them.",
+        "{count} further relation(s) connect these records to records on other pages of this view; "
+        "use the page links to reach them.",
     ),
     "lineage.table_heading": M("谱系表格", "Lineage table"),
-    "lineage.table_intro": M("图中的同一组记录与关系，同时以可访问表格和文本呈现。", "The same records and relations as the graph, as accessible tables and text."),
+    "lineage.table_intro": M(
+        "图中的同一组记录与关系，同时以可访问表格和文本呈现。",
+        "The same records and relations as the graph, as accessible tables and text.",
+    ),
     "lineage.records_region": M("谱系记录表，可滚动", "Lineage records table, scrollable"),
     "lineage.records_caption": M(
-        "本页记录（边界内共 {total} 条）", "Records on this page ({count} of {total} within the bounds)"
+        "本页记录（{count} / 边界内共 {total} 条）",
+        "Records on this page ({count} of {total} within the bounds)",
     ),
     "lineage.text_view": M("文本视图", "Text view"),
     "lineage.relations_text": M("谱系关系文本", "Lineage relations as text"),
@@ -170,15 +176,18 @@ _TEXT: dict[str, M] = {
     ),
     "lineage.path_not_established": M(
         "尚未确定：仍有属主页面未读取，因此本页未显示证据路径并不能证明路径不存在。",
-        "Not established: further owner pages exist, so the absence of an evidence path on this page is not proof that none exists.",
+        "Not established: further owner pages exist, so the absence of an evidence path "
+        "on this page is not proof that none exists.",
     ),
     "lineage.path_not_found": M(
         "在此完整快照的深度 {depth}、所选方向、关系和记录类型范围内，未找到证据路径。",
-        "No evidence path exists within depth {depth}, the selected direction, relations, and record types in this complete snapshot.",
+        "No evidence path exists within depth {depth}, the selected direction, relations, "
+        "and record types in this complete snapshot.",
     ),
     "lineage.inspector_heading": M("详情面板", "Inspector"),
     "lineage.inspector_missing": M(
-        "记录 {record} 未记录于此快照页面。", "Record {record} is not recorded in this snapshot page."
+        "记录 {record} 未记录于此快照页面。",
+        "Record {record} is not recorded in this snapshot page.",
     ),
     "lineage.inspector_outside_bounds": M(
         "此记录位于当前深度、关系或记录类型边界之外。",
@@ -203,7 +212,8 @@ _TEXT: dict[str, M] = {
         "No relation in this snapshot connects these records to the root.",
     ),
     "lineage.disconnected_none_partial": M(
-        "本页没有；后续属主页面可能还有记录。", "None on this page; further owner pages may hold more."
+        "本页没有；后续属主页面可能还有记录。",
+        "None on this page; further owner pages may hold more.",
     ),
     "lineage.disconnected_none_complete": M(
         "没有：本页中的每条记录都与根记录相连。",
@@ -211,12 +221,15 @@ _TEXT: dict[str, M] = {
     ),
     "lineage.outside_bounds": M(
         "有 {count} 条已连接记录位于当前深度、关系或记录类型边界之外。",
-        "{count} connected record(s) lie outside the current depth, relation, or record-type bounds.",
+        "{count} connected record(s) lie outside the current depth, relation, or record-type "
+        "bounds.",
     ),
     "lineage.bounds_heading": M("边界", "Bounds"),
     "lineage.applied_bounds": M(
-        "已应用：方向 {direction}；深度 {depth}；每页记录数 {page_size}；关系 {relations}；记录类型 {record_types}。",
-        "Applied: direction {direction}; depth {depth}; page size {page_size}; relations {relations}; record types {record_types}.",
+        "已应用：方向 {direction}；深度 {depth}；每页记录数 {page_size}；"
+        "关系 {relations}；记录类型 {record_types}。",
+        "Applied: direction {direction}; depth {depth}; page size {page_size}; "
+        "relations {relations}; record types {record_types}.",
     ),
     "lineage.bounds_limit": M(
         "扩展深度最多为 {depth}，每个属主页面最多读取 {nodes} 条记录。",
@@ -232,7 +245,8 @@ _TEXT: dict[str, M] = {
     "lineage.partial_heading": M("部分谱系", "Partial lineage"),
     "lineage.partial_explanation": M(
         "当前仅显示一个有界属主页面，且仍有后续页面或来源数据不完整。此处缺少记录、关系、连接或证据路径，不代表其不存在。",
-        "This is one bounded owner page and further pages exist or the source is incomplete. A missing record, relation, connection, or evidence path here is not evidence of absence.",
+        "This is one bounded owner page and further pages exist or the source is incomplete. "
+        "A missing record, relation, connection, or evidence path here is not evidence of absence.",
     ),
     "lineage.dangling_edges": M(
         "有 {count} 个关系引用了其他属主页面中的记录。",
@@ -246,57 +260,100 @@ _TEXT: dict[str, M] = {
     "lineage.failure_heading": M("谱系暂不展示", "Lineage withheld"),
     "lineage.failure_explanation": M(
         "无法信任此数据，因此不显示图、表格或证据路径；也不会合并其他快照或页面的数据。",
-        "No graph, table, or evidence path is shown for data that cannot be trusted; nothing is merged from other snapshots or pages.",
+        "No graph, table, or evidence path is shown for data that cannot be trusted; "
+        "nothing is merged from other snapshots or pages.",
     ),
     "lineage.restart": M("从当前快照重新开始", "Restart from the current snapshot"),
     "lineage.restart_explanation": M(
         "（清除游标和固定快照；不会合并数据。）",
         " (clears the cursor and pinned snapshot; nothing is merged).",
     ),
-    "lineage.empty_scope": M("此范围没有已发布的谱系记录。", "No lineage records are published in this scope."),
-    "lineage.empty_owner_page": M("此属主页面尚无谱系记录。", "No lineage records are on this owner page yet."),
+    "lineage.empty_scope": M(
+        "此范围没有已发布的谱系记录。", "No lineage records are published in this scope."
+    ),
+    "lineage.empty_owner_page": M(
+        "此属主页面尚无谱系记录。", "No lineage records are on this owner page yet."
+    ),
     "lineage.page_eyebrow": M("谱系 · 只读", "Lineage · read-only"),
     "lineage.page_title": M("谱系", "Lineage"),
     "lineage.page_intro": M(
         "跨结论、证据、制品、策略基因组、研究记忆和运行查看有界溯源信息及下游影响。关系按已发布内容原样展示。",
-        "Bounded provenance and downstream impact across conclusions, evidence, artifacts, Genomes, Memory, and runs. Relations are shown exactly as published.",
+        "Bounded provenance and downstream impact across conclusions, evidence, "
+        "artifacts, Genomes, Memory, and runs. Relations are shown exactly as published.",
     ),
     "lineage.observed": M("观察时间", "Observed"),
     "lineage.snapshot": M("快照", "Snapshot"),
     "lineage.derivation": M("派生方式", "Derivation"),
     "lineage.sources": M("来源", "Sources"),
     "lineage.raw_json": M("原始 JSON", "Raw JSON"),
-    "lineage.partial_status_reason": M("此有界页面不是完整的谱系范围。", "This bounded page is not the complete lineage scope."),
-    "lineage.fixture_reason.complete": M("样例包含已发布的谱系投影。", "The fixture contains the published lineage projection."),
-    "lineage.fixture_reason.partial": M("仅发布了第一个谱系页面。", "Only the first lineage page is published."),
+    "lineage.partial_status_reason": M(
+        "此有界页面不是完整的谱系范围。", "This bounded page is not the complete lineage scope."
+    ),
+    "lineage.fixture_reason.complete": M(
+        "样例包含已发布的谱系投影。", "The fixture contains the published lineage projection."
+    ),
+    "lineage.fixture_reason.partial": M(
+        "仅发布了第一个谱系页面。", "Only the first lineage page is published."
+    ),
     "lineage.fixture_reason.cursor_expired": M("谱系游标已过期。", "The lineage cursor expired."),
-    "lineage.fixture_reason.snapshot_drift": M("谱系页面快照与读取的快照不同。", "The lineage page snapshot differs from the snapshot that was read."),
-    "lineage.fixture_reason.hash_mismatch": M("谱系记录未通过其声明的哈希校验。", "A lineage record failed its declared hash check."),
-    "lineage.fixture_reason.api_unavailable": M("批准的公开谱系读取接口不可用。", "The approved public lineage read API is unavailable."),
-    "lineage.fixture_reason.empty": M("此范围没有已发布的谱系记录。", "No lineage records are published in this scope."),
-    "lineage.fixture_reason.blocked": M("批准的谱系读取接口已阻塞。", "The approved lineage read seam is blocked."),
-    "lineage.fixture_reason.incomparable": M("谱系输入属于不兼容的快照。", "The lineage inputs belong to incompatible snapshots."),
-    "lineage.fixture_reason.stale": M("此谱系页面作为过时的历史投影保留。", "The lineage page is retained as a stale historical projection."),
-    "lineage.fixture_reason.not_evaluated": M("此谱系页面包含尚未评估的证据记录。", "This lineage page contains evidence records that have not been evaluated."),
-    "lineage.fixture_reason.shared_snapshot_drift": M("谱系页面快照与读取的快照不同。", "The lineage page snapshot differs from the snapshot that was read."),
-    "lineage.fixture_reason.shared_integrity_failure": M("谱系记录未通过其声明的哈希校验。", "A lineage record failed its declared hash check."),
-    "lineage.fixture_error.partial": M("仍有后续谱系页面；不能据此证明缺少关系。", "Further lineage pages exist; absence of a link is not proven."),
+    "lineage.fixture_reason.snapshot_drift": M(
+        "谱系页面快照与读取的快照不同。",
+        "The lineage page snapshot differs from the snapshot that was read.",
+    ),
+    "lineage.fixture_reason.hash_mismatch": M(
+        "谱系记录未通过其声明的哈希校验。", "A lineage record failed its declared hash check."
+    ),
+    "lineage.fixture_reason.api_unavailable": M(
+        "批准的公开谱系读取接口不可用。", "The approved public lineage read API is unavailable."
+    ),
+    "lineage.fixture_reason.empty": M(
+        "此范围没有已发布的谱系记录。", "No lineage records are published in this scope."
+    ),
+    "lineage.fixture_reason.blocked": M(
+        "批准的谱系读取接口已阻塞。", "The approved lineage read seam is blocked."
+    ),
+    "lineage.fixture_reason.incomparable": M(
+        "谱系输入属于不兼容的快照。", "The lineage inputs belong to incompatible snapshots."
+    ),
+    "lineage.fixture_reason.stale": M(
+        "此谱系页面作为过时的历史投影保留。",
+        "The lineage page is retained as a stale historical projection.",
+    ),
+    "lineage.fixture_reason.not_evaluated": M(
+        "此谱系页面包含尚未评估的证据记录。",
+        "This lineage page contains evidence records that have not been evaluated.",
+    ),
+    "lineage.fixture_reason.shared_snapshot_drift": M(
+        "谱系页面快照与读取的快照不同。",
+        "The lineage page snapshot differs from the snapshot that was read.",
+    ),
+    "lineage.fixture_reason.shared_integrity_failure": M(
+        "谱系记录未通过其声明的哈希校验。", "A lineage record failed its declared hash check."
+    ),
+    "lineage.fixture_error.partial": M(
+        "仍有后续谱系页面；不能据此证明缺少关系。",
+        "Further lineage pages exist; absence of a link is not proven.",
+    ),
     "lineage.fixture_error.cursor_expired": M("游标已不再有效。", "The cursor is no longer valid."),
-    "lineage.fixture_error.api_unavailable": M("谱系读取不得回退到私有存储。", "No private-storage fallback is permitted for lineage reads."),
+    "lineage.fixture_error.api_unavailable": M(
+        "谱系读取不得回退到私有存储。",
+        "No private-storage fallback is permitted for lineage reads.",
+    ),
     "lineage.note.unknown_direction": M(
-        "未知方向 <code>{value}</code> 已忽略，显示双向关系。",
-        "Unknown direction <code>{value}</code> ignored; showing both.",
+        '未知方向 <code translate="no">{value}</code> 已忽略，显示双向关系。',
+        'Unknown direction <code translate="no">{value}</code> ignored; showing both.',
     ),
     "lineage.note.unknown_relation": M(
-        "未知关系 <code>{value}</code> 已忽略。", "Unknown relation <code>{value}</code> ignored."
+        '未知关系 <code translate="no">{value}</code> 已忽略。',
+        'Unknown relation <code translate="no">{value}</code> ignored.',
     ),
     "lineage.note.unknown_record_type": M(
-        "未知记录类型 <code>{value}</code> 已忽略。",
-        "Unknown record type <code>{value}</code> ignored.",
+        '未知记录类型 <code translate="no">{value}</code> 已忽略。',
+        'Unknown record type <code translate="no">{value}</code> ignored.',
     ),
     "lineage.note.invalid_integer": M(
-        "{name} 的值 <code>{value}</code> 无效，已使用默认值 {default}。",
-        "Invalid {name} <code>{value}</code> ignored; using {default}.",
+        '{name} 的值 <code translate="no">{value}</code> 无效，已使用默认值 {default}。',
+        'Invalid {name} <code translate="no">{value}</code> ignored; using {default}.',
     ),
     "lineage.note.clamped_integer": M(
         "{name} 的值 {value} 超出 {low}..{high}，已使用 {clamped}。",

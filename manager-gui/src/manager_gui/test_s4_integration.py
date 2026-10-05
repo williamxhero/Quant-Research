@@ -269,18 +269,18 @@ def test_not_evaluated_stays_distinct_from_failure_on_every_route() -> None:
     assert "Not evaluated" in evidence
     assert 'data-evidence-status="fail"' not in evidence
 
-    lineage = _render("lineage", "not_evaluated", depth="6")
+    lineage = _render("lineage", "not_evaluated", depth="6", lang="en")
     assert 'data-lineage-state="ready"' in lineage
     statuses = {
         node: status
         for node, status in re.findall(
-            r'<tr data-node-id="([^"]+)" data-record-type="evidence"[^>]*>.*?</th><td>evidence</td>'
+            r'<tr data-node-id="([^"]+)" data-record-type="evidence"[^>]*>.*?</th><td>Evidence</td>'
             r"<td>([^<]*)</td>",
             lineage,
             re.DOTALL,
         )
     }
-    assert statuses and set(statuses.values()) == {"not_evaluated"}
+    assert statuses and set(statuses.values()) == {"Not evaluated"}
     node_statuses = re.findall(r"</th><td>[\w_]+</td><td>([^<]*)</td>", lineage)
     assert not {"fail", "failed", "failure"} & set(node_statuses)
 
@@ -385,7 +385,7 @@ def test_cursor_expired_and_snapshot_drift_fail_closed_and_offer_a_clean_restart
 
 
 def test_partial_lineage_pagination_never_claims_absence_and_unserved_cursors_fail_closed() -> None:
-    document = _render("lineage", "partial")
+    document = _render("lineage", "partial", lang="en")
     assert 'data-lineage-state="partial"' in document
     assert 'data-pagination-complete="false"' in document
     assert "not evidence of absence" in document
@@ -631,7 +631,9 @@ def test_private_locators_are_never_rendered_as_links_on_any_s4_route(locator: s
         swapped = replace(
             model, source_refs=tuple(replace(ref, locator=locator) for ref in model.source_refs)
         )
-        document = ManagerGUIApp(_FixedProvider(swapped)).render(_url(view))
+        document = ManagerGUIApp(_FixedProvider(swapped)).render(
+            _url(view, lang="en") if view == "lineage" else _url(view)
+        )
         for prefix in ('href="C:', 'href="file:', 'href="https://user:pw@'):
             assert prefix not in document, (view, prefix)
         assert unlinked in _main(document), view
