@@ -296,8 +296,8 @@ def render_pseudo_document(app: ManagerGUIApp, url: str = "/") -> str:
         return app.render(url)
 
 
-# L3 and L4 page copy has passed the bilingual exit gate. L5 remains outside
-# page-copy audits until its own integration ticket closes.
+# Every mounted route is audited, including L5 Search and Portal. Keep this
+# explicit set as an exit-gate inventory; it no longer excludes page copy.
 MIGRATED_ROUTES: frozenset[str] = frozenset(
     {
         "atlas",
@@ -315,6 +315,8 @@ MIGRATED_ROUTES: frozenset[str] = frozenset(
         "methodology",
         "history",
         "source-documents",
+        "search",
+        "portal",
     }
 )
 _SHARED_CLASSES = frozenset(

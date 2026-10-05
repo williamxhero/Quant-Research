@@ -117,6 +117,13 @@ REGISTRY.register(l4_memory.ENTRIES)
 REGISTRY.register(l4_evidence.ENTRIES)
 REGISTRY.register(l4_lineage.ENTRIES)
 
+# L5 Search and Portal namespaces are registered exactly once at the integration
+# boundary, preserving the append-only collision checks used by every slice.
+from . import l5_portal, l5_search  # noqa: E402
+
+REGISTRY.register(l5_search.ENTRIES)
+REGISTRY.register(l5_portal.ENTRIES)
+
 
 __all__ = [
     "CATALOG",
