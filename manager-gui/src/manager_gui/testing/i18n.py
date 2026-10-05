@@ -10,12 +10,15 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from html import escape
 from html.parser import HTMLParser
+from unittest.mock import patch
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from manager_gui.fixtures import FixtureState
 from manager_gui.models import ReadModelStatus
+from manager_gui.web.app import ManagerGUIApp
 from manager_gui.web.i18n import Locale, M, Translator
 from manager_gui.web.i18n.catalog import REGISTRY
 from manager_gui.web.status import DisplayState
@@ -278,6 +281,19 @@ def parse_html(markup: str) -> HTMLDocument:
     parser.feed(markup)
     parser.close()
     return HTMLDocument(parser.root, parser.elements)
+
+
+def render_pseudo_document(app: ManagerGUIApp, url: str = "/") -> str:
+    """Render through the public app seam with a test-only pseudo translator."""
+
+    with patch(
+        "manager_gui.web.app.Translator",
+        side_effect=partial(Translator, pseudo=True),
+    ), patch(
+        "manager_gui.web.navigation.Translator",
+        side_effect=partial(Translator, pseudo=True),
+    ):
+        return app.render(url)
 
 
 # Page copy is deliberately deferred to L3/L4/L5. Adding a route here enables all
@@ -771,4 +787,5 @@ __all__ = [
     "dom_skeleton",
     "is_owner_text",
     "parse_html",
+    "render_pseudo_document",
 ]

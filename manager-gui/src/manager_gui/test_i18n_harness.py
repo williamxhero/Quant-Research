@@ -20,6 +20,7 @@ from manager_gui.testing.i18n import (
     assert_pseudo_localized,
     assert_shared_shell_i18n,
     parse_html,
+    render_pseudo_document,
 )
 from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.navigation import NAVIGATION
@@ -156,6 +157,11 @@ def test_dom_skeleton_audit_rejects_added_or_missing_elements() -> None:
 
 
 def test_pseudo_locale_and_language_audits_identify_untranslated_text() -> None:
+    pseudo_document = render_pseudo_document(
+        ManagerGUIApp(default_fixture=FixtureState.COMPLETE),
+        "/?view=atlas&fixture=complete&panel=events",
+    )
+    assert_pseudo_localized(pseudo_document, route="atlas")
     translated = Translator(Locale.EN, pseudo=True).t("shell.read_only")
     assert_pseudo_localized(f"<html><body><p>{translated}</p></body></html>")
     with pytest.raises(AssertionError, match="pseudo-locale leak"):
