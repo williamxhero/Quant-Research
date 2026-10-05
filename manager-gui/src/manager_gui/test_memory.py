@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import cast
 
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
+from manager_gui.web.i18n import Translator
+from manager_gui.web.i18n.catalog import CATALOG, merge
+from manager_gui.web.i18n.catalog.l4_memory import ENTRIES
 from manager_gui.web.memory import (
     MemoryAuthority,
     MemoryFilters,
     MemoryViewModel,
-    render_memory,
-    render_memory_view,
 )
+from manager_gui.web.memory import (
+    render_memory as _render_memory,
+)
+from manager_gui.web.memory import (
+    render_memory_view as _render_memory_view,
+)
+
+EN_TRANSLATOR = Translator("en", strict=True, catalog=merge(CATALOG, ENTRIES))
+render_memory = partial(_render_memory, translator=EN_TRANSLATOR)
+render_memory_view = partial(_render_memory_view, translator=EN_TRANSLATOR)
 
 
 def _source(source_id: str, locator: str) -> SourceReference:
