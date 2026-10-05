@@ -1090,7 +1090,7 @@ def _status_label(status: StrEnum, translator: Translator) -> str:
     if isinstance(status, EvidenceKind):
         return translator.label("evidence_kind", status.value)
     if isinstance(status, EvidenceLevel):
-        return translator.label("evidence_level", status.value)
+        return escape(translator.t(f"label.l4_evidence_level.{status.value}"))
     if isinstance(status, EvidenceOutcome):
         return translator.label("evidence_outcome", status.value)
     if isinstance(status, ArtifactVerificationStatus):
