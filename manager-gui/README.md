@@ -59,11 +59,25 @@ L2-T4 只验证共用层，不翻译页面专属正文。`ManagerGUIApp.render()
 
 共用目录由 `web/i18n/catalog/` 按命名空间拥有：`shell.py`、`nav.py`、`status.py`、
 `interaction.py`、`client.py` 和 `pagination.py` 只能通过 `CatalogRegistry` 追加注册，
-不得覆盖已有键。L3/L4/L5 页面目录只能新增自己的命名空间，不得修改共用目录、
-`models.py` 或共享 shell。`MIGRATED_ROUTES` 位于 `testing/i18n.py`：它当前为空，
-因此 17 路由的 11 个 fixture 状态 × 2 种语言（374 份文档）只对共用 shell 执行
-伪语言泄漏、DOM 骨架、语言文字、链接/表单和可访问性审计；页面
-完成迁移后，所属 ticket 才能将路由加入该集合并启用页面审计。
+不得覆盖已有键。L3 页面目录由 `l3_atlas_story.py`、`l3_genome.py` 和
+`l3_method_history.py` 分别拥有；三个目录只在 `catalog/__init__.py` 中各注册一次。
+L3 页面不得修改共用目录、`models.py` 或共享 shell；L4/L5 目录仍由各自 ticket 管理，
+不因 L3 集成而提前注册。
+
+L3 已迁移路由集合位于 `testing/i18n.py`，固定为八条：`atlas`、`stories`、
+`strategies`、`strategy-conditions`、`strategy-genome-comparison`、`methodology`、
+`history` 和 `source-documents`。因此 17 路由的 11 个 fixture 状态 × 2 种语言
+（374 份文档）执行共用 shell 与已迁移页面的伪语言泄漏、DOM 骨架、语言文字、
+链接/表单和可访问性审计。L3 专项还覆盖 Stories 的 `narrative`、`evidence`、
+`timeline` 三种模式，以及 History/Source Documents 的 `A0`、`S3`、`CPA`、`V1.x`
+四个范围；Atlas 到 Research Story 的内部链接必须保留 `fixture`、记录 ID 和显式
+语言状态。
+
+L3 页面入口接收 shell 创建的请求 `Translator`，不可在页面内重新推导语言。封闭枚举
+（生命周期、模式、事件类型、文档类型和索引状态）通过 `translator.label`，计数通过
+`translator.count`；程序生成的说明使用目录键和具名参数。属主标题、摘要、reason、
+错误信息、ID、locator、范围和时间戳保持原文并只转义一次，机器值用
+`translate="no"` 标记。Qualification 仍表示历史研究成熟度，不表示生产资格或交易准入。
 
 页面属主自由文本（标题、摘要、`reason`、错误信息、ID、locator 和时间戳）原样保留，
 由 `Translator.source_text()` 只转义一次；L2 不翻译、不猜测其源语言。程序生成的

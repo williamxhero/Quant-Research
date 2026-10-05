@@ -104,6 +104,9 @@ register(merge(SHELL_CATALOG, NAVIGATION_CATALOG, PAGINATION_CATALOG))
 
 from . import l3_atlas_story, l3_genome, l3_method_history  # noqa: E402
 
+REGISTRY.register(l3_atlas_story.ENTRIES)
+REGISTRY.register(l3_genome.ENTRIES)
+REGISTRY.register(l3_method_history.ENTRIES)
 
 
 __all__ = [

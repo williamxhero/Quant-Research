@@ -6,9 +6,8 @@ catalog initializer is::
 
     from . import l3_atlas_story
 
-The import is intentionally not added to ``catalog/__init__.py`` by L3-T1; the
-page modules import this namespace for standalone use, while the L3 integration
-ticket can make the import explicit in the registry initializer.
+The catalog initializer imports this namespace and registers ``ENTRIES`` once;
+page modules may import it for fixture keys without registering a second time.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..translator import M
-from . import register
 
 ENTRIES: Mapping[str, M] = {
     # Atlas page chrome and context.
@@ -288,6 +286,4 @@ FIXTURE_TEXT: dict[str, M] = {
 }
 FIXTURE_KEYS = {text: f"atlas_story.fixture.{index}" for index, text in enumerate(FIXTURE_TEXT)}
 ENTRIES = {**ENTRIES, **{FIXTURE_KEYS[text]: message for text, message in FIXTURE_TEXT.items()}}
-register(ENTRIES)
-
 __all__ = ["ENTRIES", "FIXTURE_KEYS"]

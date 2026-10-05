@@ -79,7 +79,7 @@ def test_superseded_method_is_explicit_and_not_collapsed_into_usage_or_validity(
     assert 'data-method-id="golden-genome-flow"' in rendered
     assert 'data-superseded="true"' in rendered
     assert "Superseded" in rendered
-    assert "superseded by golden-genome-flow-v3" in rendered
+    assert 'superseded by <span translate="no">golden-genome-flow-v3</span>' in rendered
     assert "Usage count" in rendered
     assert "Validity evidence" in rendered
     assert "Missing / Unconfirmed" in rendered
@@ -125,9 +125,9 @@ def test_missing_source_document_and_record_refs_are_not_invented() -> None:
     assert method.record_refs[0].available is False
 
     rendered = render_methodology(model, translator=Translator(Locale.EN))
-    assert "unknown-source — Missing / Unconfirmed" in rendered
-    assert "missing-document — Missing / Unconfirmed" in rendered
-    assert "missing-record — Missing / Unconfirmed" in rendered
+    assert '<span translate="no">unknown-source</span> — Missing / Unconfirmed' in rendered
+    assert '<span translate="no">missing-document</span> — Missing / Unconfirmed' in rendered
+    assert '<span translate="no">missing-record</span> — Missing / Unconfirmed' in rendered
     assert "fixture://known-source" in rendered
 
 

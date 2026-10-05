@@ -1,11 +1,8 @@
 """L3-T2 catalogs for Genome, condition evidence, and comparison pages.
 
-This is intentionally an additive namespace module.  It registers through the
-existing ``manager_gui.web.i18n.catalog.register`` API when imported by one of
-the three page modules; ``catalog/__init__.py`` is deliberately unchanged in
-L3-T2.  The L3 integration ticket should import this module once during catalog
-bootstrap (after the registry exists), or retain the page imports as the
-integration hook, and must not duplicate-register ``ENTRIES``.
+This additive namespace is imported by ``catalog/__init__.py`` and registered
+there exactly once. Page modules may import it for catalog constants without
+mutating the registry.
 """
 
 from __future__ import annotations
@@ -13,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..translator import M
-from . import register
 
 ENTRIES: Mapping[str, M] = {
     # Genome page copy.
@@ -291,10 +287,5 @@ ENTRIES: Mapping[str, M] = {
     ),
 }
 
-
-# Page modules import this namespace and therefore register it through the existing API.
-# The integration ticket may move this import to application bootstrap; do not call
-# ``register(ENTRIES)`` a second time after doing so.
-register(ENTRIES)
 
 __all__ = ["ENTRIES"]

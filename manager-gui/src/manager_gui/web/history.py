@@ -417,16 +417,16 @@ class HistoryViewModel:
         scope = self.scope or selected_translator.t("method_history.all_scopes")
         scope_links = "".join(
             f'<a class="history-scope-link" data-history-scope="{escape(selected, quote=True)}" '
-            f'href="{escape(self.context_url(base_path=base_path, query=query, scope=selected), quote=True)}"'
-            f'>{escape(selected_translator.label("method_history.scope", selected))}</a>'
+            f'href="{escape(self.context_url(base_path=base_path, query=query, scope=selected), quote=True)}" '
+            f'translate="no">{escape(selected_translator.label("method_history.scope", selected))}</a>'
             for selected in HISTORY_SCOPES
         )
         window = PageWindow.from_query(query if query is not None else base_path, total=len(self.events))
         paged_events = self.events[window.start : window.stop]
         related = (
-            f'<nav class="history-related-nav" aria-label="History related sources">'
-            f'<a class="history-methodology-link" href="{escape(_context_url(base_path, query, view="methodology"), quote=True)}">Methodology</a>'
-            f'<a class="history-documents-link" href="{escape(_context_url(base_path, query, view="source-documents"), quote=True)}">Source Documents</a></nav>'
+            f'<nav class="history-related-nav" aria-label="{escape(selected_translator.t("history.related_aria"), quote=True)}">'
+            f'<a class="history-methodology-link" href="{escape(_context_url(base_path, query, view="methodology"), quote=True)}">{escape(selected_translator.t("methodology.title"))}</a>'
+            f'<a class="history-documents-link" href="{escape(_context_url(base_path, query, view="source-documents"), quote=True)}">{escape(selected_translator.t("documents.title"))}</a></nav>'
         )
         if not paged_events:
             state = display_state_for(self.read_model)
@@ -465,7 +465,7 @@ class HistoryViewModel:
             f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("history.title"))}</h1>'
             f'<p class="page-intro">{escape(selected_translator.t("history.intro"))}</p>'
             f'<p class="boundary-note" data-boundary="canonical-fact">{selected_translator.html("history.boundary")}</p>'
-            f'<p class="context-line history-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> {escape(scope)}</p>'
+            f'<p class="context-line history-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> <span translate="no">{escape(scope)}</span></p>'
             f"{related}"
             f'<nav class="history-scope-nav" aria-label="{escape(selected_translator.t("history.scopes_aria"))}">{scope_links}</nav>'
             f"{render_status_block(self.read_model, translator=selected_translator)}{body}{window.render(query if query is not None else base_path, view='history')}</section>"
@@ -481,24 +481,26 @@ def _render_event(
     fixture: bool,
 ) -> str:
     locator = (
-        f'<a class="history-source-link" data-link-kind="source-artifact" href="{escape(event.source_locator, quote=True)}">'
+        f'<a class="history-source-link" data-link-kind="source-artifact" href="{escape(event.source_locator, quote=True)}" translate="no">'
         f"{escape(event.source_locator)}</a>"
         if event.source_locator
         else f'<span class="history-source-missing">{escape(translator.t("history.event.missing_locator"))}</span>'
     )
     document_links = " · ".join(
-        f'<a class="history-document-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+        f'<a class="history-document-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}" translate="no">'
         f"{escape(document_id)}</a>"
         for document_id in event.document_ids
     ) or f'<span class="history-source-missing">{escape(translator.t("history.event.missing_document"))}</span>'
     record = (
-        f'<a class="history-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=event.record_id), quote=True)}">'
+        f'<a class="history-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=event.record_id), quote=True)}" translate="no">'
         f"{escape(event.record_id)}</a>"
         if event.record_id
         else translator.t("method_history.missing")
     )
-    title = _history_fixture_text(translator, event, "title", fixture=fixture, scope=event.raw.get("scope") if event.raw else None)
-    detail = _history_fixture_text(translator, event, "detail", fixture=fixture, scope=event.raw.get("scope") if event.raw else None)
+    raw_scope = event.raw.get("scope") if event.raw else None
+    scope = raw_scope if isinstance(raw_scope, str) else None
+    title = _history_fixture_text(translator, event, "title", fixture=fixture, scope=scope)
+    detail = _history_fixture_text(translator, event, "detail", fixture=fixture, scope=scope)
     event_type = translator.label("history.event_type", event.event_type.value)
     record_label = translator.t("history.event.record")
     source_label = translator.t("history.event.source")
@@ -507,7 +509,7 @@ def _render_event(
         f'<li class="history-event" data-event-id="{escape(event.event_id, quote=True)}" '
         f'data-event-type="{escape(event.event_type.value, quote=True)}" '
         f'data-source-event-time="{escape(event.source_event_time, quote=True)}">'
-        f'<time datetime="{escape(event.source_event_time, quote=True)}">{escape(event.source_event_time)}</time>'
+        f'<time datetime="{escape(event.source_event_time, quote=True)}" translate="no">{escape(event.source_event_time)}</time>'
         f'<span class="history-event-type">{event_type}</span>'
         f'<strong>{title}</strong><p>{detail}</p>'
         f'<p class="history-event-meta">{escape(record_label)}: {record} · {escape(source_label)}: {locator} · {escape(document_label)}: {document_links}</p></li>'

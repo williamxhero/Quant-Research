@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -126,7 +127,18 @@ def test_head_title_is_inspectable_but_not_visible_body_text() -> None:
 
 
 def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> None:
-    assert frozenset() == MIGRATED_ROUTES
+    assert frozenset(
+        {
+            "atlas",
+            "stories",
+            "strategies",
+            "strategy-conditions",
+            "strategy-genome-comparison",
+            "methodology",
+            "history",
+            "source-documents",
+        }
+    ) == MIGRATED_ROUTES
     routes = tuple(item.view_id.value for item in NAVIGATION)
     assert len(routes) == 17
     count = 0
@@ -144,6 +156,51 @@ def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> N
                 assert_pseudo_localized(render_pseudo_document(app, locale_url), route=route)
             count += 2
     assert count == 374
+
+
+def test_l3_modes_and_scopes_run_the_full_locale_dom_aria_link_matrix() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    contexts = (
+        *(
+            f"/?view=stories&fixture=complete&mode={mode}&panel=events"
+            for mode in ("narrative", "evidence", "timeline")
+        ),
+        *(
+            f"/?view={route}&fixture=complete&scope={scope}&panel=events"
+            for route in ("history", "source-documents")
+            for scope in ("A0", "S3", "CPA", "V1.x")
+        ),
+    )
+    assert len(contexts) == 11
+    for url in contexts:
+        route = dict(parse_qsl(urlsplit(url).query)) ["view"]
+        zh = app.render(url)
+        en = app.render(url + "&lang=en")
+        assert_shared_shell_i18n(zh, en, route=route, source_url=url + "&lang=en")
+        assert_pseudo_localized(render_pseudo_document(app, url), route=route)
+        assert_pseudo_localized(render_pseudo_document(app, url + "&lang=en"), route=route)
+
+
+def test_atlas_story_links_preserve_fixture_and_language_state() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    for url, expected_lang in (
+        ("/?view=atlas&fixture=complete", []),
+        ("/?view=atlas&fixture=complete&lang=en", ["en"]),
+    ):
+        document = parse_html(app.render(url))
+        story_links = [link for link in document.links if "atlas-story-link" in link.classes]
+        assert story_links
+        for link in story_links:
+            href = link.attrs.get("href")
+            assert href is not None
+            pairs = parse_qsl(urlsplit(href).query, keep_blank_values=True)
+            values = dict(pairs)
+            assert values["view"] == "stories"
+            assert values["fixture"] == "complete"
+            assert values["record_id"]
+            assert [value for key, value in pairs if key == "lang"] == expected_lang
+        assert_lang_propagation(document, None if not expected_lang else Locale.EN)
+        assert_accessible(document, route="atlas")
 
 
 def test_dom_skeleton_audit_rejects_added_or_missing_elements() -> None:

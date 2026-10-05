@@ -824,6 +824,27 @@ def _fixture_methodology_text(
     return value
 
 
+def _fixture_methodology_markup(
+    translator: Translator,
+    method_id: str,
+    field: str,
+    value: str,
+    *,
+    fixture: bool,
+) -> str:
+    """Escape a fixture value, translating known copy and isolating owner data."""
+
+    key = f"methodology.fixture.{method_id.replace('-', '_')}.{field}"
+    text = _fixture_methodology_text(translator, method_id, field, value, fixture=fixture)
+    if fixture and key in _l3_method_history_catalog.ENTRIES:
+        # G0 is an opaque method identifier embedded in otherwise localized copy.
+        if method_id == "g0" and field == "evidence_label":
+            escaped = escape(text)
+            return escaped.replace("G0", '<span translate="no">G0</span>', 1)
+        return escape(text)
+    return f'<span translate="no">{escape(text)}</span>'
+
+
 def _methodology_status(
     translator: Translator, value: str | None, *, fixture: bool
 ) -> str:
@@ -848,6 +869,7 @@ def _render_ref_list(
         return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd>{escape(translator.t("methodology.missing"))}</dd></div>'
     items: list[str] = []
     for ref in refs:
+        localized_document = False
         if isinstance(ref, MethodologySourceRef):
             label, target = ref.source_id, ref.locator
             link_kind = "source"
@@ -857,6 +879,7 @@ def _render_ref_list(
                 key = f"methodology.fixture.{ref.document_id.replace('-', '_')}.title"
                 if key in _l3_method_history_catalog.ENTRIES:
                     label = translator.t(key)
+                    localized_document = True
             target = (
                 _context_url(
                     query_context,
@@ -875,13 +898,21 @@ def _render_ref_list(
                 else None
             )
             link_kind = "record"
+        machine_label = isinstance(ref, (MethodologySourceRef, MethodologyRecordRef)) or (
+            isinstance(ref, MethodologyDocumentRef) and not localized_document
+        )
+        label_markup = (
+            f'<span translate="no">{escape(label)}</span>' if machine_label else escape(label)
+        )
+        if localized_document and isinstance(ref, MethodologyDocumentRef) and ref.document_id == "doc-g0":
+            label_markup = label_markup.replace("G0", '<span translate="no">G0</span>', 1)
         if target:
             items.append(
                 f'<li><a class="methodology-ref-link" data-link-kind="{link_kind}" '
-                f'href="{escape(target, quote=True)}">{escape(label)}</a></li>'
+                f'href="{escape(target, quote=True)}">{label_markup}</a></li>'
             )
         else:
-            items.append(f'<li>{escape(label)} — {escape(translator.t("methodology.missing"))}</li>')
+            items.append(f'<li>{label_markup} — {escape(translator.t("methodology.missing"))}</li>')
     return f'<div class="methodology-ref-group"><dt>{escape(title)}</dt><dd><ul>{"".join(items)}</ul></dd></div>'
 
 
@@ -924,58 +955,98 @@ def _render_method(
         superseded = translator.t("label.methodology.superseded.current")
     else:
         superseded = translator.t("label.methodology.superseded.unknown")
-    superseded_by = (
-        translator.t("methodology.superseded_by", method_id=method.superseded_by)
-        if method.superseded_by
-        else ""
-    )
+    superseded_by_markup = ""
+    if method.superseded_by:
+        rendered = translator.t("methodology.superseded_by", method_id="{id}")
+        before, after = rendered.split("{id}", 1)
+        superseded_by_markup = (
+            f'{escape(before)}<span translate="no">{escape(method.superseded_by)}</span>'
+            f"{escape(after)}"
+        )
+
+    def render_usage(usage: MethodologyUsage) -> str:
+        summary = usage.summary or usage.usage_id
+        used_at = (
+            f' · <span translate="no">{escape(usage.used_at)}</span>'
+            if usage.used_at
+            else ""
+        )
+        return (
+            f'<li data-usage-id="{escape(usage.usage_id, quote=True)}">'
+            f'<span translate="no">{escape(summary)}</span>{used_at}</li>'
+        )
+
+    def render_result(result: MethodologyResult) -> str:
+        title = _fixture_methodology_markup(
+            translator,
+            method.method_id,
+            "result_title",
+            result.title or result.result_id,
+            fixture=fixture,
+        )
+        status = (
+            f' · {escape(_methodology_status(translator, result.status, fixture=fixture))}'
+            if result.status
+            else ""
+        )
+        summary = f' — <span translate="no">{escape(result.summary)}</span>' if result.summary else ""
+        return (
+            f'<li data-result-id="{escape(result.result_id, quote=True)}">'
+            f"{title}{status}{summary}</li>"
+        )
+
+    def render_evidence(item: MethodologyValidityEvidence) -> str:
+        label = _fixture_methodology_markup(
+            translator,
+            method.method_id,
+            "evidence_label",
+            item.label or item.evidence_id,
+            fixture=fixture,
+        )
+        status = (
+            f' · {escape(_methodology_status(translator, item.status, fixture=fixture))}'
+            if item.status
+            else ""
+        )
+        summary = f' — <span translate="no">{escape(item.summary)}</span>' if item.summary else ""
+        return (
+            f'<li data-validity-evidence-id="{escape(item.evidence_id, quote=True)}">'
+            f"{label}{status}{summary}</li>"
+        )
+
     usages = (
         f"<p>{escape(missing)}</p>"
         if not method.usage_records
-        else "<ul>"
-        + "".join(
-            f'<li data-usage-id="{escape(usage.usage_id, quote=True)}">{escape(usage.summary or usage.usage_id)}'
-            f"{f' · {escape(usage.used_at)}' if usage.used_at else ''}</li>"
-            for usage in method.usage_records
-        )
-        + "</ul>"
+        else f"<ul>{''.join(render_usage(usage) for usage in method.usage_records)}</ul>"
     )
     results = (
         f"<p>{escape(missing)}</p>"
         if not method.associated_results
-        else "<ul>"
-        + "".join(
-            f'<li data-result-id="{escape(result.result_id, quote=True)}">'
-            f"{escape(_fixture_methodology_text(translator, method.method_id, 'result_title', result.title or result.result_id, fixture=fixture))}"
-            f"{f' · {escape(result.status)}' if result.status else ''}"
-            f"{f' — {escape(result.summary)}' if result.summary else ''}</li>"
-            for result in method.associated_results
-        )
-        + "</ul>"
+        else f"<ul>{''.join(render_result(result) for result in method.associated_results)}</ul>"
     )
     evidence = (
         f"<p>{escape(missing)}</p>"
         if not method.validity_evidence
-        else "<ul>"
-        + "".join(
-            f'<li data-validity-evidence-id="{escape(item.evidence_id, quote=True)}">'
-            f"{escape(_fixture_methodology_text(translator, method.method_id, 'evidence_label', item.label or item.evidence_id, fixture=fixture))}"
-            f"{f' · {_methodology_status(translator, item.status, fixture=fixture)}' if item.status else ''}"
-            f"{f' — {escape(item.summary)}' if item.summary else ''}</li>"
-            for item in method.validity_evidence
-        )
-        + "</ul>"
+        else f"<ul>{''.join(render_evidence(item) for item in method.validity_evidence)}</ul>"
+    )
+    title = _fixture_methodology_text(
+        translator, method.method_id, "title", method.title, fixture=fixture
+    )
+    title_markup = (
+        f'<span translate="no">{escape(title)}</span>'
+        if title.casefold() == method.method_id.casefold()
+        else escape(title)
     )
     return (
         f'<article class="methodology-method" data-method-id="{escape(method.method_id, quote=True)}" '
         f'data-methodology-category="{method.category.value}" '
         f'data-superseded="{"unknown" if method.superseded is None else str(method.superseded).lower()}">'
-        f"<h3>{escape(_fixture_methodology_text(translator, method.method_id, 'title', method.title, fixture=fixture))}</h3>"
+        f"<h3>{title_markup}</h3>"
         '<dl class="methodology-details">'
         f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.definition"))}</dt><dd>{escape(_fixture_methodology_text(translator, method.method_id, "definition", method.definition, fixture=fixture))}</dd></div>'
-        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.version"))}</dt><dd>{escape(version)}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.version"))}</dt><dd><span translate="no">{escape(version)}</span></dd></div>'
         f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.usage_count"))}</dt><dd>{escape(usage_count)}</dd></div>'
-        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.superseded_status"))}</dt><dd>{escape(superseded)}{escape(superseded_by)}</dd></div>'
+        f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.superseded_status"))}</dt><dd>{escape(superseded)}{superseded_by_markup}</dd></div>'
         f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.usage_records"))}</dt><dd>{usages}</dd></div>'
         f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.associated_results"))}</dt><dd>{results}</dd></div>'
         f'<div class="methodology-detail"><dt>{escape(translator.t("methodology.validity_evidence"))}</dt><dd>{evidence}</dd></div>'
@@ -1025,8 +1096,8 @@ def render_methodology(
         f'<nav class="methodology-related-nav" aria-label="{escape(selected_translator.t("methodology.related_aria"))}">'
         f'<a class="methodology-documents-link" href="{escape(documents_url, quote=True)}">{escape(selected_translator.t("documents.title"))}</a>'
         f'<a class="methodology-history-link" href="{escape(history_url, quote=True)}">{escape(selected_translator.t("history.title"))}</a></nav>',
-        f'<p class="context-line methodology-context"><span><strong>{escape(selected_translator.t("shell.observed"))}</strong> {escape(observed)}</span>'
-        f"<span><strong>{escape(selected_translator.t('shell.snapshot'))}</strong> {escape(snapshot)}</span><span><strong>{escape(selected_translator.t('shell.sources'))}</strong> {escape(sources)}</span></p>",
+        f'<p class="context-line methodology-context"><span><strong>{escape(selected_translator.t("shell.observed"))}</strong> <span translate="no">{escape(observed)}</span></span>'
+        f"<span><strong>{escape(selected_translator.t('shell.snapshot'))}</strong> <span translate=\"no\">{escape(snapshot)}</span></span><span><strong>{escape(selected_translator.t('shell.sources'))}</strong> <span translate=\"no\">{escape(sources)}</span></span></p>",
         render_status_block(model, translator=selected_translator),
     ]
     if view.index_state is MethodologyIndexState.NOT_INDEXED:

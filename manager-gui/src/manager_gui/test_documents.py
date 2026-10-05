@@ -173,8 +173,9 @@ def test_documents_catalog_localizes_english_and_chinese_page_copy() -> None:
     assert Translator(Locale.ZH_CN, strict=True, catalog=ENTRIES).t("documents.title") == "来源文档"
     assert "已批准索引" in zh
     assert "approved index" in en
-    assert "A0 计划" in zh
-    assert "A0 plan" in en
+    assert 'data-document-scope="A0"' in zh
+    assert '<span translate="no">A0</span> 计划' in zh
+    assert '<span translate="no">A0</span> plan' in en
 
 
 def test_documents_owner_text_is_not_translated_when_provenance_is_not_fixture() -> None:

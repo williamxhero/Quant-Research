@@ -1,7 +1,7 @@
 """Additive L3-T3 copy for Methodology, History and Source Documents.
 
-Importing this namespace registers its entries through the existing append-only
-API. L3 integration may import it centrally; the catalog initializer is untouched.
+The catalog initializer imports this namespace and registers its entries once;
+page modules may import it for fixture keys without registering a second time.
 """
 
 # Bilingual catalog pairs intentionally keep readable long lines.
@@ -10,7 +10,6 @@ API. L3 integration may import it centrally; the catalog initializer is untouche
 from __future__ import annotations
 
 from ..translator import M
-from . import register
 
 ENTRIES: dict[str, M] = {
     "methodology.eyebrow": M("研究方法库 · 只读", "Methodology archive · read-only"),
@@ -170,7 +169,5 @@ ENTRIES: dict[str, M] = {
     "methodology.fixture.doc_g0.title": M("G0 协议", "G0 protocol"),
     "methodology.fixture.doc_ggf.title": M("黄金基因组流程", "Golden Genome Flow"),
 }
-
-register(ENTRIES)
 
 __all__ = ["ENTRIES"]

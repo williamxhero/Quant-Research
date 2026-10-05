@@ -435,7 +435,8 @@ class SourceDocumentsViewModel:
         scope = self.scope or selected_translator.t("method_history.all_scopes")
         nav = "".join(
             f'<a class="document-scope-link" data-document-scope="{escape(selected, quote=True)}" '
-            f'href="{escape(_scope_url(base_path, query, selected), quote=True)}">{escape(selected_translator.label("method_history.scope", selected))}</a>'
+            f'href="{escape(_scope_url(base_path, query, selected), quote=True)}" '
+            f'translate="no">{escape(selected_translator.label("method_history.scope", selected))}</a>'
             for selected in DOCUMENT_SCOPES
         )
         window = PageWindow.from_query(query if query is not None else base_path, total=len(self.documents))
@@ -474,9 +475,9 @@ class SourceDocumentsViewModel:
                     )
             body = "".join(sections)
         reverse_rows = "".join(
-            f'<li data-record-id="{escape(record_id, quote=True)}"><strong>{escape(record_id)}</strong>: '
+            f'<li data-record-id="{escape(record_id, quote=True)}"><strong translate="no">{escape(record_id)}</strong>: '
             + ", ".join(
-                f'<a class="document-reverse-link" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+                f'<a class="document-reverse-link" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}" translate="no">'
                 f"{escape(document_id)}</a>"
                 for document_id in document_ids
             )
@@ -495,7 +496,7 @@ class SourceDocumentsViewModel:
             f'<h1 class="page-title" data-page-title tabindex="-1">{escape(selected_translator.t("documents.title"))}</h1>'
             f'<p class="page-intro">{escape(selected_translator.t("documents.intro"))}</p>'
             f'<p class="boundary-note" data-boundary="document-interpretation">{selected_translator.html("documents.boundary")}</p>'
-            f'<p class="context-line document-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> {escape(scope)} · '
+            f'<p class="context-line document-context"><strong>{escape(selected_translator.t("method_history.scope"))}</strong> <span translate="no">{escape(scope)}</span> · '
             f'<strong>{escape(selected_translator.t("documents.index_state"))}</strong> {escape(selected_translator.label("documents.index_state", self.state.value))}</p>'
             f'<nav class="document-scope-nav" aria-label="{escape(selected_translator.t("documents.scopes_aria"))}">{nav}</nav>'
             f"{render_status_block(self.read_model, translator=selected_translator)}"
@@ -530,6 +531,16 @@ def _state_detail(state: DocumentIndexState, translator: Translator) -> str:
     return translator.t(f"documents.state.{state.value}")
 
 
+def _scope_in_text(value: str, scope: str | None) -> str:
+    rendered = escape(value)
+    if scope:
+        escaped_scope = escape(scope)
+        rendered = rendered.replace(
+            escaped_scope, f'<span translate="no">{escaped_scope}</span>', 1
+        )
+    return rendered
+
+
 def _context_url(
     base_path: str,
     query: Mapping[str, object] | str | None,
@@ -549,33 +560,34 @@ def _render_document(
     fixture: bool,
 ) -> str:
     locator = (
-        f'<a class="document-source-link" href="{escape(document.source_locator, quote=True)}">{escape(document.source_locator)}</a>'
+        f'<a class="document-source-link" href="{escape(document.source_locator, quote=True)}" translate="no">{escape(document.source_locator)}</a>'
         if document.approved and document.source_locator
         else f'<span class="document-source-missing">{escape(translator.t("documents.boundary_blocked"))}</span>'
         if not document.approved
         else f'<span class="document-source-missing">{escape(translator.t("method_history.missing"))}</span>'
     )
     citations = " · ".join(
-        f'<a class="document-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=record_id), quote=True)}">'
+        f'<a class="document-record-link" data-link-kind="record" href="{escape(_context_url(base_path, query, view="history", record_id=record_id), quote=True)}" translate="no">'
         f"{escape(record_id)}</a>"
         for record_id in document.record_citations
     ) or translator.t("method_history.missing")
     reverse = " · ".join(
-        f'<a class="document-reverse-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}">'
+        f'<a class="document-reverse-link" data-link-kind="document" href="{escape(_context_url(base_path, query, view="source-documents", document_id=document_id), quote=True)}" translate="no">'
         f"{escape(document_id)}</a>"
         for document_id in document.reverse_citations
     ) or translator.t("method_history.missing")
     missing = translator.t("method_history.missing")
     title = _document_fixture_text(translator, document, "title", fixture=fixture)
+    title_markup = _scope_in_text(title, document.scope)
     document_type = translator.label("documents.type", document.document_type.value)
     return (
         f'<li class="source-document" data-document-id="{escape(document.document_id, quote=True)}">'
-        f'<h3>{title}</h3>'
-        f'<dl><div><dt>{escape(translator.t("documents.document_id"))}</dt><dd>{escape(document.document_id)}</dd></div>'
+        f'<h3>{title_markup}</h3>'
+        f'<dl><div><dt>{escape(translator.t("documents.document_id"))}</dt><dd><span translate="no">{escape(document.document_id)}</span></dd></div>'
         f'<div><dt>{escape(translator.t("documents.type"))}</dt><dd>{document_type}</dd></div>'
-        f'<div><dt>{escape(translator.t("documents.version"))}</dt><dd>{escape(document.version or missing)}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.version"))}</dt><dd><span translate="no">{escape(document.version or missing)}</span></dd></div>'
         f'<div><dt>{escape(translator.t("documents.locator"))}</dt><dd>{locator}</dd></div>'
-        f'<div><dt>{escape(translator.t("documents.updated"))}</dt><dd>{escape(document.updated_at or missing)}</dd></div>'
+        f'<div><dt>{escape(translator.t("documents.updated"))}</dt><dd><span translate="no">{escape(document.updated_at or missing)}</span></dd></div>'
         f'<div><dt>{escape(translator.t("documents.citations"))}</dt><dd>{citations}</dd></div>'
         f'<div><dt>{escape(translator.t("documents.reverse_citations"))}</dt><dd>{reverse}</dd></div></dl></li>'
     )
