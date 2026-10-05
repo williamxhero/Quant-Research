@@ -8,7 +8,6 @@ from typing import cast
 from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelStatus, SourceReference
 from manager_gui.models import JSONValue
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
-from manager_gui.web.i18n import Locale, Translator
 from manager_gui.testing.i18n import (
     assert_dom_equivalent,
     assert_lang_propagation,
@@ -16,8 +15,6 @@ from manager_gui.testing.i18n import (
     assert_owner_text_escaped,
     assert_pseudo_localized,
 )
-from manager_gui.web.evidence_trace import render_evidence_trace
-from manager_gui.web.s4_fixtures import build_s4_fixture
 from manager_gui.web.evidence import (
     ArtifactVerificationStatus,
     EvidenceFixtureState,
@@ -29,6 +26,9 @@ from manager_gui.web.evidence import (
     render_evidence,
     render_evidence_view,
 )
+from manager_gui.web.evidence_trace import render_evidence_trace
+from manager_gui.web.i18n import Locale, Translator
+from manager_gui.web.s4_fixtures import build_s4_fixture
 
 
 def _render_evidence_en(
@@ -275,6 +275,7 @@ def test_aliases_keep_the_s4_hook_discoverable_without_shared_integration_edits(
 
 def test_evidence_and_trace_localize_fixture_copy_in_both_locales() -> None:
     model = build_s4_fixture("evidence", "complete")
+    canonical_json = model.to_json()
     context_zh = "/?view=evidence&fixture=complete&lang=zh-CN"
     context_en = "/?view=evidence&fixture=complete&lang=en"
     zh = Translator(Locale.ZH_CN)
@@ -315,6 +316,7 @@ def test_evidence_and_trace_localize_fixture_copy_in_both_locales() -> None:
     )
     assert_pseudo_localized(evidence_pseudo)
     assert_pseudo_localized(trace_pseudo)
+    assert model.to_json() == canonical_json
 
 
 def test_evidence_and_trace_escape_owner_text_exactly_once_without_translation() -> None:
