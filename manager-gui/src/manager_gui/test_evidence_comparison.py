@@ -5,7 +5,6 @@ from __future__ import annotations
 from manager_gui import ManagerReadModel
 from manager_gui.models import ReadModelStatus
 from manager_gui.provider import FORBIDDEN_PROVIDER_METHODS, public_provider_methods
-from manager_gui.web.i18n import Locale, Translator
 from manager_gui.web.evidence_comparison import (
     AxisComparisonState,
     ComparisonAxis,
@@ -18,6 +17,7 @@ from manager_gui.web.evidence_comparison import (
     render_evidence_comparison,
     render_evidence_comparison_view,
 )
+from manager_gui.web.i18n import Locale, Translator
 
 
 def _render_evidence_comparison_en(
@@ -200,6 +200,7 @@ def test_comparison_pseudo_dom_and_language_audits() -> None:
     )
 
     model = build_evidence_comparison_fixture("complete")
+    canonical_json = model.to_json()
     zh = render_evidence_comparison(model, translator=Translator(Locale.ZH_CN))
     en = render_evidence_comparison(model, translator=Translator(Locale.EN))
     pseudo = render_evidence_comparison(model, translator=Translator(Locale.EN, pseudo=True))
@@ -208,4 +209,5 @@ def test_comparison_pseudo_dom_and_language_audits() -> None:
     assert_language_text(zh, Locale.ZH_CN)
     assert_language_text(en, Locale.EN)
     assert_pseudo_localized(pseudo)
+    assert model.to_json() == canonical_json
 

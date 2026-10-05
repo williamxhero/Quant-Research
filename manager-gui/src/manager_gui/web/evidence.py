@@ -1251,6 +1251,7 @@ def _render_record(
         )
         for artifact in record.artifacts
     )
+    not_recorded = f"<p>{escape(translator.t('evidence.not_recorded'))}</p>"
     return (
         f'<article class="evidence-record" data-record-id="{escape(record.record_id, quote=True)}" '
         f'data-evidence-kind="{record.evidence_kind.value}" data-evidence-status="{record.status.value}">'
@@ -1264,8 +1265,8 @@ def _render_record(
         f'{_render_text_list(translator.t("evidence.limitations"), record.limitations, translator=translator, is_fixture=is_fixture)}'
         f'{_render_text_list(translator.t("evidence.blockers"), record.blockers, translator=translator, is_fixture=is_fixture)}'
         f'{_render_text_list(translator.t("evidence.incompatibilities"), record.incompatibilities, translator=translator, is_fixture=is_fixture)}</dl>'
-        f'<section class="evidence-record-sections"><h4>{escape(translator.t("evidence.sections"))}</h4>{sections or f"<p>{escape(translator.t('evidence.not_recorded'))}</p>"}</section>'
-        f'<section class="evidence-record-artifacts"><h4>{escape(translator.t("evidence.artifacts"))}</h4>{artifacts or f"<p>{escape(translator.t('evidence.not_recorded'))}</p>"}</section>'
+        f'<section class="evidence-record-sections"><h4>{escape(translator.t("evidence.sections"))}</h4>{sections or not_recorded}</section>'
+        f'<section class="evidence-record-artifacts"><h4>{escape(translator.t("evidence.artifacts"))}</h4>{artifacts or not_recorded}</section>'
         "</article>"
     )
 
