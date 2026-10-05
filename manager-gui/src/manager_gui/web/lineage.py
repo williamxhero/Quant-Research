@@ -1402,7 +1402,11 @@ def _relation(value: str, translator: Translator) -> str:
 
 
 def _status(value: str | None, translator: Translator) -> str:
-    return translator.label("lineage_status", value) if value else translator.t("lineage.not_recorded")
+    return (
+        translator.label("lineage_status", value)
+        if value
+        else escape(translator.t("lineage.not_recorded"))
+    )
 
 
 def _owner(value: str) -> str:
@@ -1432,11 +1436,12 @@ def _render_sources(refs: Sequence[LineageSourceRef], *, translator: Translator)
 
 def _describe_derivation(derivation: LineageDerivation | None, *, translator: Translator) -> str:
     if derivation is None:
-        return translator.t("lineage.not_recorded_short")
-    pieces = [derivation.kind, derivation.rule, derivation.version]
-    text = " · ".join(piece for piece in pieces if piece)
+        return translator.t("lineage.derivation_unrecorded")
+    values = [value for value in (derivation.kind, derivation.rule, derivation.version) if value]
+    text = " · ".join(_owner(value) for value in values)
     if derivation.inputs:
-        text += " (" + translator.t("lineage.derivation_inputs", inputs=translator.join(derivation.inputs)) + ")"
+        inputs = translator.join(_owner(value) for value in derivation.inputs)
+        text += f" ({translator.t('lineage.derivation_inputs_prefix')}{inputs})"
     return text
 
 
@@ -1445,7 +1450,7 @@ def _describe_hash(node: LineageNode, *, translator: Translator) -> str:
         return translator.t("lineage.not_recorded_short")
     # A match is the only way a node reaches the renderer; absence of a check is never "verified".
     key = "lineage.hash_verified" if node.verified_hash == node.hash else "lineage.hash_not_verified"
-    return f"{node.hash} ({translator.t(key)})"
+    return f"{_owner(node.hash)} ({translator.t(key)})"
 
 
 def _edge_sentence(
@@ -1601,13 +1606,13 @@ def _render_node_row(
         f'data-on-path="{_flag(step is not None)}">'
         f'<th scope="row"><a href="{_attr(_link(context, route, node=node.node_id))}">{escape(label)}</a>'
         f'<br><small translate="no">{_attr(node.node_id)}</small></th>'
-        f"<td>{type_label}</td><td>{escape(status)}</td>"
+        f"<td>{type_label}</td><td>{status}</td>"
         f"<td>{view.depths[node.node_id]}</td>"
         f"<td>{escape(evidence_step)}</td>"
-        f"<td translate=\"no\">{escape(_describe_hash(node, translator=translator))}</td>"
-        f'<td translate="no">{escape(as_of)}</td>'
+        f"<td>{_describe_hash(node, translator=translator)}</td>"
+        f"<td>{_owner(as_of)}</td>"
         f"<td>{_render_sources(node.source_refs, translator=translator)}</td>"
-        f"<td>{escape(_describe_derivation(node.derivation, translator=translator))}</td>"
+        f"<td>{_describe_derivation(node.derivation, translator=translator)}</td>"
         f'<td><a href="{_attr(_link(context, route, record_id=node.node_id, node=None, path_to=None, cursor=None))}">'
         f"{escape(translator.t('lineage.trace_from_here'))}</a></td></tr>"
     )
@@ -1632,9 +1637,9 @@ def _render_edge_row(
         f'<tr data-edge-id="{_attr(edge.edge_id)}" data-relation="{edge.relation.value}" '
         f'data-on-path="{_flag(on_path)}"><th scope="row">{cell(edge.source_id)}</th>'
         f"<td>{_relation(edge.relation.value, translator)}</td><td>{cell(edge.target_id)}</td>"
-        f'<td translate="no">{escape(edge.as_of or view.as_of or translator.t("lineage.not_recorded"))}</td>'
+        f"<td>{_owner(edge.as_of or view.as_of or translator.t('lineage.not_recorded'))}</td>"
         f"<td>{_render_sources(edge.source_refs, translator=translator)}</td>"
-        f"<td>{escape(_describe_derivation(edge.derivation, translator=translator))}</td></tr>"
+        f"<td>{_describe_derivation(edge.derivation, translator=translator)}</td></tr>"
     )
 
 
@@ -1721,7 +1726,9 @@ def _render_tables(
     )
 
 
-def _render_evidence_path(view: LineageViewModel, *, context: QueryContext, route: str) -> str:
+def _render_evidence_path(
+    view: LineageViewModel, *, context: QueryContext, route: str, translator: Translator
+) -> str:
     by_id = {node.node_id: node for node in view.nodes}
     edges = {edge.edge_id: edge for edge in view.edges}
     state = view.path_state
@@ -1730,34 +1737,28 @@ def _render_evidence_path(view: LineageViewModel, *, context: QueryContext, rout
         steps: list[str] = []
         for index, node_id in enumerate(path.node_ids):
             node = by_id[node_id]
+            label = _node_label(node, view, translator)
             steps.append(
                 f'<li data-node-id="{_attr(node_id)}"><a href="{_attr(_link(context, route, node=node_id))}">'
-                f"{escape(node.label)}</a> <small>{escape(node.record_type.value)}</small>"
+                f"{escape(label)}</a> <small>{_record_type(node.record_type.value, translator)}</small>"
             )
             if index < len(path.edge_ids):
                 edge = edges[path.edge_ids[index]]
                 arrow = "→" if edge.source_id == node_id else "←"
-                steps[-1] += (
-                    f' <span class="lineage-hop">{arrow} {escape(edge.relation.value)}</span>'
-                )
+                steps[-1] += f' <span class="lineage-hop">{arrow} {_relation(edge.relation.value, translator)}</span>'
             steps[-1] += "</li>"
         body = (
-            f"<p>Shortest path to {escape(by_id[path.target_id].label)}: {path.length} "
-            f"relation(s) within the bounds.</p><ol>{''.join(steps)}</ol>"
+            f"<p>{translator.html('lineage.shortest_path_summary', target=_node_label(by_id[path.target_id], view, translator), count=path.length)}</p>"
+            f"<ol>{''.join(steps)}</ol>"
         )
     elif state is LineagePathState.NOT_ESTABLISHED:
-        body = (
-            "<p>Not established: further owner pages exist, so the absence of an evidence path "
-            "on this page is not proof that none exists.</p>"
-        )
+        body = f"<p>{escape(translator.t('lineage.path_not_established'))}</p>"
     else:
-        body = (
-            f"<p>No evidence path exists within depth {view.query.depth}, the selected direction, "
-            "relations, and record types in this complete snapshot.</p>"
-        )
+        body = f"<p>{escape(translator.t('lineage.path_not_found', depth=view.query.depth))}</p>"
     return (
         f'<section class="lineage-evidence-path" data-path-state="{state.value}" '
-        'aria-labelledby="lineage-path-heading"><h2 id="lineage-path-heading">Shortest evidence path</h2>'
+        'aria-labelledby="lineage-path-heading">'
+        f'<h2 id="lineage-path-heading">{escape(translator.t("lineage.path_heading"))}</h2>'
         f"{body}</section>"
     )
 
