@@ -138,22 +138,39 @@ def test_shared_shell_matrix_runs_all_routes_and_fixtures_in_both_locales() -> N
             "history",
             "source-documents",
         }
+    ) | frozenset(
+        {
+            "memory",
+            "memory-failures",
+            "failure-patterns",
+            "evidence",
+            "lineage",
+            "evidence-object-comparison",
+            "derived-failure-grouping",
+        }
     ) == MIGRATED_ROUTES
     routes = tuple(item.view_id.value for item in NAVIGATION)
     assert len(routes) == 17
+    assert not {"search", "portal"} & MIGRATED_ROUTES
     count = 0
     for fixture in FixtureState:
         app = ManagerGUIApp(default_fixture=fixture)
         for route in routes:
             url = f"/?view={route}&fixture={fixture.value}&panel=events&tag=a&tag=b&tag="
-            assert_shared_shell_i18n(
-                app.render(url),
-                app.render(url + "&lang=en"),
-                route=route,
-                source_url=url + "&lang=en",
-            )
+            try:
+                assert_shared_shell_i18n(
+                    app.render(url),
+                    app.render(url + "&lang=en"),
+                    route=route,
+                    source_url=url + "&lang=en",
+                )
+            except AssertionError as exc:
+                pytest.fail(f"{route}/{fixture.value}: {exc}")
             for locale_url in (url, url + "&lang=en"):
-                assert_pseudo_localized(render_pseudo_document(app, locale_url), route=route)
+                try:
+                    assert_pseudo_localized(render_pseudo_document(app, locale_url), route=route)
+                except AssertionError as exc:
+                    pytest.fail(f"pseudo {route}/{fixture.value}/{locale_url}: {exc}")
             count += 2
     assert count == 374
 
@@ -177,6 +194,36 @@ def test_l3_modes_and_scopes_run_the_full_locale_dom_aria_link_matrix() -> None:
         zh = app.render(url)
         en = app.render(url + "&lang=en")
         assert_shared_shell_i18n(zh, en, route=route, source_url=url + "&lang=en")
+        assert_pseudo_localized(render_pseudo_document(app, url), route=route)
+        assert_pseudo_localized(render_pseudo_document(app, url + "&lang=en"), route=route)
+
+
+def test_l4_page_specific_states_run_locale_dom_aria_link_and_pseudo_audits() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    contexts = (
+        *(f"/?view={route}&fixture=complete&panel=events" for route in (
+            "memory", "memory-failures", "failure-patterns", "evidence",
+            "lineage", "evidence-object-comparison", "derived-failure-grouping",
+        )),
+        "/?view=memory&fixture=complete&memory_id=memory-fixture-1",
+        "/?view=memory-failures&fixture=complete&failure_id=memory-fixture-1",
+        "/?view=failure-patterns&fixture=complete&pattern_id=pattern-fixture-1",
+        "/?view=evidence&fixture=complete&record_id=protocol-evidence-1&artifact_id=artifact-report-1&source_id=evidence-source",
+        *(f"/?view=lineage&fixture={state.value}" for state in FixtureState),
+        "/?view=lineage&fixture=partial&cursor=never-issued",
+        "/?view=lineage&fixture=complete&presentation=graph&record_id=conclusion-1",
+        "/?view=evidence-object-comparison&fixture=complete&page=2",
+        "/?view=derived-failure-grouping&fixture=complete&outcome=failure",
+    )
+    assert len(contexts) == 26
+    for url in contexts:
+        route = dict(parse_qsl(urlsplit(url).query))["view"]
+        zh = app.render(url)
+        en = app.render(url + "&lang=en")
+        try:
+            assert_shared_shell_i18n(zh, en, route=route, source_url=url + "&lang=en")
+        except AssertionError as exc:
+            pytest.fail(f"L4 {route}/{url}: {exc}")
         assert_pseudo_localized(render_pseudo_document(app, url), route=route)
         assert_pseudo_localized(render_pseudo_document(app, url + "&lang=en"), route=route)
 

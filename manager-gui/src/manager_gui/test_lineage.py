@@ -30,8 +30,7 @@ from manager_gui.testing.i18n import (
     assert_language_text,
     parse_html,
 )
-from manager_gui.web.i18n import CATALOG, Locale, Translator, merge
-from manager_gui.web.i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
+from manager_gui.web.i18n import CATALOG, Locale, Translator
 from manager_gui.web.lineage import (
     LINEAGE_INTEGRATION_HOOK,
     LINEAGE_RESOURCE,
@@ -59,9 +58,9 @@ from manager_gui.web.lineage import (
 )
 
 CONTEXT = "/?view=lineage&fixture=complete&panel=events&q=abc&opaque=keep"
-LINEAGE_CATALOG_ALL = merge(CATALOG, LINEAGE_CATALOG)
-EN_TRANSLATOR = Translator(Locale.EN, catalog=LINEAGE_CATALOG_ALL)
-ZH_TRANSLATOR = Translator(Locale.ZH_CN, catalog=LINEAGE_CATALOG_ALL)
+LINEAGE_CATALOG = CATALOG
+EN_TRANSLATOR = Translator(Locale.EN, catalog=CATALOG)
+ZH_TRANSLATOR = Translator(Locale.ZH_CN, catalog=CATALOG)
 
 
 # --- helpers -------------------------------------------------------------------

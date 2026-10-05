@@ -22,10 +22,9 @@ from manager_gui.web.failure_patterns import (
     render_memory_failure_view as _render_memory_failure_view,
 )
 from manager_gui.web.i18n import Translator
-from manager_gui.web.i18n.catalog import CATALOG, merge
-from manager_gui.web.i18n.catalog.l4_memory import ENTRIES
+from manager_gui.web.i18n.catalog import CATALOG
 
-EN_TRANSLATOR = Translator("en", strict=True, catalog=merge(CATALOG, ENTRIES))
+EN_TRANSLATOR = Translator("en", strict=True, catalog=CATALOG)
 render_failure_patterns = partial(_render_failure_patterns, translator=EN_TRANSLATOR)
 render_failure_patterns_view = partial(_render_failure_patterns_view, translator=EN_TRANSLATOR)
 render_memory_failure_view = partial(_render_memory_failure_view, translator=EN_TRANSLATOR)

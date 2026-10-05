@@ -21,10 +21,9 @@ from manager_gui.web.failure_grouping import (
     render_failure_grouping_view as _render_failure_grouping_view,
 )
 from manager_gui.web.i18n import Translator
-from manager_gui.web.i18n.catalog import CATALOG, merge
-from manager_gui.web.i18n.catalog.l4_memory import ENTRIES
+from manager_gui.web.i18n.catalog import CATALOG
 
-EN_TRANSLATOR = Translator("en", strict=True, catalog=merge(CATALOG, ENTRIES))
+EN_TRANSLATOR = Translator("en", strict=True, catalog=CATALOG)
 render_failure_grouping = partial(_render_failure_grouping, translator=EN_TRANSLATOR)
 render_failure_grouping_view = partial(_render_failure_grouping_view, translator=EN_TRANSLATOR)
 

@@ -1384,6 +1384,8 @@ def _truncate(text: str, limit: int = 26) -> str:
 
     if limit <= 0:
         return ""
+    if text.startswith("⟦") and text.endswith("⟧"):
+        return f"⟦{_truncate(text[1:-1], max(0, limit - 2))}⟧"
 
     def width(value: str) -> int:
         return sum(2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1 for char in value)
@@ -1514,7 +1516,7 @@ def _edge_sentence_markup(
             if _is_fixture_model(view.read_model)
             else _owner(node.label)
         )
-        if node_id == link_node_id:
+        if node_id == link_node_id and not translator.pseudo:
             return f'<a href="{_attr(_link(context, route, node=node_id))}">{label_markup}</a>'
         return label_markup
 

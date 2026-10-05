@@ -61,8 +61,10 @@ L2-T4 只验证共用层，不翻译页面专属正文。`ManagerGUIApp.render()
 `interaction.py`、`client.py` 和 `pagination.py` 只能通过 `CatalogRegistry` 追加注册，
 不得覆盖已有键。L3 页面目录由 `l3_atlas_story.py`、`l3_genome.py` 和
 `l3_method_history.py` 分别拥有；三个目录只在 `catalog/__init__.py` 中各注册一次。
-L3 页面不得修改共用目录、`models.py` 或共享 shell；L4/L5 目录仍由各自 ticket 管理，
-不因 L3 集成而提前注册。
+L4 页面目录由 `l4_memory.py`、`l4_evidence.py` 和 `l4_lineage.py` 分别拥有；三个目录也只在
+`catalog/__init__.py` 中各注册一次。注册表拒绝重复键，页面 helper 可接受 shell 传入的请求
+`Translator` 并仅补齐完全相同的页面目录项。L3/L4 页面不得修改共用目录、`models.py` 或共享
+shell；L5 Search 与 Portal 页面文案及 Exit Gate 保留给后续 ticket，不纳入 L4 页面迁移。
 
 L3 已迁移路由集合位于 `testing/i18n.py`，固定为八条：`atlas`、`stories`、
 `strategies`、`strategy-conditions`、`strategy-genome-comparison`、`methodology`、
@@ -72,6 +74,16 @@ L3 已迁移路由集合位于 `testing/i18n.py`，固定为八条：`atlas`、`
 `timeline` 三种模式，以及 History/Source Documents 的 `A0`、`S3`、`CPA`、`V1.x`
 四个范围；Atlas 到 Research Story 的内部链接必须保留 `fixture`、记录 ID 和显式
 语言状态。
+
+L4 新增迁移 `memory`、`memory-failures`、`failure-patterns`、`evidence`、`lineage`、
+`evidence-object-comparison` 和 `derived-failure-grouping` 七条路由，加入同一伪语言、DOM、
+语言文字、链接/表单及可访问性审计。17 条路由 × 11 种共用 fixture 状态 × 2 种语言仍执行
+374 份文档；Search 与 Portal 保持在 L5，不纳入已迁移页面文案审计。L4 页面专项还覆盖记忆、
+失败和证据详情，Lineage 边界/错误状态、Evidence 比较分页及 Derived 分组筛选。Evidence Trace
+必须使用 shell 的请求 `Translator`，其视图不改读模型、API 或导出内容。
+
+L5 handoff：Search 与 Portal 页面目录、页面专属中英文文案审计及其 Exit Gate 仍待 #660；
+后续集成在现有注册表中追加各自目录，不修改 L2 共用目录、L3/L4 目录或 `models.py`。
 
 L3 页面入口接收 shell 创建的请求 `Translator`，不可在页面内重新推导语言。封闭枚举
 （生命周期、模式、事件类型、文档类型和索引状态）通过 `translator.label`，计数通过

@@ -1173,7 +1173,7 @@ def _owner_markup(value: str | None, translator: Translator, *, is_fixture: bool
 
 def _render_artifact(
     artifact: EvidenceArtifact, *, query_context: QueryContext = None, translator: Translator,
-    is_fixture: bool = True,
+    is_fixture: bool = True, heading_level: int = 3,
 ) -> str:
     status = artifact.verification_status.value
     public = public_locator(artifact.locator)
@@ -1189,7 +1189,7 @@ def _render_artifact(
     return (
         f'<article class="evidence-artifact" data-artifact-id="{escape(artifact.artifact_id, quote=True)}" '
         f'data-verification-status="{escape(status, quote=True)}">'
-        f"<h4>{link_markup}</h4><dl class=\"evidence-artifact-details\">"
+        f"<h{heading_level}>{link_markup}</h{heading_level}><dl class=\"evidence-artifact-details\">"
         f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.media_type"))}</dt><dd>{_owner_markup(artifact.media_type, translator, is_fixture=is_fixture)}</dd></div>'
         f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.logical_role"))}</dt><dd>{_owner_markup(artifact.logical_role, translator, is_fixture=is_fixture)}</dd></div>'
         f'<div class="evidence-detail"><dt>{escape(translator.t("evidence.hash"))}</dt><dd>{_owner_markup(artifact.hash, translator, is_fixture=is_fixture)}</dd></div>'
@@ -1248,6 +1248,7 @@ def _render_record(
             query_context=query_context,
             translator=translator,
             is_fixture=is_fixture,
+            heading_level=5,
         )
         for artifact in record.artifacts
     )

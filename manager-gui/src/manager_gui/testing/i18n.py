@@ -296,8 +296,8 @@ def render_pseudo_document(app: ManagerGUIApp, url: str = "/") -> str:
         return app.render(url)
 
 
-# L3 page copy has passed the bilingual exit gate. Adding a route here enables
-# text/name/heading audits on its page, rather than accepting its current prose.
+# L3 and L4 page copy has passed the bilingual exit gate. L5 remains outside
+# page-copy audits until its own integration ticket closes.
 MIGRATED_ROUTES: frozenset[str] = frozenset(
     {
         "atlas",
@@ -305,6 +305,13 @@ MIGRATED_ROUTES: frozenset[str] = frozenset(
         "strategies",
         "strategy-conditions",
         "strategy-genome-comparison",
+        "memory",
+        "memory-failures",
+        "failure-patterns",
+        "evidence",
+        "lineage",
+        "evidence-object-comparison",
+        "derived-failure-grouping",
         "methodology",
         "history",
         "source-documents",
