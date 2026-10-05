@@ -591,13 +591,13 @@ _GROUP_FIXTURE_COPY = {
 def _group_text(value: str | None, translator: Translator, model: ManagerReadModel) -> str:
     fixture = bool(model.source_refs) and all(source.schema == "manager-gui.failure-grouping.fixture.v0" for source in model.source_refs) and (model.snapshot_token or "").startswith("failure-grouping-")
     if fixture and value in _GROUP_FIXTURE_COPY:
-        return translator.html("l4.fixture." + _GROUP_FIXTURE_COPY[value])
-    return render_memory_text(value, translator, missing="l4.none_recorded")
+        return translator.html("l4_memory.fixture." + _GROUP_FIXTURE_COPY[value])
+    return render_memory_text(value, translator, missing="l4_memory.none_recorded")
 
 
 def _render_refs(refs: Sequence[GroupingSourceRef], *, translator: Translator, context: QueryContext) -> str:
     if not refs:
-        return translator.html("l4.none_recorded")
+        return translator.html("l4_memory.none_recorded")
     parts: list[str] = []
     for ref in refs:
         label = render_memory_value(ref.source_id, translator)
@@ -605,7 +605,7 @@ def _render_refs(refs: Sequence[GroupingSourceRef], *, translator: Translator, c
             target = memory_source_link(target, context)
             parts.append(f'<a class="grouping-source-link" href="{escape(target, quote=True)}">{label}</a>')
         else:
-            parts.append(f'<span class="grouping-source-unconfirmed">{label} · {translator.html("l4.missing_source")}</span>')
+            parts.append(f'<span class="grouping-source-unconfirmed">{label} · {translator.html("l4_memory.missing_source")}</span>')
     return " · ".join(parts)
 
 
@@ -613,20 +613,20 @@ def _render_group(group: DerivedFailureGrouping, *, translator: Translator, mode
     participants = " · ".join(
         f'<span class="grouping-participant" data-participant-id="{escape(item.record_id, quote=True)}">{_group_text(item.label, translator, model) if item.label else render_memory_value(item.record_id, translator)}</span>'
         for item in group.participants
-    ) or translator.html("l4.none_recorded")
+    ) or translator.html("l4_memory.none_recorded")
     outcome = group.outcome.value if group.outcome is not None else NOT_RECORDED
     title = _group_text(group.title, translator, model)
     reason = _group_text(group.reason, translator, model)
     return (
         f'<article class="derived-failure-group" data-group-id="{escape(group.group_id, quote=True)}" data-group-outcome="{escape(outcome, quote=True)}" data-group-status="{group.status.value}">'
-        f'<p class="eyebrow">{translator.html("l4.derived_group_boundary")}</p><h3>{title}</h3>'
-        f'<p><strong>{translator.html("l4.status")}</strong> <span data-status="derived">{translator.label("group_status", "derived")}</span> · '
-        f'<strong>{translator.html("l4.outcome_bucket")}</strong> {render_memory_value(group.outcome.value if group.outcome else None, translator, "group_outcome", missing="l4.none_recorded")}</p>'
-        f'<dl class="grouping-facts"><div><dt>{translator.html("l4.rule")}</dt><dd>{_group_text(group.rule, translator, model)}</dd></div>'
-        f'<div><dt>{translator.html("l4.input_scope")}</dt><dd>{translator.join(render_memory_value(value, translator) for value in group.input_scope) if group.input_scope else translator.html("l4.none_recorded")}</dd></div>'
-        f'<div><dt>{translator.html("l4.sample_count")}</dt><dd>{group.sample_count if group.sample_count is not None else translator.html("l4.none_recorded")}</dd></div>'
-        f'<div><dt>{translator.html("l4.source_refs")}</dt><dd>{_render_refs(group.source_refs, translator=translator, context=context)}</dd></div></dl>'
-        f'<p><strong>{translator.html("l4.participating_records")}</strong> {participants}</p><p class="grouping-reason">{reason}</p></article>'
+        f'<p class="eyebrow">{translator.html("l4_memory.derived_group_boundary")}</p><h3>{title}</h3>'
+        f'<p><strong>{translator.html("l4_memory.status")}</strong> <span data-status="derived">{translator.label("l4_memory_group_status", "derived")}</span> · '
+        f'<strong>{translator.html("l4_memory.outcome_bucket")}</strong> {render_memory_value(group.outcome.value if group.outcome else None, translator, "group_outcome", missing="l4_memory.none_recorded")}</p>'
+        f'<dl class="grouping-facts"><div><dt>{translator.html("l4_memory.rule")}</dt><dd>{_group_text(group.rule, translator, model)}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.input_scope")}</dt><dd>{translator.join(render_memory_value(value, translator) for value in group.input_scope) if group.input_scope else translator.html("l4_memory.none_recorded")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.sample_count")}</dt><dd>{group.sample_count if group.sample_count is not None else translator.html("l4_memory.none_recorded")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.source_refs")}</dt><dd>{_render_refs(group.source_refs, translator=translator, context=context)}</dd></div></dl>'
+        f'<p><strong>{translator.html("l4_memory.participating_records")}</strong> {participants}</p><p class="grouping-reason">{reason}</p></article>'
     )
 
 
@@ -649,31 +649,31 @@ def render_failure_grouping(
     pieces = [
         f'<section class="failure-grouping-page" data-integration-hook="{FAILURE_GROUPING_INTEGRATION_HOOK}" '
         f'data-grouping-status="{model.availability.status.value}" data-grouping-empty="{"true" if view.empty else "false"}">',
-        f'<p class="eyebrow">{selected_translator.html("l4.derived_grouping_eyebrow")}</p>',
-        f'<h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4.derived_grouping_title")}</h1>',
-        f'<p class="page-intro">{selected_translator.html("l4.derived_grouping_intro")}</p>',
-        f'<p class="context-line grouping-context"><span><strong>{selected_translator.html("l4.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4.unavailable")}</span>'
-        f'<span><strong>{selected_translator.html("l4.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4.unavailable")}</span></p>',
+        f'<p class="eyebrow">{selected_translator.html("l4_memory.derived_grouping_eyebrow")}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4_memory.derived_grouping_title")}</h1>',
+        f'<p class="page-intro">{selected_translator.html("l4_memory.derived_grouping_intro")}</p>',
+        f'<p class="context-line grouping-context"><span><strong>{selected_translator.html("l4_memory.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4_memory.unavailable")}</span>'
+        f'<span><strong>{selected_translator.html("l4_memory.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4_memory.unavailable")}</span></p>',
         render_status_block(model, translator=selected_translator),
     ]
     if view.empty:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "error"
-        detail = selected_translator.html("l4.no_named_group") if state == "empty" else selected_translator.html("l4.grouping_not_determined", status=selected_translator.t("label.status." + model.availability.status.value))
+        detail = selected_translator.html("l4_memory.no_named_group") if state == "empty" else selected_translator.html("l4_memory.grouping_not_determined", status=selected_translator.t("label.status." + model.availability.status.value))
         pieces.append(render_operational_state(state, translator=selected_translator))
         pieces.append(f'<p class="grouping-unavailable">{detail}</p>')
     else:
         pieces.append(
             '<section class="derived-grouping-boundary" data-statistics="not-generated">'
-            f'<p>{selected_translator.html("l4.no_aggregate_stat")}</p></section>'
+            f'<p>{selected_translator.html("l4_memory.no_aggregate_stat")}</p></section>'
         )
         pieces.append(
-            f'<section class="derived-groupings" data-grouping-state="ready"><h2>{selected_translator.html("l4.named_derived_groups")}</h2>'
+            f'<section class="derived-groupings" data-grouping-state="ready"><h2>{selected_translator.html("l4_memory.named_derived_groups")}</h2>'
             + "".join(_render_group(group, translator=selected_translator, model=model, context=query_context) for group in view.groups)
             + "</section>"
         )
     if include_raw_json:
         pieces.append(
-            f'<details class="grouping-raw-json"><summary>{selected_translator.html("l4.raw_json")}</summary>'
+            f'<details class="grouping-raw-json"><summary>{selected_translator.html("l4_memory.raw_json")}</summary>'
             f'<pre translate="no">{selected_translator.source_text(view.raw_json)}</pre></details>'
         )
     pieces.append("</section>")

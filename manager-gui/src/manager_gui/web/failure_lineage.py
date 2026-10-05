@@ -220,7 +220,7 @@ def failure_lineage(
     )
 
 
-def render_references(links: Sequence[FailureReference], *, translator: Translator, query_context: QueryContext = None, empty: str = "l4.missing_unconfirmed") -> str:
+def render_references(links: Sequence[FailureReference], *, translator: Translator, query_context: QueryContext = None, empty: str = "l4_memory.missing_unconfirmed") -> str:
     parts: list[str] = []
     for link in links:
         attrs = f'data-link-kind="{escape(link.kind, quote=True)}"'
@@ -228,13 +228,13 @@ def render_references(links: Sequence[FailureReference], *, translator: Translat
             attrs += f' data-relation="{escape(link.relation, quote=True)}"'
         if link.state:
             attrs += f' data-link-state="{escape(link.state, quote=True)}"'
-        label = render_memory_text(link.label, translator) if link.record_id or link.source_id else translator.html("l4.missing")
+        label = render_memory_text(link.label, translator) if link.record_id or link.source_id else translator.html("l4_memory.missing")
         if target := link.target:
             target = memory_source_link(target, query_context)
             parts.append(f'<a {attrs} href="{escape(target, quote=True)}">{label}</a>')
         else:
             state = " · " + translator.label("status", link.state) if link.state in _UNUSABLE else ""
-            parts.append(f'<span {attrs}>{label} · {translator.html("l4.missing_link")}{state}</span>')
+            parts.append(f'<span {attrs}>{label} · {translator.html("l4_memory.missing_link")}{state}</span>')
     return " · ".join(parts) or f'<span class="failure-missing">{translator.html(empty)}</span>'
 
 
@@ -243,33 +243,33 @@ def render_failure_lineage(trace: FailureLineage, *, translator: Translator, que
         f'<section data-lineage-relation="{key}"><h4>{translator.html(label)}</h4>'
         f'{render_references(getattr(trace, key), translator=translator, query_context=query_context, empty=empty)}</section>'
         for key, label, empty in (
-            ("sources", "l4.source_refs", "l4.missing_source_refs"),
-            ("edges", "l4.declared_lineage_edges", "l4.missing_lineage_edges"),
-            ("conflicts", "l4.conflicts", "l4.none_conflicts"),
-            ("supersedes", "l4.supersedes", "l4.none_supersession"),
+            ("sources", "l4_memory.source_refs", "l4_memory.missing_source_refs"),
+            ("edges", "l4_memory.declared_lineage_edges", "l4_memory.missing_lineage_edges"),
+            ("conflicts", "l4_memory.conflicts", "l4_memory.none_conflicts"),
+            ("supersedes", "l4_memory.supersedes", "l4_memory.none_supersession"),
         )
     )
     table_rows = "".join(
-        f'<tr data-association-kind="{escape(kind, quote=True)}"><th scope="row">{translator.label("lineage_kind", kind)}</th>'
+        f'<tr data-association-kind="{escape(kind, quote=True)}"><th scope="row">{translator.label("l4_memory_lineage_kind", kind)}</th>'
         f'<td>{render_references(tuple(link for link in trace.associations if link.kind == kind), translator=translator, query_context=query_context)}</td></tr>'
         for kind in LINEAGE_KINDS
     )
     table_markup = (
-        f'<table class="lineage-table"><caption>{translator.html("l4.lineage_table")}</caption>'
-        f'<thead><tr><th scope="col">{translator.html("l4.dimension")}</th><th scope="col">{translator.html("l4.published_reference")}</th></tr></thead>'
+        f'<table class="lineage-table"><caption>{translator.html("l4_memory.lineage_table")}</caption>'
+        f'<thead><tr><th scope="col">{translator.html("l4_memory.dimension")}</th><th scope="col">{translator.html("l4_memory.published_reference")}</th></tr></thead>'
         f'<tbody>{table_rows}</tbody></table>{sections}'
     )
     graph_items = "".join(
-        f'<li data-graph-node-kind="{escape(kind, quote=True)}"><strong>{translator.label("lineage_kind", kind)}</strong> · '
+        f'<li data-graph-node-kind="{escape(kind, quote=True)}"><strong>{translator.label("l4_memory_lineage_kind", kind)}</strong> · '
         f'{render_references(tuple(link for link in trace.associations if link.kind == kind), translator=translator, query_context=query_context)}</li>'
         for kind in LINEAGE_KINDS
     )
-    graph_markup = f'<ol class="lineage-graph" aria-label="{escape(translator.t("l4.lineage_graph"), quote=True)}">{graph_items}</ol>'
+    graph_markup = f'<ol class="lineage-graph" aria-label="{escape(translator.t("l4_memory.lineage_graph"), quote=True)}">{graph_items}</ol>'
     alternatives = render_alternative_view(translator=translator, target="failure-lineage", graph_markup=graph_markup, table_markup=table_markup, selected="table")
     return (
         f'<section class="failure-lineage" data-lineage-coverage="{trace.coverage}" data-lineage-state="{escape(trace.declared_state or "missing", quote=True)}">'
-        f'<h3>{translator.html("l4.lineage_traceability")}</h3>'
-        f'<p>{translator.html("l4.declared_state")}: {render_memory_value(trace.declared_state, translator, "failure_state", missing="l4.missing")} · '
-        f'{translator.html("l4.observed_link_coverage")}: {translator.label("failure_state", trace.coverage)}. '
+        f'<h3>{translator.html("l4_memory.lineage_traceability")}</h3>'
+        f'<p>{translator.html("l4_memory.declared_state")}: {render_memory_value(trace.declared_state, translator, "failure_state", missing="l4_memory.missing")} · '
+        f'{translator.html("l4_memory.observed_link_coverage")}: {translator.label("l4_memory_failure_state", trace.coverage)}. '
         f'{render_memory_text(trace.reason, translator, model) if trace.reason else ""}</p>{alternatives}</section>'
     )

@@ -1362,7 +1362,7 @@ _S3_FIXTURE_COPY = {
 }
 
 
-def render_memory_text(value: str | None, translator: Translator, model: ManagerReadModel | None = None, *, missing: str = "l4.missing_unconfirmed") -> str:
+def render_memory_text(value: str | None, translator: Translator, model: ManagerReadModel | None = None, *, missing: str = "l4_memory.missing_unconfirmed") -> str:
     """Localize only the known synthetic fixture; all other text is owner-owned."""
     if value is None:
         return translator.html(missing)
@@ -1370,25 +1370,25 @@ def render_memory_text(value: str | None, translator: Translator, model: Manager
         source.schema == "s3.fixture.v0" for source in model.source_refs
     ) and (model.snapshot_token or "").startswith("fixture-s3-")
     if fixture and value in _S3_FIXTURE_COPY:
-        return translator.html("l4.fixture." + _S3_FIXTURE_COPY[value])
+        return translator.html("l4_memory.fixture." + _S3_FIXTURE_COPY[value])
     return f'<span data-owner-text="true">{translator.source_text(value)}</span>'
 
 
-def render_memory_value(value: str | None, translator: Translator, domain: str | None = None, *, missing: str = "l4.missing_unconfirmed") -> str:
+def render_memory_value(value: str | None, translator: Translator, domain: str | None = None, *, missing: str = "l4_memory.missing_unconfirmed") -> str:
     """Keep identities opaque and open values verbatim, while mapping known enums."""
     if value is None:
         return translator.html(missing)
     if domain is None:
         return f'<span translate="no">{translator.source_text(value)}</span>'
     known_aliases = {"not excluded": "not_excluded", "not repeated": "not_repeated", "not required": "not_required"}
-    label = translator.label(domain, known_aliases.get(value, value) if domain == "decision" else value)
+    label = translator.label("l4_memory_" + domain.removeprefix("memory_"), known_aliases.get(value, value) if domain == "decision" else value)
     return label.replace("<code>", '<code translate="no">', 1) if label.startswith("<code>") else label
 
 
 def render_filter_value(value: str, translator: Translator, domain: str | None = None) -> str:
     if domain is None:
         return translator.source_text(value)
-    label = translator.label(domain, value)
+    label = translator.label("l4_memory_" + domain.removeprefix("memory_"), value)
     return translator.source_text(value) if label.startswith("<code>") else label
 
 
@@ -1403,7 +1403,7 @@ def memory_source_link(target: str, context: QueryContext) -> str:
 
 def _render_links(links: Sequence[MemoryLink], *, translator: Translator, context: QueryContext = None) -> str:
     if not links:
-        return f'<span class="memory-source-missing">{translator.html("l4.missing_source")}</span>'
+        return f'<span class="memory-source-missing">{translator.html("l4_memory.missing_source")}</span>'
     rendered: list[str] = []
     for link in links:
         label = f'{render_memory_text(link.label, translator)} [{render_memory_value(link.kind, translator, "memory_link_kind")}]'
@@ -1413,13 +1413,13 @@ def _render_links(links: Sequence[MemoryLink], *, translator: Translator, contex
             target = memory_source_link(link.target, context)
             rendered.append(f'<a class="memory-link memory-{escape(link.kind, quote=True)}" {attrs} href="{escape(target, quote=True)}">{label}</a>')
         else:
-            rendered.append(f'<span class="memory-link-unconfirmed" {attrs}>{label} · {translator.html("l4.missing_source")}</span>')
+            rendered.append(f'<span class="memory-link-unconfirmed" {attrs}>{label} · {translator.html("l4_memory.missing_source")}</span>')
     return '<span class="memory-links">' + " · ".join(rendered) + "</span>"
 
 
 def _render_facts(title_key: str, facts: Sequence[PolicyFact], *, section_id: str, translator: Translator) -> str:
     if not facts:
-        return f'<div class="memory-facts-empty" data-facts="{escape(section_id)}">{translator.html("l4.none_recorded")}</div>'
+        return f'<div class="memory-facts-empty" data-facts="{escape(section_id)}">{translator.html("l4_memory.none_recorded")}</div>'
     rows = "".join(
         f'<div class="memory-fact"><dt>{render_memory_value(fact.key, translator, "policy_field")}</dt><dd>{render_memory_value(fact.value, translator)}</dd></div>'
         for fact in facts
@@ -1427,58 +1427,58 @@ def _render_facts(title_key: str, facts: Sequence[PolicyFact], *, section_id: st
     return f'<section class="memory-context-section" id="{escape(section_id, quote=True)}"><h3>{translator.html(title_key)}</h3><dl>{rows}</dl></section>'
 
 
-def _render_policy(policy: MemoryPolicy | None, *, translator: Translator, model: ManagerReadModel, heading: str = "l4.policy_context") -> str:
+def _render_policy(policy: MemoryPolicy | None, *, translator: Translator, model: ManagerReadModel, heading: str = "l4_memory.policy_context") -> str:
     if policy is None:
-        return f'<section class="memory-policy" data-memory-object="memory-policy"><h2>{translator.html(heading)}</h2><p>{translator.html("l4.policy_unavailable")}</p></section>'
+        return f'<section class="memory-policy" data-memory-object="memory-policy"><h2>{translator.html(heading)}</h2><p>{translator.html("l4_memory.policy_unavailable")}</p></section>'
     snapshot = policy.snapshot
     snapshot_text = " · ".join(
         part for part in (
-            f'{translator.html("l4.token")} {render_memory_value(snapshot.token, translator, missing="l4.unavailable")}',
-            f'{translator.html("l4.as_of")} {render_memory_value(snapshot.as_of, translator, missing="l4.unavailable")}',
-            f'{translator.html("l4.revision")} {render_memory_value(snapshot.revision, translator)}' if snapshot.revision else None,
+            f'{translator.html("l4_memory.token")} {render_memory_value(snapshot.token, translator, missing="l4_memory.unavailable")}',
+            f'{translator.html("l4_memory.as_of")} {render_memory_value(snapshot.as_of, translator, missing="l4_memory.unavailable")}',
+            f'{translator.html("l4_memory.revision")} {render_memory_value(snapshot.revision, translator)}' if snapshot.revision else None,
         ) if part
     )
     rules = "".join(
-        f'<div class="memory-fact"><dt>{translator.html(key)}</dt><dd>{render_memory_text(value, translator, model, missing="l4.none_recorded")}</dd></div>'
-        for key, value in (("l4.inclusion_rule", policy.inclusion_rule), ("l4.exclusion_rule", policy.exclusion_rule))
+        f'<div class="memory-fact"><dt>{translator.html(key)}</dt><dd>{render_memory_text(value, translator, model, missing="l4_memory.none_recorded")}</dd></div>'
+        for key, value in (("l4_memory.inclusion_rule", policy.inclusion_rule), ("l4_memory.exclusion_rule", policy.exclusion_rule))
     )
     notes = f'<p class="memory-policy-notes">{render_memory_text(policy.notes, translator, model)}</p>' if policy.notes else ""
-    version = f' · {translator.html("l4.version")} {render_memory_value(policy.policy_version, translator)}' if policy.policy_version else ""
+    version = f' · {translator.html("l4_memory.version")} {render_memory_value(policy.policy_version, translator)}' if policy.policy_version else ""
     return (
         f'<section class="memory-policy" data-memory-object="memory-policy"><h2>{translator.html(heading)}</h2>'
-        f'<p class="memory-policy-id"><strong>{translator.html("l4.policy")}</strong> {render_memory_value(policy.policy_id, translator)}{version}</p>'
-        f'<p class="memory-snapshot"><strong>{translator.html("l4.snapshot")}</strong> {snapshot_text}</p>'
+        f'<p class="memory-policy-id"><strong>{translator.html("l4_memory.policy")}</strong> {render_memory_value(policy.policy_id, translator)}{version}</p>'
+        f'<p class="memory-snapshot"><strong>{translator.html("l4_memory.snapshot")}</strong> {snapshot_text}</p>'
         f'<dl class="memory-policy-rules">{rules}</dl>'
-        f'{_render_facts("l4.bounds", policy.bounds, section_id="memory-bounds", translator=translator)}'
-        f'{_render_facts("l4.source_trust", policy.source_trust, section_id="memory-source-trust", translator=translator)}'
+        f'{_render_facts("l4_memory.bounds", policy.bounds, section_id="memory-bounds", translator=translator)}'
+        f'{_render_facts("l4_memory.source_trust", policy.source_trust, section_id="memory-source-trust", translator=translator)}'
         f'{notes}</section>'
     )
 
 
 def _render_decisions(decisions: MemoryDecisions, *, translator: Translator) -> str:
     rows = "".join(
-        f'<div class="memory-decision"><dt>{translator.html(key)}</dt><dd>{render_memory_value(value, translator, "decision", missing="l4.none_recorded")}</dd></div>'
+        f'<div class="memory-decision"><dt>{translator.html(key)}</dt><dd>{render_memory_value(value, translator, "decision", missing="l4_memory.none_recorded")}</dd></div>'
         for key, value in (
-            ("l4.inclusion_decision", decisions.inclusion),
-            ("l4.exclusion_decision", decisions.exclusion),
-            ("l4.duplicate_decision", decisions.duplicate),
-            ("l4.repeated_equivalent_decision", decisions.repeated_equivalent),
-            ("l4.reconciliation_decision", decisions.reconciliation),
+            ("l4_memory.inclusion_decision", decisions.inclusion),
+            ("l4_memory.exclusion_decision", decisions.exclusion),
+            ("l4_memory.duplicate_decision", decisions.duplicate),
+            ("l4_memory.repeated_equivalent_decision", decisions.repeated_equivalent),
+            ("l4_memory.reconciliation_decision", decisions.reconciliation),
         )
     )
-    return f'<section class="memory-decisions"><h3>{translator.html("l4.memory_decisions")}</h3><dl>{rows}</dl></section>'
+    return f'<section class="memory-decisions"><h3>{translator.html("l4_memory.memory_decisions")}</h3><dl>{rows}</dl></section>'
 
 
 def _render_subject(subject: MemorySubject, *, translator: Translator, model: ManagerReadModel) -> str:
     rows = "".join(
         f'<div class="memory-subject-fact"><dt>{translator.html(key)}</dt><dd>{value}</dd></div>'
         for key, value in (
-            ("l4.subject_semantic_id", render_memory_value(subject.semantic_id, translator)),
-            ("l4.structural_fingerprint", render_memory_value(subject.structural_fingerprint, translator)),
-            ("l4.subject_label", render_memory_text(subject.label, translator, model)),
+            ("l4_memory.subject_semantic_id", render_memory_value(subject.semantic_id, translator)),
+            ("l4_memory.structural_fingerprint", render_memory_value(subject.structural_fingerprint, translator)),
+            ("l4_memory.subject_label", render_memory_text(subject.label, translator, model)),
         )
     )
-    return f'<section class="memory-subject"><h3>{translator.html("l4.subject_identity")}</h3><dl>{rows}</dl></section>'
+    return f'<section class="memory-subject"><h3>{translator.html("l4_memory.subject_identity")}</h3><dl>{rows}</dl></section>'
 
 
 def _render_entry_cross_layer_links(entry: MemoryEntry, *, context: QueryContext, translator: Translator) -> str:
@@ -1493,11 +1493,11 @@ def _render_entry_cross_layer_links(entry: MemoryEntry, *, context: QueryContext
 
     if failure_id:
         links.append(
-            f'<a class="memory-failure-link" href="{escape(failure_link(failure_id, query_context=context, view="memory-failures"), quote=True)}">{translator.html("l4.open_memory_failure")}</a>'
+            f'<a class="memory-failure-link" href="{escape(failure_link(failure_id, query_context=context, view="memory-failures"), quote=True)}">{translator.html("l4_memory.open_memory_failure")}</a>'
         )
     if pattern_id:
         links.append(
-            f'<a class="memory-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context), quote=True)}">{translator.html("l4.failure_patterns_open")}</a>'
+            f'<a class="memory-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context), quote=True)}">{translator.html("l4_memory.failure_patterns_open")}</a>'
         )
     return f'<p class="memory-cross-layer-links">{" · ".join(links)}</p>' if links else ""
 
@@ -1505,24 +1505,24 @@ def _render_entry_cross_layer_links(entry: MemoryEntry, *, context: QueryContext
 def _render_entry_detail(entry: MemoryEntry, *, context: QueryContext, translator: Translator, model: ManagerReadModel) -> str:
     relation_sections = "".join(
         f'<section class="memory-relation" data-relation="{relation}"><h3>{translator.html(key)}</h3>{_render_links(getattr(entry, relation), translator=translator, context=context)}</section>'
-        for relation, key in (("references", "l4.references"), ("conflicts", "l4.conflicts"), ("supersedes", "l4.supersedes"), ("lineage", "l4.lineage"))
+        for relation, key in (("references", "l4_memory.references"), ("conflicts", "l4_memory.conflicts"), ("supersedes", "l4_memory.supersedes"), ("lineage", "l4_memory.lineage"))
     )
     family = render_memory_text(entry.family_label, translator, model) if entry.family_label else render_memory_value(entry.family_id, translator)
     return (
         f'<article class="memory-detail" data-memory-object="memory-entry" data-memory-entry-id="{escape(entry.memory_id, quote=True)}">'
-        f'<p class="eyebrow">{translator.html("l4.memory_entry_eyebrow")}</p>'
+        f'<p class="eyebrow">{translator.html("l4_memory.memory_entry_eyebrow")}</p>'
         f'<h2>{render_memory_text(entry.title, translator, model)}</h2>'
-        f'<p class="memory-detail-id"><strong>{translator.html("l4.memory_id")}</strong> {render_memory_value(entry.memory_id, translator)} · <strong>{translator.html("l4.family")}</strong> {family}</p>'
-        f'<p class="memory-safe-summary"><strong>{translator.html("l4.safe_summary")}</strong> {render_memory_text(entry.safe_summary, translator, model, missing="l4.no_safe_summary")}</p>'
-        f'<dl class="memory-entry-facts"><div><dt>{translator.html("l4.stage")}</dt><dd>{render_memory_value(entry.stage, translator, "failure_stage")}</dd></div>'
-        f'<div><dt>{translator.html("l4.outcome")}</dt><dd>{render_memory_value(entry.outcome, translator, "failure_outcome")}</dd></div>'
-        f'<div><dt>{translator.html("l4.failure_category")}</dt><dd>{render_memory_value(entry.failure_category, translator, "failure_category")}</dd></div>'
-        f'<div><dt>{translator.html("l4.campaign")}</dt><dd>{render_memory_value(entry.campaign_id, translator)}</dd></div></dl>'
+        f'<p class="memory-detail-id"><strong>{translator.html("l4_memory.memory_id")}</strong> {render_memory_value(entry.memory_id, translator)} · <strong>{translator.html("l4_memory.family")}</strong> {family}</p>'
+        f'<p class="memory-safe-summary"><strong>{translator.html("l4_memory.safe_summary")}</strong> {render_memory_text(entry.safe_summary, translator, model, missing="l4_memory.no_safe_summary")}</p>'
+        f'<dl class="memory-entry-facts"><div><dt>{translator.html("l4_memory.stage")}</dt><dd>{render_memory_value(entry.stage, translator, "failure_stage")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.outcome")}</dt><dd>{render_memory_value(entry.outcome, translator, "failure_outcome")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.failure_category")}</dt><dd>{render_memory_value(entry.failure_category, translator, "failure_category")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.campaign")}</dt><dd>{render_memory_value(entry.campaign_id, translator)}</dd></div></dl>'
         f'{_render_subject(entry.subject, translator=translator, model=model)}{relation_sections}'
         f'{_render_entry_cross_layer_links(entry, context=context, translator=translator)}'
         f'{_render_decisions(entry.decisions, translator=translator)}'
         f'{_render_policy(entry.policy, translator=translator, model=model)}'
-        f'<p><a class="memory-back-link" href="{escape(memory_link(query_context=context), quote=True)}">{translator.html("l4.back_memory_catalog")}</a></p></article>'
+        f'<p><a class="memory-back-link" href="{escape(memory_link(query_context=context), quote=True)}">{translator.html("l4_memory.back_memory_catalog")}</a></p></article>'
     )
 
 
@@ -1585,16 +1585,16 @@ def _render_filters(view: MemoryViewModel, *, context: QueryContext, translator:
             for choice in options[key]
         )
         controls.append(
-            f'<label>{translator.html("l4." + key)} <select name="{escape(key, quote=True)}"><option value="">{translator.html("l4.all")}</option>{choices}</select></label>'
+            f'<label>{translator.html("l4_memory." + key)} <select name="{escape(key, quote=True)}"><option value="">{translator.html("l4_memory.all")}</option>{choices}</select></label>'
         )
     clear_href = clear_filters_link(
         context, view="memory", filter_keys=_MEMORY_FILTER_KEYS, selection_keys=("memory_id",)
     )
     return (
-        f'<form class="memory-filters" action="/" method="get" aria-label="{escape(translator.t("l4.memory_filters_aria"), quote=True)}">'
+        f'<form class="memory-filters" action="/" method="get" aria-label="{escape(translator.t("l4_memory.memory_filters_aria"), quote=True)}">'
         '<input type="hidden" name="view" value="memory">'
         f"{hidden}{''.join(controls)}"
-        f'<button type="submit">{translator.html("l4.apply_filters")}</button><a class="memory-clear" href="{escape(clear_href, quote=True)}">{translator.html("l4.clear")}</a></form>'
+        f'<button type="submit">{translator.html("l4_memory.apply_filters")}</button><a class="memory-clear" href="{escape(clear_href, quote=True)}">{translator.html("l4_memory.clear")}</a></form>'
     )
 
 
@@ -1605,21 +1605,21 @@ def _render_family_memories(view: MemoryViewModel, *, translator: Translator, co
     for memory in view.family_memories:
         decisions = "".join(
             f'<li data-entry-id="{escape(decision.entry_id or "", quote=True)}">'
-            f'<strong>{translator.html("l4.included" if decision.included is True else "l4.excluded" if decision.included is False else "l4.undetermined")}</strong> '
+            f'<strong>{translator.html("l4_memory.included" if decision.included is True else "l4_memory.excluded" if decision.included is False else "l4_memory.undetermined")}</strong> '
             f'{render_memory_value(decision.entry_id, translator)}'
             f'{" · " + render_memory_text(decision.reason, translator, view.read_model) if decision.reason else ""}</li>'
             for decision in memory.decisions
-        ) or f'<li>{translator.html("l4.none_recorded")}</li>'
+        ) or f'<li>{translator.html("l4_memory.none_recorded")}</li>'
         sections.append(
             f'<article class="family-memory" data-memory-object="family-memory" data-family-memory-id="{escape(memory.memory_id, quote=True)}">'
-            f'<h3>{translator.html("l4.family_memory")} {render_memory_value(memory.memory_id, translator)}</h3>'
-            f'<p><strong>{translator.html("l4.target_family")}</strong> {render_memory_value(memory.target_family_id, translator)} · '
-            f'<strong>{translator.html("l4.policy")}</strong> {render_memory_value(memory.policy_id, translator)} · '
-            f'<strong>{translator.html("l4.snapshot")}</strong> {render_memory_value(memory.snapshot_token, translator, missing="l4.unavailable")}</p>'
-            f'<h4>{translator.html("l4.inclusion_exclusion_decisions")}</h4><ul>{decisions}</ul>'
+            f'<h3>{translator.html("l4_memory.family_memory")} {render_memory_value(memory.memory_id, translator)}</h3>'
+            f'<p><strong>{translator.html("l4_memory.target_family")}</strong> {render_memory_value(memory.target_family_id, translator)} · '
+            f'<strong>{translator.html("l4_memory.policy")}</strong> {render_memory_value(memory.policy_id, translator)} · '
+            f'<strong>{translator.html("l4_memory.snapshot")}</strong> {render_memory_value(memory.snapshot_token, translator, missing="l4_memory.unavailable")}</p>'
+            f'<h4>{translator.html("l4_memory.inclusion_exclusion_decisions")}</h4><ul>{decisions}</ul>'
             f'<p>{_render_links(memory.lineage, translator=translator, context=context)}</p></article>'
         )
-    return f'<section class="memory-family-memory"><h2>{translator.html("l4.family_memories")}</h2>{"".join(sections)}</section>'
+    return f'<section class="memory-family-memory"><h2>{translator.html("l4_memory.family_memories")}</h2>{"".join(sections)}</section>'
 
 
 def _render_duplicate_decisions(view: MemoryViewModel, *, translator: Translator, context: QueryContext) -> str:
@@ -1627,55 +1627,55 @@ def _render_duplicate_decisions(view: MemoryViewModel, *, translator: Translator
         return ""
     rows = "".join(
         f'<li data-decision-id="{escape(decision.decision_id, quote=True)}"><strong>{render_memory_value(decision.disposition, translator, "decision")}</strong> '
-        f'{render_memory_value(decision.decision_id, translator)} · {translator.count("l4.matched_count", len(decision.matched_entry_ids))}'
+        f'{render_memory_value(decision.decision_id, translator)} · {translator.count("l4_memory.matched_count", len(decision.matched_entry_ids))}'
         f'{(" · " + render_memory_value(decision.subject_semantic_id, translator)) if decision.subject_semantic_id else ""}'
         f'{(" · " + render_memory_value(decision.structural_fingerprint, translator)) if decision.structural_fingerprint else ""}'
         f' {_render_links(decision.lineage, translator=translator, context=context)}</li>'
         for decision in view.duplicate_decisions
     )
-    return f'<section class="memory-duplicate-decisions"><h2>{translator.html("l4.duplicate_decisions")}</h2><ul>{rows}</ul></section>'
+    return f'<section class="memory-duplicate-decisions"><h2>{translator.html("l4_memory.duplicate_decisions")}</h2><ul>{rows}</ul></section>'
 
 
 def _render_families(view: MemoryViewModel, *, context: QueryContext, translator: Translator) -> str:
     if not view.families:
-        return f'<section class="memory-families" data-memory-object="memory-family"><h2>{translator.html("l4.memory_families")}</h2><p>{translator.html("l4.none_recorded")}</p></section>'
+        return f'<section class="memory-families" data-memory-object="memory-family"><h2>{translator.html("l4_memory.memory_families")}</h2><p>{translator.html("l4_memory.none_recorded")}</p></section>'
     items = "".join(
         f'<li data-family-id="{escape(family.family_id, quote=True)}"><strong>{render_memory_text(family.label, translator, view.read_model)}</strong> '
-        f'<span>{render_memory_value(family.family_id, translator)} · {translator.count("l4.entries_count", len(family.entry_ids))}</span>'
-        f'{("<span> · " + translator.html("l4.campaign") + " " + render_memory_value(family.campaign_id, translator) + "</span>") if family.campaign_id else ""}'
-        f'<a href="{escape(memory_link(query_context=context, filters=MemoryFilters(family=family.family_id)), quote=True)}">{translator.html("l4.open_family_memory")}</a>'
+        f'<span>{render_memory_value(family.family_id, translator)} · {translator.count("l4_memory.entries_count", len(family.entry_ids))}</span>'
+        f'{("<span> · " + translator.html("l4_memory.campaign") + " " + render_memory_value(family.campaign_id, translator) + "</span>") if family.campaign_id else ""}'
+        f'<a href="{escape(memory_link(query_context=context, filters=MemoryFilters(family=family.family_id)), quote=True)}">{translator.html("l4_memory.open_family_memory")}</a>'
         f'{_render_links(family.lineage, translator=translator, context=context)}</li>'
         for family in view.families
     )
-    return f'<section class="memory-families" data-memory-object="memory-family"><h2>{translator.html("l4.memory_families")} / {translator.html("l4.family_memory")}</h2><ul>{items}</ul></section>'
+    return f'<section class="memory-families" data-memory-object="memory-family"><h2>{translator.html("l4_memory.memory_families")} / {translator.html("l4_memory.family_memory")}</h2><ul>{items}</ul></section>'
 
 
 def _render_policy_index(view: MemoryViewModel, *, translator: Translator) -> str:
     if not view.policies:
-        return f'<section class="memory-policy-index"><h2>{translator.html("l4.memory_policies")}</h2><p>{translator.html("l4.none_recorded")}</p></section>'
+        return f'<section class="memory-policy-index"><h2>{translator.html("l4_memory.memory_policies")}</h2><p>{translator.html("l4_memory.none_recorded")}</p></section>'
     items: list[str] = []
     for policy in view.policies:
-        version = f' · {translator.html("l4.version")} {render_memory_value(policy.policy_version, translator)}' if policy.policy_version else ""
+        version = f' · {translator.html("l4_memory.version")} {render_memory_value(policy.policy_version, translator)}' if policy.policy_version else ""
         items.append(
             f'<li data-policy-id="{escape(policy.policy_id, quote=True)}"><strong>{render_memory_value(policy.policy_id, translator)}</strong>{version}'
-            f' · {translator.count("l4.bounds_count", len(policy.bounds))} · {translator.count("l4.trust_count", len(policy.source_trust))}</li>'
+            f' · {translator.count("l4_memory.bounds_count", len(policy.bounds))} · {translator.count("l4_memory.trust_count", len(policy.source_trust))}</li>'
         )
-    return f'<section class="memory-policy-index"><h2>{translator.html("l4.memory_policies")}</h2><ul>{"".join(items)}</ul></section>'
+    return f'<section class="memory-policy-index"><h2>{translator.html("l4_memory.memory_policies")}</h2><ul>{"".join(items)}</ul></section>'
 
 
 def _render_derivation(model: ManagerReadModel, *, sample_count: int, translator: Translator) -> str:
     derivation = model.derivation
     if derivation.kind == "direct":
         return ""
-    inputs = translator.join(render_memory_value(value, translator) for value in derivation.inputs) if derivation.inputs else translator.html("l4.none_recorded")
+    inputs = translator.join(render_memory_value(value, translator) for value in derivation.inputs) if derivation.inputs else translator.html("l4_memory.none_recorded")
     return (
-        f'<section class="memory-derived-context" data-memory-derived="true"><h2>{translator.html("l4.derivation_context")}</h2>'
-        f'<dl><div><dt>{translator.html("l4.derivation_kind")}</dt><dd>{render_memory_value(derivation.kind, translator, "derivation_kind")}</dd></div>'
-        f'<div><dt>{translator.html("l4.rule")}</dt><dd>{render_memory_value(derivation.rule, translator)}</dd></div>'
-        f'<div><dt>{translator.html("l4.named_inputs")}</dt><dd>{inputs}</dd></div>'
-        f'<div><dt>{translator.html("l4.version")}</dt><dd>{render_memory_value(derivation.version, translator)}</dd></div>'
-        f'<div><dt>{translator.html("l4.sample_count")}</dt><dd>{sample_count}</dd></div></dl>'
-        f'<p>{translator.html("l4.derived_not_formal_memory")}</p></section>'
+        f'<section class="memory-derived-context" data-memory-derived="true"><h2>{translator.html("l4_memory.derivation_context")}</h2>'
+        f'<dl><div><dt>{translator.html("l4_memory.derivation_kind")}</dt><dd>{render_memory_value(derivation.kind, translator, "derivation_kind")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.rule")}</dt><dd>{render_memory_value(derivation.rule, translator)}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.named_inputs")}</dt><dd>{inputs}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.version")}</dt><dd>{render_memory_value(derivation.version, translator)}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.sample_count")}</dt><dd>{sample_count}</dd></div></dl>'
+        f'<p>{translator.html("l4_memory.derived_not_formal_memory")}</p></section>'
     )
 
 
@@ -1699,22 +1699,22 @@ def render_memory(
         )
     context = _context_with_filters(view, query_context)
     model = view.read_model
-    sources = translator.join(render_memory_value(source.source_id, translator) for source in model.source_refs) or translator.html("l4.none_recorded")
-    authority_copy = translator.html("l4.memory_derived_authority" if view.is_derived else "l4.memory_formal_authority")
+    sources = translator.join(render_memory_value(source.source_id, translator) for source in model.source_refs) or translator.html("l4_memory.none_recorded")
+    authority_copy = translator.html("l4_memory.memory_derived_authority" if view.is_derived else "l4_memory.memory_formal_authority")
     pieces = [
         '<section class="research-memory" data-integration-hook="memory-view" '
         f'data-memory-authority="{view.authority.value}" data-memory-empty="{"true" if view.empty else "false"}">',
-        f'<p class="eyebrow">{translator.html("l4.memory_eyebrow")}</p>',
-        f'<h1 class="page-title" data-page-title tabindex="-1">{translator.html("l4.memory_title")}</h1>',
-        f'<p class="memory-authority" data-memory-authority-label="{view.authority.value}"><strong>{translator.label("memory_authority", view.authority.value)}</strong> {authority_copy}</p>',
-        f'<p class="context-line memory-context"><span><strong>{translator.html("l4.observed")}</strong> {render_memory_value(model.as_of, translator, missing="l4.unavailable")}</span>'
-        f'<span><strong>{translator.html("l4.snapshot")}</strong> {render_memory_value(model.snapshot_token, translator, missing="l4.unavailable")}</span><span><strong>{translator.html("l4.sources")}</strong> {sources}</span></p>',
+        f'<p class="eyebrow">{translator.html("l4_memory.memory_eyebrow")}</p>',
+        f'<h1 class="page-title" data-page-title tabindex="-1">{translator.html("l4_memory.memory_title")}</h1>',
+        f'<p class="memory-authority" data-memory-authority-label="{view.authority.value}"><strong>{translator.label("l4_memory_authority", view.authority.value)}</strong> {authority_copy}</p>',
+        f'<p class="context-line memory-context"><span><strong>{translator.html("l4_memory.observed")}</strong> {render_memory_value(model.as_of, translator, missing="l4_memory.unavailable")}</span>'
+        f'<span><strong>{translator.html("l4_memory.snapshot")}</strong> {render_memory_value(model.snapshot_token, translator, missing="l4_memory.unavailable")}</span><span><strong>{translator.html("l4_memory.sources")}</strong> {sources}</span></p>',
         render_status_block(model, translator=translator),
     ]
     if view.is_derived:
         pieces.append(_render_derivation(model, sample_count=len(view.entries), translator=translator))
     if view.empty:
-        detail = translator.html("l4.no_formal_memory" if not view.explicit_memory_payload else "l4.no_formal_memory_scope")
+        detail = translator.html("l4_memory.no_formal_memory" if not view.explicit_memory_payload else "l4_memory.no_formal_memory_scope")
         if model.availability.status in {ReadModelStatus.MISSING, ReadModelStatus.KNOWN}:
             pieces.append(render_operational_state(DisplayState.EMPTY, translator=translator))
             pieces.append(f'<p class="memory-empty-detail">{detail}</p>')
@@ -1722,28 +1722,28 @@ def render_memory(
             status = translator.t("label.status." + model.availability.status.value)
             pieces.append(
                 f'<p class="memory-empty-not-determined" data-memory-empty-state="not-determined">'
-                f'{translator.html("l4.memory_not_determined", status=status)}</p>'
+                f'{translator.html("l4_memory.memory_not_determined", status=status)}</p>'
             )
     if model.availability.status is ReadModelStatus.KNOWN and not model.availability.complete:
         pieces.append(
-            f'<p class="memory-partial-note">{translator.html("l4.partial_memory_scope")}</p>'
+            f'<p class="memory-partial-note">{translator.html("l4_memory.partial_memory_scope")}</p>'
         )
     pieces.append(_render_filters(view, context=context, translator=translator))
     selected = view.selected_entry
     if view.selected_memory_id is not None and selected is None:
         pieces.append(
-            f'<section class="memory-detail-missing" data-memory-detail="missing"><h2>{translator.html("l4.memory_detail_unavailable")}</h2>'
-            f'<p>{render_memory_value(view.selected_memory_id, translator)} · {translator.html("l4.failure_snapshot_missing")}</p></section>'
+            f'<section class="memory-detail-missing" data-memory-detail="missing"><h2>{translator.html("l4_memory.memory_detail_unavailable")}</h2>'
+            f'<p>{render_memory_value(view.selected_memory_id, translator)} · {translator.html("l4_memory.failure_snapshot_missing")}</p></section>'
         )
     elif selected is not None:
         pieces.append(_render_entry_detail(selected, context=context, translator=translator, model=model))
     if view.entries:
         rows = "".join(_render_entry_row(entry, context=context, translator=translator, model=model) for entry in view.entries)
         pieces.append(
-            f'<section class="memory-catalog" data-memory-object="memory-entry"><h2>{translator.html("l4.memory_entry_catalog")}</h2>'
-            f'<table><caption>{translator.html("l4.explicit_memory_entries")}</caption><thead><tr>'
-            f'<th scope="col">{translator.html("l4.memory_entry")}</th><th scope="col">{translator.html("l4.family")}</th><th scope="col">{translator.html("l4.stage")}</th>'
-            f'<th scope="col">{translator.html("l4.outcome")}</th><th scope="col">{translator.html("l4.failure_category")}</th><th scope="col">{translator.html("l4.subject_semantic_id")}</th><th scope="col">{translator.html("l4.references")}</th>'
+            f'<section class="memory-catalog" data-memory-object="memory-entry"><h2>{translator.html("l4_memory.memory_entry_catalog")}</h2>'
+            f'<table><caption>{translator.html("l4_memory.explicit_memory_entries")}</caption><thead><tr>'
+            f'<th scope="col">{translator.html("l4_memory.memory_entry")}</th><th scope="col">{translator.html("l4_memory.family")}</th><th scope="col">{translator.html("l4_memory.stage")}</th>'
+            f'<th scope="col">{translator.html("l4_memory.outcome")}</th><th scope="col">{translator.html("l4_memory.failure_category")}</th><th scope="col">{translator.html("l4_memory.subject_semantic_id")}</th><th scope="col">{translator.html("l4_memory.references")}</th>'
             f"</tr></thead><tbody>{rows}</tbody></table></section>"
         )
     pieces.append(_render_families(view, context=context, translator=translator))
@@ -1753,7 +1753,7 @@ def render_memory(
     policy = (
         selected.policy if selected is not None else (view.policies[0] if view.policies else None)
     )
-    pieces.append(_render_policy(policy, heading="l4.active_policy_context", translator=translator, model=model))
+    pieces.append(_render_policy(policy, heading="l4_memory.active_policy_context", translator=translator, model=model))
     pieces.append("</section>")
     return "".join(pieces)
 

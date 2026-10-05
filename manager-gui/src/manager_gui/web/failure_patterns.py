@@ -731,39 +731,39 @@ def _render_cross_layer_links(entry: FailureExperience, context: QueryContext, *
     links: list[str] = []
     if memory_id:
         links.append(
-            f'<a class="failure-memory-link" href="{escape(memory_link(memory_id, query_context=context), quote=True)}">{translator.html("l4.open_memory")}</a>'
+            f'<a class="failure-memory-link" href="{escape(memory_link(memory_id, query_context=context), quote=True)}">{translator.html("l4_memory.open_memory")}</a>'
         )
     if pattern_id:
         links.append(
-            f'<a class="failure-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4.open_derived_pattern")}</a>'
+            f'<a class="failure-pattern-link" href="{escape(failure_link(pattern_id=pattern_id, query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4_memory.open_derived_pattern")}</a>'
         )
     return f'<p class="failure-cross-layer-links">{" · ".join(links)}</p>' if links else ""
 
 
 def _render_failure_detail(entry: FailureExperience, context: QueryContext, *, translator: Translator, model: ManagerReadModel) -> str:
     associations = "".join(
-        f'<div><dt>{translator.label("lineage_kind", kind)}</dt><dd>{render_references((getattr(entry, kind),), translator=translator, query_context=context)}</dd></div>'
+        f'<div><dt>{translator.label("l4_memory_lineage_kind", kind)}</dt><dd>{render_references((getattr(entry, kind),), translator=translator, query_context=context)}</dd></div>'
         for kind in LINEAGE_KINDS
     )
     facts = "".join(
         f'<div><dt>{translator.html(key)}</dt><dd>{render_memory_value(value, translator, domain)}</dd></div>'
         for key, value, domain in (
-            ("l4.failure_category", entry.failure_category, "failure_category"),
-            ("l4.stage", entry.stage, "failure_stage"),
-            ("l4.outcome", entry.outcome, "failure_outcome"),
-            ("l4.record_status", entry.status, "failure_state"),
+            ("l4_memory.failure_category", entry.failure_category, "failure_category"),
+            ("l4_memory.stage", entry.stage, "failure_stage"),
+            ("l4_memory.outcome", entry.outcome, "failure_outcome"),
+            ("l4_memory.record_status", entry.status, "failure_state"),
         )
     )
     return (
         f'<article class="failure-detail" data-failure-id="{escape(entry.failure_id, quote=True)}">'
-        f'<p class="eyebrow">{translator.html("l4.origin_" + entry.origin)} · {translator.html("l4.read_only_failure")}</p><h2>{render_memory_text(entry.title, translator, model)}</h2>'
-        f'<p><strong>{translator.html("l4.failure_id")}</strong> {render_memory_value(entry.failure_id, translator)} · <strong>{translator.html("l4.memory_id")}</strong> {render_memory_value(entry.memory_id, translator)}</p>'
-        f'<dl class="failure-facts">{facts}</dl><p><strong>{translator.html("l4.summary")}</strong> {render_memory_text(entry.summary, translator, model)}</p>'
-        f'<section class="failure-associations"><h3>{translator.html("l4.traceability_associations")}</h3><dl>{associations}</dl></section>'
-        f'<p><strong>{translator.html("l4.source_refs")}</strong> {render_references(entry.references, translator=translator, query_context=context)}</p>'
+        f'<p class="eyebrow">{translator.html("l4_memory.origin_" + entry.origin)} · {translator.html("l4_memory.read_only_failure")}</p><h2>{render_memory_text(entry.title, translator, model)}</h2>'
+        f'<p><strong>{translator.html("l4_memory.failure_id")}</strong> {render_memory_value(entry.failure_id, translator)} · <strong>{translator.html("l4_memory.memory_id")}</strong> {render_memory_value(entry.memory_id, translator)}</p>'
+        f'<dl class="failure-facts">{facts}</dl><p><strong>{translator.html("l4_memory.summary")}</strong> {render_memory_text(entry.summary, translator, model)}</p>'
+        f'<section class="failure-associations"><h3>{translator.html("l4_memory.traceability_associations")}</h3><dl>{associations}</dl></section>'
+        f'<p><strong>{translator.html("l4_memory.source_refs")}</strong> {render_references(entry.references, translator=translator, query_context=context)}</p>'
         f'{render_failure_lineage(entry.lineage, translator=translator, query_context=context, model=model)}'
         f'{_render_cross_layer_links(entry, context, translator=translator)}'
-        f'<p><a href="{escape(failure_link(query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4.back_failure_catalog")}</a></p></article>'
+        f'<p><a href="{escape(failure_link(query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4_memory.back_failure_catalog")}</a></p></article>'
     )
 
 
@@ -775,7 +775,7 @@ def _render_failure_row(entry: FailureExperience, context: QueryContext, *, tran
         f'<td>{render_memory_value(entry.failure_category, translator, "failure_category")}</td>'
         f'<td>{render_memory_value(entry.stage, translator, "failure_stage")}</td>'
         f'<td>{render_memory_value(entry.outcome, translator, "failure_outcome")}</td>'
-        f'<td>{render_references((entry.campaign,), translator=translator, query_context=context)}</td><td>{translator.label("failure_state", entry.lineage.coverage)}</td></tr>'
+        f'<td>{render_references((entry.campaign,), translator=translator, query_context=context)}</td><td>{translator.label("l4_memory_failure_state", entry.lineage.coverage)}</td></tr>'
     )
 
 
@@ -800,7 +800,7 @@ def _render_filters(view: FailureViewModel, context: QueryContext, *, translator
             for choice in choices
         )
         controls.append(
-            f'<label>{translator.html("l4." + key)} <select name="{escape(key, quote=True)}"><option value="">{translator.html("l4.all")}</option>{options}</select></label>'
+            f'<label>{translator.html("l4_memory." + key)} <select name="{escape(key, quote=True)}"><option value="">{translator.html("l4_memory.all")}</option>{options}</select></label>'
         )
     clear_href = clear_filters_link(
         context,
@@ -809,10 +809,10 @@ def _render_filters(view: FailureViewModel, context: QueryContext, *, translator
         selection_keys=("failure_id", "pattern_id"),
     )
     return (
-        f'<form class="failure-filters" action="/" method="get" aria-label="{escape(translator.t("l4.failure_filters_aria"), quote=True)}">'
+        f'<form class="failure-filters" action="/" method="get" aria-label="{escape(translator.t("l4_memory.failure_filters_aria"), quote=True)}">'
         f'<input type="hidden" name="view" value="{escape(_route_view(context), quote=True)}">'
-        f'{hidden}{"".join(controls)}<button type="submit">{translator.html("l4.apply_filters")}</button>'
-        f'<a href="{escape(clear_href, quote=True)}">{translator.html("l4.clear")}</a></form>'
+        f'{hidden}{"".join(controls)}<button type="submit">{translator.html("l4_memory.apply_filters")}</button>'
+        f'<a href="{escape(clear_href, quote=True)}">{translator.html("l4_memory.clear")}</a></form>'
     )
 
 
@@ -821,31 +821,31 @@ def _render_memory_layer(view: FailureViewModel, context: QueryContext, *, trans
         items: list[str] = []
         for entry in view.memory_entries:
             associations = " · ".join(
-                f'<strong>{translator.label("lineage_kind", kind)}</strong> {render_references((getattr(entry, kind),), translator=translator, query_context=context)}'
+                f'<strong>{translator.label("l4_memory_lineage_kind", kind)}</strong> {render_references((getattr(entry, kind),), translator=translator, query_context=context)}'
                 for kind in LINEAGE_KINDS
             )
             items.append(
                 f'<article class="formal-memory-failure" data-failure-id="{escape(entry.failure_id, quote=True)}">'
                 f'<h3><a class="memory-failure-link" href="{escape(failure_link(entry.failure_id, query_context=context, view="memory-failures"), quote=True)}">{render_memory_text(entry.title, translator, view.read_model)}</a></h3>'
-                f'<p><strong>{translator.html("l4.failure_category")}</strong> {render_memory_value(entry.failure_category, translator, "failure_category")} · '
-                f'<strong>{translator.html("l4.stage")}</strong> {render_memory_value(entry.stage, translator, "failure_stage")} · '
-                f'<strong>{translator.html("l4.outcome")}</strong> {render_memory_value(entry.outcome, translator, "failure_outcome")}</p><p>{associations}</p>'
-                f'<p><strong>{translator.html("l4.conflicts")}</strong> {render_references(entry.conflicts, translator=translator, query_context=context, empty="l4.none_conflicts")} · '
-                f'<strong>{translator.html("l4.supersedes")}</strong> {render_references(entry.supersedes, translator=translator, query_context=context, empty="l4.none_supersession")}</p>'
+                f'<p><strong>{translator.html("l4_memory.failure_category")}</strong> {render_memory_value(entry.failure_category, translator, "failure_category")} · '
+                f'<strong>{translator.html("l4_memory.stage")}</strong> {render_memory_value(entry.stage, translator, "failure_stage")} · '
+                f'<strong>{translator.html("l4_memory.outcome")}</strong> {render_memory_value(entry.outcome, translator, "failure_outcome")}</p><p>{associations}</p>'
+                f'<p><strong>{translator.html("l4_memory.conflicts")}</strong> {render_references(entry.conflicts, translator=translator, query_context=context, empty="l4_memory.none_conflicts")} · '
+                f'<strong>{translator.html("l4_memory.supersedes")}</strong> {render_references(entry.supersedes, translator=translator, query_context=context, empty="l4_memory.none_supersession")}</p>'
                 f'{render_failure_lineage(entry.lineage, translator=translator, query_context=context, model=view.read_model)}{_render_cross_layer_links(entry, context, translator=translator)}</article>'
             )
         return (
             '<section class="formal-memory-failures" data-memory-layer="formal-research-memory">'
-            f'<h2>{translator.html("l4.formal_failure_entries")}</h2><p>{translator.html("l4.memory_layer_boundary")}</p>{"".join(items)}</section>'
+            f'<h2>{translator.html("l4_memory.formal_failure_entries")}</h2><p>{translator.html("l4_memory.memory_layer_boundary")}</p>{"".join(items)}</section>'
         )
     if view.status in {ReadModelStatus.MISSING, ReadModelStatus.KNOWN} and (view.status is ReadModelStatus.MISSING or view.read_model.availability.complete):
         return (
             '<section class="formal-memory-empty" data-memory-layer="formal-research-memory" data-memory-state="empty">'
-            f'<h2>{translator.html("l4.formal_research_memory")}</h2><p>{translator.html("l4.raw_failure_boundary")}</p></section>'
+            f'<h2>{translator.html("l4_memory.formal_research_memory")}</h2><p>{translator.html("l4_memory.raw_failure_boundary")}</p></section>'
         )
     return (
         '<section class="formal-memory-undetermined" data-memory-layer="formal-research-memory" data-memory-state="not-determined">'
-        f'<h2>{translator.html("l4.formal_research_memory")}</h2><p>{translator.html("l4.memory_not_determined", status=translator.t("label.status." + view.status.value))}</p></section>'
+        f'<h2>{translator.html("l4_memory.formal_research_memory")}</h2><p>{translator.html("l4_memory.memory_not_determined", status=translator.t("label.status." + view.status.value))}</p></section>'
     )
 
 
@@ -854,24 +854,24 @@ def _render_failure_layer(
 ) -> str:
     if not view.failures:
         if view.status in {ReadModelStatus.MISSING, ReadModelStatus.KNOWN} and view.read_model.availability.complete:
-            text = translator.html("l4.no_ordinary_failures")
+            text = translator.html("l4_memory.no_ordinary_failures")
             state = "empty"
         else:
-            text = translator.html("l4.failure_not_determined", status=translator.t("label.status." + view.status.value))
+            text = translator.html("l4_memory.failure_not_determined", status=translator.t("label.status." + view.status.value))
             state = "not-determined"
-        return f'<section class="failure-catalog" data-failure-state="{state}"><h2>{translator.html("l4.failure_catalog")}</h2><p>{text}</p></section>'
+        return f'<section class="failure-catalog" data-failure-state="{state}"><h2>{translator.html("l4_memory.failure_catalog")}</h2><p>{text}</p></section>'
     rows = "".join(_render_failure_row(entry, context, translator=translator, model=view.read_model) for entry in view.failures)
     selected = view.selected_failure
     detail = _render_failure_detail(selected, context, translator=translator, model=view.read_model) if selected else ""
     if view.selected_failure_id is not None and selected is None:
         detail = (
             f'<section class="failure-detail-missing" data-failure-detail="missing">'
-            f'<h3>{translator.html("l4.failure_entry_unavailable")}</h3><p>{render_memory_value(view.selected_failure_id, translator)} · {translator.html("l4.failure_snapshot_missing")}</p></section>'
+            f'<h3>{translator.html("l4_memory.failure_entry_unavailable")}</h3><p>{render_memory_value(view.selected_failure_id, translator)} · {translator.html("l4_memory.failure_snapshot_missing")}</p></section>'
         )
     return (
-        f'<section class="failure-catalog" data-failure-state="ready"><h2>{translator.html("l4.failure_catalog")}</h2>'
-        f'<p>{translator.html("l4.failure_fields_intro")}</p>'
-        f'<table><caption>{translator.html("l4.ordinary_failure_records")}</caption><thead><tr><th>{translator.html("l4.failure")}</th><th>{translator.html("l4.failure_category")}</th><th>{translator.html("l4.stage")}</th><th>{translator.html("l4.outcome")}</th><th>{translator.html("l4.campaign")}</th><th>{translator.html("l4.lineage")}</th></tr></thead>'
+        f'<section class="failure-catalog" data-failure-state="ready"><h2>{translator.html("l4_memory.failure_catalog")}</h2>'
+        f'<p>{translator.html("l4_memory.failure_fields_intro")}</p>'
+        f'<table><caption>{translator.html("l4_memory.ordinary_failure_records")}</caption><thead><tr><th>{translator.html("l4_memory.failure")}</th><th>{translator.html("l4_memory.failure_category")}</th><th>{translator.html("l4_memory.stage")}</th><th>{translator.html("l4_memory.outcome")}</th><th>{translator.html("l4_memory.campaign")}</th><th>{translator.html("l4_memory.lineage")}</th></tr></thead>'
         f'<tbody>{rows}</tbody></table>{detail}</section>'
     )
 
@@ -882,7 +882,7 @@ def _render_pattern_cross_layer_links(pattern: FailurePattern, context: QueryCon
         return ""
     return (
         f'<p class="pattern-cross-layer-links"><a class="pattern-memory-link" '
-        f'href="{escape(memory_link(memory_id, query_context=context), quote=True)}">{translator.html("l4.open_memory")}</a></p>'
+        f'href="{escape(memory_link(memory_id, query_context=context), quote=True)}">{translator.html("l4_memory.open_memory")}</a></p>'
     )
 
 
@@ -890,24 +890,24 @@ def _render_pattern(pattern: FailurePattern, context: QueryContext, *, translato
     members = " · ".join(
         f'<a class="pattern-failure-link" href="{escape(failure_link(identifier, query_context=context, view=_route_view(context)), quote=True)}">{render_memory_value(identifier, translator)}</a>'
         for identifier in pattern.failure_ids
-    ) or translator.html("l4.missing_unconfirmed")
+    ) or translator.html("l4_memory.missing_unconfirmed")
     return (
         f'<article class="failure-pattern" data-pattern-id="{escape(pattern.pattern_id, quote=True)}" data-pattern-status="derived" data-status="derived">'
-        f'<p class="eyebrow">{translator.html("l4.pattern_eyebrow")}</p>'
-        f'<h3>{render_memory_text(pattern.title, translator, model)}</h3><p><strong>{translator.html("l4.status")}</strong> <span class="derived-status">{translator.label("group_status", "derived")}</span></p>'
-        f'<dl><div><dt>{translator.html("l4.rule")}</dt><dd>{render_memory_value(pattern.rule, translator)}</dd></div>'
-        f'<div><dt>{translator.html("l4.input_scope")}</dt><dd>{translator.join(render_memory_value(value, translator) for value in pattern.input_scope) if pattern.input_scope else translator.html("l4.missing_unconfirmed")}</dd></div>'
-        f'<div><dt>{translator.html("l4.sample_count")}</dt><dd>{pattern.sample_count if pattern.sample_count is not None else translator.html("l4.missing_unconfirmed")}</dd></div>'
-        f'<div><dt>{translator.html("l4.failure_category")}</dt><dd>{render_memory_value(pattern.failure_category, translator, "failure_category")}</dd></div>'
-        f'<div><dt>{translator.html("l4.stage")}</dt><dd>{render_memory_value(pattern.stage, translator, "failure_stage")}</dd></div>'
-        f'<div><dt>{translator.html("l4.outcome")}</dt><dd>{render_memory_value(pattern.outcome, translator, "failure_outcome")}</dd></div></dl>'
-        f'<p><strong>{translator.html("l4.participating_failures")}</strong> {members}</p>'
-        f'<p><strong>{translator.html("l4.source_refs")}</strong> {render_references(pattern.source_refs, translator=translator, query_context=context)}</p>'
+        f'<p class="eyebrow">{translator.html("l4_memory.pattern_eyebrow")}</p>'
+        f'<h3>{render_memory_text(pattern.title, translator, model)}</h3><p><strong>{translator.html("l4_memory.status")}</strong> <span class="derived-status">{translator.label("l4_memory_group_status", "derived")}</span></p>'
+        f'<dl><div><dt>{translator.html("l4_memory.rule")}</dt><dd>{render_memory_value(pattern.rule, translator)}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.input_scope")}</dt><dd>{translator.join(render_memory_value(value, translator) for value in pattern.input_scope) if pattern.input_scope else translator.html("l4_memory.missing_unconfirmed")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.sample_count")}</dt><dd>{pattern.sample_count if pattern.sample_count is not None else translator.html("l4_memory.missing_unconfirmed")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.failure_category")}</dt><dd>{render_memory_value(pattern.failure_category, translator, "failure_category")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.stage")}</dt><dd>{render_memory_value(pattern.stage, translator, "failure_stage")}</dd></div>'
+        f'<div><dt>{translator.html("l4_memory.outcome")}</dt><dd>{render_memory_value(pattern.outcome, translator, "failure_outcome")}</dd></div></dl>'
+        f'<p><strong>{translator.html("l4_memory.participating_failures")}</strong> {members}</p>'
+        f'<p><strong>{translator.html("l4_memory.source_refs")}</strong> {render_references(pattern.source_refs, translator=translator, query_context=context)}</p>'
         f'{render_failure_lineage(pattern.lineage, translator=translator, query_context=context, model=model)}'
         f'{_render_pattern_cross_layer_links(pattern, context, translator=translator)}'
-        f'<p><strong>{translator.html("l4.conflicts")}</strong> {render_references(pattern.conflicts, translator=translator, query_context=context, empty="l4.none_conflicts")}</p>'
-        f'<p><strong>{translator.html("l4.supersedes")}</strong> {render_references(pattern.supersedes, translator=translator, query_context=context, empty="l4.none_supersession")}</p>'
-        f'<p><a href="{escape(failure_link(pattern_id=pattern.pattern_id, query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4.open_derived_pattern")}</a></p></article>'
+        f'<p><strong>{translator.html("l4_memory.conflicts")}</strong> {render_references(pattern.conflicts, translator=translator, query_context=context, empty="l4_memory.none_conflicts")}</p>'
+        f'<p><strong>{translator.html("l4_memory.supersedes")}</strong> {render_references(pattern.supersedes, translator=translator, query_context=context, empty="l4_memory.none_supersession")}</p>'
+        f'<p><a href="{escape(failure_link(pattern_id=pattern.pattern_id, query_context=context, view=_route_view(context)), quote=True)}">{translator.html("l4_memory.open_derived_pattern")}</a></p></article>'
     )
 
 
@@ -916,20 +916,20 @@ def _render_pattern_layer(
 ) -> str:
     if not view.patterns:
         if view.status in {ReadModelStatus.MISSING, ReadModelStatus.KNOWN} and view.read_model.availability.complete:
-            message, state = translator.html("l4.no_derived_patterns"), "empty"
+            message, state = translator.html("l4_memory.no_derived_patterns"), "empty"
         else:
-            message, state = translator.html("l4.pattern_not_determined", status=translator.t("label.status." + view.status.value)), "not-determined"
-        return f'<section class="derived-failure-patterns" data-pattern-state="{state}"><h2>{translator.html("l4.patterns_title")}</h2><p>{message}</p></section>'
+            message, state = translator.html("l4_memory.pattern_not_determined", status=translator.t("label.status." + view.status.value)), "not-determined"
+        return f'<section class="derived-failure-patterns" data-pattern-state="{state}"><h2>{translator.html("l4_memory.patterns_title")}</h2><p>{message}</p></section>'
     selected = view.selected_pattern
     missing = ""
     if view.selected_pattern_id is not None and selected is None:
         missing = (
             f'<section class="pattern-detail-missing" data-pattern-detail="missing">'
-            f'<h3>{translator.html("l4.pattern_unavailable")}</h3><p>{render_memory_value(view.selected_pattern_id, translator)} · {translator.html("l4.failure_snapshot_missing")}</p></section>'
+            f'<h3>{translator.html("l4_memory.pattern_unavailable")}</h3><p>{render_memory_value(view.selected_pattern_id, translator)} · {translator.html("l4_memory.failure_snapshot_missing")}</p></section>'
         )
     return (
-        f'<section class="derived-failure-patterns" data-pattern-state="ready"><h2>{translator.html("l4.patterns_title")}</h2>'
-        f'<p>{translator.html("l4.pattern_boundary")}</p>'
+        f'<section class="derived-failure-patterns" data-pattern-state="ready"><h2>{translator.html("l4_memory.patterns_title")}</h2>'
+        f'<p>{translator.html("l4_memory.pattern_boundary")}</p>'
         f'{missing}{_render_pattern(selected, context, translator=translator, model=view.read_model) if selected else ""}{"".join(_render_pattern(pattern, context, translator=translator, model=view.read_model) for pattern in view.patterns if selected is None or pattern.pattern_id != selected.pattern_id)}</section>'
     )
 
@@ -952,16 +952,16 @@ def render_failure_patterns(
     )
     model = view.read_model
     context = _context_with_filters(view, query_context)
-    sources = selected_translator.join(render_memory_value(source.source_id, selected_translator) for source in model.source_refs) or selected_translator.html("l4.none_recorded")
+    sources = selected_translator.join(render_memory_value(source.source_id, selected_translator) for source in model.source_refs) or selected_translator.html("l4_memory.none_recorded")
     pieces = [
         f'<section class="failure-patterns-view" data-integration-hook="{FAILURE_PATTERN_HOOK}" data-failure-empty="{"true" if view.empty else "false"}">',
-        f'<p class="eyebrow">{selected_translator.html("l4.failures_eyebrow")}</p><h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4.failures_title")}</h1>',
-        f'<p class="failure-authority"><strong>{selected_translator.html("l4.layered_read_model")}</strong></p>',
-        f'<p class="context-line"><span><strong>{selected_translator.html("l4.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4.unavailable")}</span><span><strong>{selected_translator.html("l4.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4.unavailable")}</span><span><strong>{selected_translator.html("l4.sources")}</strong> {sources}</span></p>',
+        f'<p class="eyebrow">{selected_translator.html("l4_memory.failures_eyebrow")}</p><h1 class="page-title" data-page-title tabindex="-1">{selected_translator.html("l4_memory.failures_title")}</h1>',
+        f'<p class="failure-authority"><strong>{selected_translator.html("l4_memory.layered_read_model")}</strong></p>',
+        f'<p class="context-line"><span><strong>{selected_translator.html("l4_memory.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4_memory.unavailable")}</span><span><strong>{selected_translator.html("l4_memory.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4_memory.unavailable")}</span><span><strong>{selected_translator.html("l4_memory.sources")}</strong> {sources}</span></p>',
         render_status_block(model, translator=selected_translator),
     ]
     if model.availability.status is ReadModelStatus.KNOWN and not model.availability.complete:
-        pieces.append(f'<p data-failure-state="partial">{selected_translator.html("l4.partial_failure_scope")}</p>')
+        pieces.append(f'<p data-failure-state="partial">{selected_translator.html("l4_memory.partial_failure_scope")}</p>')
     pieces.extend(
         (
             _render_memory_layer(view, context, translator=selected_translator),
@@ -975,7 +975,7 @@ def render_failure_patterns(
             render_operational_state(
                 DisplayState.EMPTY,
                 translator=selected_translator,
-                detail=selected_translator.t("l4.no_formal_or_patterns"),
+                detail=selected_translator.t("l4_memory.no_formal_or_patterns"),
             )
         )
     pieces.append('</section>')
