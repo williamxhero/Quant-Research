@@ -2,8 +2,8 @@
 
 The Reader projection stores stable explanation keys, not prose.  This module
 owns the corresponding zh-CN/en messages and a small typed rendering seam for
-those messages.  It is intentionally *not* imported by ``catalog.__init__``:
-R1-T4 is the integration boundary that will register this additive namespace.
+those messages.  ``catalog.__init__`` registers this additive namespace exactly
+once in the validated process-wide registry.
 
 Only values represented by :class:`ReaderTemplateParams` can be supplied to a
 Reader template.  Source references are validated ``SourceReference`` values,
@@ -351,8 +351,7 @@ ENTRIES: Mapping[str, M] = {
 }
 
 
-# Validate this standalone namespace at import time, without registering it in
-# the process-wide catalog.  R1-T4 may safely register ENTRIES after importing it.
+# Validate this namespace at import time before the central registry registers it.
 for _key, _message in ENTRIES.items():
     validate_entry(_key, _message)
 
