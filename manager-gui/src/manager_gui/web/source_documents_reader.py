@@ -1,0 +1,41 @@
+"""Compatibility import surface for the R5 Source Documents Reader."""
+
+from .history_documents_reader import (
+    DOCUMENTS_READER_HOOK,
+    DOCUMENTS_READER_INTEGRATION_HOOK,
+    DOCUMENTS_READER_RESOURCE,
+    DOCUMENTS_READER_RULE,
+    DOCUMENTS_READER_VERSION,
+    DocumentsReaderViewModel,
+    SourceDocumentsReaderViewModel,
+    build_source_documents_reader_fixture,
+    project_documents_reader,
+    project_reader_documents,
+    project_reader_source_documents,
+    project_source_documents_reader,
+    render_reader_source_documents,
+    render_source_documents_reader,
+    render_source_documents_reader_view,
+    source_documents_reader_fixture_provider,
+    source_documents_reader_view,
+)
+
+__all__ = [
+    "DOCUMENTS_READER_HOOK",
+    "DOCUMENTS_READER_INTEGRATION_HOOK",
+    "DOCUMENTS_READER_RESOURCE",
+    "DOCUMENTS_READER_RULE",
+    "DOCUMENTS_READER_VERSION",
+    "DocumentsReaderViewModel",
+    "SourceDocumentsReaderViewModel",
+    "build_source_documents_reader_fixture",
+    "project_documents_reader",
+    "project_reader_documents",
+    "project_reader_source_documents",
+    "project_source_documents_reader",
+    "render_reader_source_documents",
+    "render_source_documents_reader",
+    "render_source_documents_reader_view",
+    "source_documents_reader_fixture_provider",
+    "source_documents_reader_view",
+]

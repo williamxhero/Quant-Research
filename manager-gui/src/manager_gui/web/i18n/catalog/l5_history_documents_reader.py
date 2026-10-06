@@ -1,0 +1,103 @@
+"""Bilingual catalogue for the R5 History and Source Documents Readers."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from ..translator import M
+
+# Complete Reader sentences intentionally remain readable at each entry.
+# ruff: noqa: E501
+
+ENTRIES: Mapping[str, M] = {
+    "reader.history.eyebrow": M("研究历史 · 只读", "Research history · read-only"),
+    "reader.history.title": M("研究历史阅读器", "Research History Reader"),
+    "reader.history.question": M(
+        "哪些研究历史事件有明确来源，它们如何回到记录、文档和证据？",
+        "Which research history events have explicit sources, and how do they lead back to records, documents, and evidence?",
+    ),
+    "reader.history.confirmed_intro": M(
+        "这里只显示来源明确记录的事件；计划、报告、复盘和未来设想不会被当作事件结果。",
+        "Only explicitly source-recorded events are shown here; plans, reports, retrospectives, and future ideas are not treated as event outcomes.",
+    ),
+    "reader.history.unknown_intro": M(
+        "没有来源事件记录时，无法得出研究历史结论；GUI 生命周期时间也不能替代来源事件时间。",
+        "When a source event is not recorded, no research-history conclusion can be drawn; GUI lifecycle times cannot replace source event times.",
+    ),
+    "reader.history.why_intro": M(
+        "事件类型、来源事件时间、来源引用和快照沿用同一份公开读模型；Reader 只添加固定解释层。",
+        "Event type, source event time, source references, and snapshot come from the same public read model; Reader adds only a fixed explanation layer.",
+    ),
+    "reader.history.scope": M("研究范围", "Research scope"),
+    "reader.history.scope_intro": M("按已命名范围查看来源事件，不以相邻时间或相似名称补齐范围。", "View source events by named scope; nearby times or similar names never fill an absent scope."),
+    "reader.history.events": M("来源事件", "Source events"),
+    "reader.history.event_type": M("事件类型", "Event type"),
+    "reader.history.event_time": M("来源事件时间", "Source event time"),
+    "reader.history.record": M("记录", "Record"),
+    "reader.history.source": M("来源", "Source"),
+    "reader.history.document": M("文档", "Document"),
+    "reader.history.canonical_heading": M("规范记录边界", "Canonical record boundary"),
+    "reader.history.canonical_copy": M("事件仅代表来源记录本身；它不是对研究成功、失败或有效性的推断。", "An event represents only the source record itself; it is not an inference about research success, failure, or validity."),
+    "reader.history.no_events": M("当前范围没有已记录的来源事件。", "No source events are recorded in the current scope."),
+    "reader.history.no_source": M("没有已发布来源；无法确认该事件。", "No published source is available; the event cannot be confirmed."),
+    "reader.history.missing": M("未记录 / 无法得出结论", "Not recorded / no conclusion can be drawn"),
+    "reader.history.read_only": M("只读；不会运行、重建、发布或修改历史记录。", "Read-only; this page does not run, rebuild, publish, or modify history records."),
+    "reader.history.expert_heading": M("历史专业视图", "History Expert view"),
+    "reader.history.raw_heading": M("历史原始来源", "History raw source"),
+    "reader.history.open_documents": M("打开来源文档阅读器", "Open Source Documents Reader"),
+    "reader.history.open_methodology": M("打开方法阅读器", "Open Methodology Reader"),
+    "reader.history.open_evidence": M("打开证据", "Open evidence"),
+    "reader.history.as_of": M("截至", "As of"),
+    "reader.history.snapshot": M("快照", "Snapshot"),
+    "reader.history.summary": M("已记录 {n} 个历史阅读器主张。", "The History Reader recorded {n} claims."),
+    "reader.history.fixture.title": M("{scope} {event_type} 来源事件", "{scope} {event_type} source event"),
+    "reader.history.fixture.detail": M("{scope} 的明确来源事件样例。", "Explicit source-event fixture for {scope}."),
+    "reader.documents.eyebrow": M("来源文档 · 只读阅读器", "Source documents · read-only Reader"),
+    "reader.documents.title": M("来源文档阅读器", "Source Documents Reader"),
+    "reader.documents.question": M(
+        "哪些文档被索引，它们如何连接到规范记录、事件和原始来源？",
+        "Which documents are indexed, and how do they connect to canonical records, events, and raw sources?",
+    ),
+    "reader.documents.confirmed_intro": M(
+        "这里只显示已批准索引的文档元数据和引用；文档内容不会自动升级为规范事实。",
+        "Only approved document-index metadata and citations are shown; document content is never silently promoted to canonical fact.",
+    ),
+    "reader.documents.unknown_intro": M(
+        "索引缺失、版本冲突或目录边界阻止时，无法确认文档关系或研究结论。",
+        "When the index is missing, versions conflict, or a directory boundary blocks access, document relations and research conclusions cannot be confirmed.",
+    ),
+    "reader.documents.why_intro": M(
+        "文档类型、版本、更新时间、引用和索引状态沿用公开读模型；Reader 不打开文档或扫描目录。",
+        "Document type, version, update time, citations, and index state come from the public read model; Reader does not open documents or scan directories.",
+    ),
+    "reader.documents.scope": M("研究范围", "Research scope"),
+    "reader.documents.scope_intro": M("按已命名范围查看批准索引，不用其他范围的文档替代缺失条目。", "View the approved index by named scope; documents from another scope never replace a missing entry."),
+    "reader.documents.categories": M("文档分层", "Document layers"),
+    "reader.documents.canonical_heading": M("规范事实", "Canonical facts"),
+    "reader.documents.canonical_copy": M("文档引用的记录可回到规范记录；文档本身仍是来源材料，不是属主事实。", "Cited records can lead back to canonical records; the document itself remains source material, not an owner fact."),
+    "reader.documents.interpretation_heading": M("文档解读层", "Document interpretation layer"),
+    "reader.documents.interpretation_copy": M("计划、设计、报告、复盘、未来设想、外部资料和原始证据保持独立分类。", "Plans, designs, reports, retrospectives, future ideas, external sources, and raw evidence remain separately classified."),
+    "reader.documents.document_id": M("文档 ID", "Document ID"),
+    "reader.documents.type": M("类型", "Type"),
+    "reader.documents.version": M("版本", "Version"),
+    "reader.documents.locator": M("来源定位符", "Source locator"),
+    "reader.documents.updated": M("更新时间", "Updated"),
+    "reader.documents.citations": M("记录引用", "Record citations"),
+    "reader.documents.reverse_citations": M("{term:reverse_citations}", "Reverse citations"),
+    "reader.documents.index_state": M("索引状态", "Index state"),
+    "reader.documents.no_documents": M("当前范围没有已批准的来源文档索引条目。", "No approved Source Document index entry is available in the current scope."),
+    "reader.documents.no_source": M("没有已发布来源；无法确认该文档。", "No published source is available; the document cannot be confirmed."),
+    "reader.documents.missing": M("未记录 / 无法得出结论", "Not recorded / no conclusion can be drawn"),
+    "reader.documents.read_only": M("只读；不会打开文档、扫描目录、运行、重建或修改索引。", "Read-only; this page does not open documents, scan directories, run, rebuild, or modify the index."),
+    "reader.documents.expert_heading": M("来源文档专业视图", "Source Documents Expert view"),
+    "reader.documents.raw_heading": M("来源文档原始来源", "Source Documents raw source"),
+    "reader.documents.open_history": M("打开研究历史阅读器", "Open Research History Reader"),
+    "reader.documents.open_methodology": M("打开方法阅读器", "Open Methodology Reader"),
+    "reader.documents.open_evidence": M("打开证据", "Open evidence"),
+    "reader.documents.as_of": M("截至", "As of"),
+    "reader.documents.snapshot": M("快照", "Snapshot"),
+    "reader.documents.summary": M("已记录 {n} 个来源文档阅读器主张。", "The Source Documents Reader recorded {n} claims."),
+    "reader.documents.fixture.title": M("{scope} {document_type}", "{scope} {document_type}"),
+}
+
+__all__ = ["ENTRIES"]

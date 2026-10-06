@@ -43,7 +43,6 @@ from .documents import (
     DOCUMENTS_RESOURCE,
     ApprovedDirectoryBoundary,
     build_source_documents_fixture,
-    render_source_documents_view,
 )
 from .evidence import EVIDENCE_RESOURCE, render_evidence_view
 from .evidence_comparison import (
@@ -70,7 +69,13 @@ from .genome import (
     build_genome_fixture,
     render_genome_view,
 )
-from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
+from .history import HISTORY_SCOPES, build_history_fixture
+from .history_documents_reader import (
+    project_history_reader,
+    project_source_documents_reader,
+    render_history_reader,
+    render_source_documents_reader,
+)
 from .i18n import DEFAULT_LOCALE, Locale, Translator, resolve_locale, with_lang
 from .interaction import (
     export_json as render_current_view_export_json,
@@ -451,6 +456,18 @@ class ManagerGUIApp:
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
+        if state.view is ViewId.HISTORY:
+            return project_history_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.SOURCE_DOCUMENTS:
+            return project_source_documents_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -764,21 +781,24 @@ class ManagerGUIApp:
                 mode=state.mode,
             )
         if state.view is ViewId.HISTORY:
-            return render_history_view(
+            return render_history_reader(
                 model,
                 scope=self._scope_for_state(state),
-                base_path=url,
-                query=url,
+                query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.SOURCE_DOCUMENTS:
-            return render_source_documents_view(
+            return render_source_documents_reader(
                 model,
                 scope=self._scope_for_state(state),
+                approved_directories=self._approved_directories,
                 boundary=ApprovedDirectoryBoundary(self._approved_directories),
-                base_path=url,
-                query=url,
+                query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.SEARCH:
             context = dict(state.context)

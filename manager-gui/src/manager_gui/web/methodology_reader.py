@@ -44,7 +44,7 @@ from .methodology import (
     build_methodology_fixture,
     render_methodology,
 )
-from .navigation import ViewId, context_link
+from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
@@ -316,7 +316,7 @@ def _source_markup(view: MethodologyReaderViewModel, context: QueryContext, tran
     return f'<ul class="methodology-reader-sources">{"".join(items)}</ul>'
 
 
-def _method_detail(method: MethodologyMethod, translator: Translator) -> str:
+def _method_detail(method: MethodologyMethod, translator: Translator, context: QueryContext) -> str:
     limitations = (*method.limitations, *method.failure_cases)
     limit_markup = (
         "<ul>" + "".join(f"<li>{_owner(value, translator)}</li>" for value in limitations) + "</ul>"
@@ -334,6 +334,14 @@ def _method_detail(method: MethodologyMethod, translator: Translator) -> str:
         else f'<span data-reader-state="missing">{escape(translator.t("reader.methodology.validity_missing"))}</span>'
     )
     lifecycle_key = "reader.methodology.superseded" if method.superseded is True else "reader.methodology.current"
+    document_links = " · ".join(
+        f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=ref.document_id), quote=True)}" translate="no">{escape(ref.document_id)}</a>'
+        for ref in method.document_refs
+    ) or escape(translator.t("reader.methodology.no_source"))
+    record_links = " · ".join(
+        f'<a data-link-kind="record" href="{escape(context_link(context, view=ViewId.HISTORY, record_id=ref.record_id), quote=True)}" translate="no">{escape(ref.record_id)}</a>'
+        for ref in method.record_refs
+    ) or escape(translator.t("reader.methodology.no_source"))
     return (
         f'<article class="methodology-reader-method" data-method-id="{escape(method.method_id, quote=True)}" '
         f'data-methodology-category="{escape(method.category.value, quote=True)}" '
@@ -344,21 +352,35 @@ def _method_detail(method: MethodologyMethod, translator: Translator) -> str:
         f'<div><dt>{escape(translator.t("reader.methodology.when"))}</dt><dd>{usage}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.limits"))}</dt><dd>{limit_markup}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.validity"))}</dt><dd>{validity}</dd></div>'
+        f'<div><dt>{escape(translator.t("reader.methodology.source"))}</dt><dd>{document_links}</dd></div>'
+        f'<div><dt>{escape(translator.t("reader.methodology.source"))}</dt><dd>{record_links}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.status"))}</dt><dd>{escape(translator.t(lifecycle_key))} · {_machine(method.version, translator)}</dd></div>'
         f'</dl></article>'
     )
 
 
-def _methods_markup(view: MethodologyReaderViewModel, translator: Translator) -> str:
+def _methods_markup(view: MethodologyReaderViewModel, translator: Translator, context: QueryContext) -> str:
     if not view.methods:
-        return f'<p class="methodology-reader-no-entries">{escape(translator.t("reader.methodology.no_entries"))}</p>'
+        if view.index_state is MethodologyIndexState.NOT_INDEXED:
+            key = "reader.methodology.no_entries"
+        elif view.read_model.availability.status in {
+            ReadModelStatus.API_UNAVAILABLE,
+            ReadModelStatus.BLOCKED,
+            ReadModelStatus.STALE,
+            ReadModelStatus.INCOMPARABLE,
+            ReadModelStatus.INTEGRITY_FAILURE,
+        }:
+            key = "methodology.error_scope"
+        else:
+            key = "methodology.empty_scope"
+        return f'<p class="methodology-reader-no-entries">{escape(translator.t(key))}</p>'
     sections: list[str] = []
     for group in view.groups:
         label = translator.t(f"reader.methodology.category.{group.category.value}")
         body = (
             f'<p class="methodology-reader-category-empty">{escape(translator.t("reader.methodology.not_recorded"))}</p>'
             if not group.methods
-            else "".join(_method_detail(method, translator) for method in group.methods)
+            else "".join(_method_detail(method, translator, context) for method in group.methods)
         )
         sections.append(
             f'<section class="methodology-reader-category" data-methodology-category="{escape(group.category.value, quote=True)}" '
@@ -382,8 +404,8 @@ def _related_links(context: QueryContext, translator: Translator) -> str:
     documents = context_link(context, view=ViewId.SOURCE_DOCUMENTS)
     return (
         f'<nav class="methodology-reader-related" aria-label="{escape(translator.t("reader.methodology.scope"), quote=True)}">'
-        f'<a href="{escape(history, quote=True)}">{escape(translator.t("reader.methodology.open_history"))}</a>'
-        f'<a href="{escape(documents, quote=True)}">{escape(translator.t("reader.methodology.open_documents"))}</a></nav>'
+        f'<a data-link-kind="history" href="{escape(history, quote=True)}">{escape(translator.t("reader.methodology.open_history"))}</a>'
+        f'<a data-link-kind="document" href="{escape(documents, quote=True)}">{escape(translator.t("reader.methodology.open_documents"))}</a></nav>'
     )
 
 
@@ -411,8 +433,8 @@ def render_methodology_reader(
             render_reader_surface(reader_projection, page=ReaderPage.METHODOLOGY, query_context=query_context, translator=selected)
             + f'<section class="methodology-reader-scope" aria-labelledby="methodology-reader-scope-title"><h2 id="methodology-reader-scope-title">{escape(selected.t("reader.methodology.scope"))}</h2>'
             f'<p>{escape(selected.t("reader.methodology.scope_intro"))}</p>{_scope_links(query_context, selected)}</section>'
-            f'<section class="methodology-reader-methods" aria-labelledby="methodology-reader-methods-title"><h2 id="methodology-reader-methods-title">{escape(selected.t("reader.methodology.categories"))}</h2>{_methods_markup(view, selected)}</section>'
-            f'<p class="methodology-reader-boundary">{escape(selected.t("reader.methodology.read_only"))}</p>'
+            f'<section class="methodology-reader-methods" aria-labelledby="methodology-reader-methods-title"><h2 id="methodology-reader-methods-title">{escape(selected.t("reader.methodology.categories"))}</h2>{_methods_markup(view, selected, query_context)}{PageWindow.from_query(query_context, total=len(view.methods)).render(query_context, view=ViewId.METHODOLOGY, translator=selected)}</section>'
+            f'<p class="methodology-reader-boundary" data-boundary="canonical-fact">{escape(selected.t("reader.methodology.read_only"))}</p>'
         )
     scope = view.scope or ""
     context = (
