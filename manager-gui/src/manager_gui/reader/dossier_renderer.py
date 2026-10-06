@@ -209,7 +209,7 @@ def _render_fact_row(row: Mapping[str, object], index: int) -> str:
         f'<tr data-fact-row data-section="{_esc(row["section"])}" data-status="{_esc(row["status"])}" '
         f'data-search="{_esc(str(row["section_label"]) + " " + str(row["path"]) + " " + str(row["value_text"]))}">'
         f'<th scope="row"><code>{_esc(row["path"])}</code></th>'
-        f'<td class="fact-value" data-tooltip="{_esc(tooltip)}" tabindex="0">{_esc(row["value_text"])}</td>'
+        f'<td class="fact-value" data-tooltip="{_esc(tooltip)}" tabindex="0" aria-describedby="tooltip">{_esc(row["value_text"])}</td>'
         f'<td><span class="status status-{_esc(row["status"])}">{_esc(_STATUS_LABELS.get(str(row["status"]), str(row["status"])))}</span></td>'
         f'<td><code>{_esc(row["derivation"])}</code><small>{_esc(row["derivation_reason"])}</small></td>'
         f'<td><code>{_esc(source)}</code><small>{_esc(row["selector"])}</small></td>'
@@ -231,14 +231,14 @@ def _render_bars(rows: tuple[dict[str, object], ...]) -> str:
     bars: list[str] = []
     for index, row in enumerate(numeric):
         value = float(cast(int | float, row["value"]))
-        width = min(100.0, abs(value) / max_abs * 100.0)
-        fill = LIGHT_CATEGORICAL_PALETTE[index % len(LIGHT_CATEGORICAL_PALETTE)]
+        width = min(780.0, abs(value) / max_abs * 780.0)
+        value_x = min(980.0, 190.0 + width + 10.0)
         tooltip = f"{row['path']}：{row['value_text']}；来源 {row['source_record_type']}:{row['source_record_id']}"
         bars.append(
-            f'<g class="chart-mark" tabindex="0" data-tooltip="{_esc(tooltip)}" role="img" aria-label="{_esc(tooltip)}">'
+            f'<g class="chart-mark" tabindex="0" data-tooltip="{_esc(tooltip)}" role="img" aria-label="{_esc(tooltip)}" aria-describedby="tooltip">'
             f'<title>{_esc(tooltip)}</title><text class="chart-label" x="0" y="{index * 30 + 18}">{_esc(str(row["path"]))}</text>'
-            f'<rect x="190" y="{index * 30 + 7}" width="{width:.3f}%" height="16" rx="4" fill="{fill}" />'
-            f'<text class="chart-value" x="{min(98.0, 19.0 + width * 0.8):.3f}%" y="{index * 30 + 19}">{_esc(str(row["value_text"]))}</text></g>'
+            f'<rect x="190" y="{index * 30 + 7}" width="{width:.3f}" height="16" rx="4" fill="var(--chart-{index % len(LIGHT_CATEGORICAL_PALETTE)})" />'
+            f'<text class="chart-value" x="{value_x:.3f}" y="{index * 30 + 19}">{_esc(str(row["value_text"]))}</text></g>'
         )
     height = len(numeric) * 30 + 12
     return (
@@ -327,9 +327,9 @@ def _render_html(report: DossierReport) -> str:
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_esc(report.title)}</title>
 <style>
-:root {{ color-scheme: light; --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#52514e; --quiet:#898781; --line:#e1e0d9; --axis:#c3c2b7; --accent:#2a78d6; --warning:#eda100; --danger:#e34948; --good:#008300; --shadow:0 8px 24px rgba(11,11,11,.06); }}
-:root[data-theme="dark"] {{ color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --muted:#c3c2b7; --quiet:#aaa9a2; --line:#2c2c2a; --axis:#383835; --accent:#3987e5; --warning:#c98500; --danger:#e66767; --good:#008300; --shadow:0 8px 24px rgba(0,0,0,.28); }}
-@media (prefers-color-scheme:dark) {{ :root:not([data-theme="light"]) {{ color-scheme:dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --muted:#c3c2b7; --quiet:#aaa9a2; --line:#2c2c2a; --axis:#383835; --accent:#3987e5; --warning:#c98500; --danger:#e66767; --good:#008300; --shadow:0 8px 24px rgba(0,0,0,.28); }} }}
+:root {{ color-scheme: light; --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --muted:#52514e; --quiet:#898781; --line:#e1e0d9; --axis:#c3c2b7; --accent:#2a78d6; --warning:#eda100; --danger:#e34948; --good:#008300; --shadow:0 8px 24px rgba(11,11,11,.06); --chart-0:#2a78d6; --chart-1:#eb6834; --chart-2:#1baf7a; --chart-3:#eda100; --chart-4:#e87ba4; --chart-5:#008300; --chart-6:#4a3aa7; --chart-7:#e34948; }}
+:root[data-theme="dark"] {{ color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --muted:#c3c2b7; --quiet:#aaa9a2; --line:#2c2c2a; --axis:#383835; --accent:#3987e5; --warning:#c98500; --danger:#e66767; --good:#008300; --shadow:0 8px 24px rgba(0,0,0,.28); --chart-0:#3987e5; --chart-1:#d95926; --chart-2:#199e70; --chart-3:#c98500; --chart-4:#d55181; --chart-5:#008300; --chart-6:#9085e9; --chart-7:#e66767; }}
+@media (prefers-color-scheme:dark) {{ :root:not([data-theme="light"]) {{ color-scheme:dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --muted:#c3c2b7; --quiet:#aaa9a2; --line:#2c2c2a; --axis:#383835; --accent:#3987e5; --warning:#c98500; --danger:#e66767; --good:#008300; --shadow:0 8px 24px rgba(0,0,0,.28); --chart-0:#3987e5; --chart-1:#d95926; --chart-2:#199e70; --chart-3:#c98500; --chart-4:#d55181; --chart-5:#008300; --chart-6:#9085e9; --chart-7:#e66767; }} }}
 * {{ box-sizing:border-box; }} html {{ background:var(--page); }} body {{ margin:0; background:var(--page); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }}
 main {{ width:min(1440px,100% - 32px); margin:0 auto; padding:24px 0 64px; }} h1,h2,h3 {{ line-height:1.25; }} h1 {{ font-size:clamp(1.8rem,4vw,3rem); margin:.5rem 0 1rem; }} h2 {{ font-size:1.35rem; }} h3 {{ font-size:1rem; }} code,.record-id,.row-number {{ font-variant-numeric:tabular-nums; }} code {{ overflow-wrap:anywhere; }}
 .utility-bar,.filter-bar,.report-meta,.boundary-banner,.section-state,.evidence-card,.table-wrap,.lineage-table,.chart-card {{ background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }} .utility-bar,.filter-bar {{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px; }} .utility-bar {{ justify-content:space-between; }} button,input,select {{ font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--axis); border-radius:8px; padding:8px 10px; }} button {{ cursor:pointer; }} button:hover,button:focus-visible,input:focus-visible,select:focus-visible {{ outline:3px solid color-mix(in srgb,var(--accent),transparent 65%); outline-offset:2px; }}
@@ -364,9 +364,10 @@ main {{ width:min(1440px,100% - 32px); margin:0 auto; padding:24px 0 64px; }} h1
   const root = document.documentElement;
   const themeButton = document.getElementById('theme-toggle');
   const setTheme = (theme) => {{ root.dataset.theme = theme; themeButton.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false'); themeButton.textContent = theme === 'dark' ? '切换浅色主题' : '切换深色主题'; }};
+  setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   themeButton.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
   const tooltip = document.getElementById('tooltip');
-  const showTip = (event) => {{ const text = event.currentTarget.dataset.tooltip; if (!text) return; tooltip.textContent = text; tooltip.hidden = false; const x = Math.min(event.clientX + 12, window.innerWidth - tooltip.offsetWidth - 12); const y = Math.min(event.clientY + 12, window.innerHeight - tooltip.offsetHeight - 12); tooltip.style.left = `${{Math.max(8, x)}}px`; tooltip.style.top = `${{Math.max(8, y)}}px`; }};
+  const showTip = (event) => {{ const text = event.currentTarget.dataset.tooltip; if (!text) return; tooltip.textContent = text; tooltip.hidden = false; const bounds = event.currentTarget.getBoundingClientRect(); const clientX = Number.isFinite(event.clientX) ? event.clientX : bounds.left; const clientY = Number.isFinite(event.clientY) ? event.clientY : bounds.bottom; const x = Math.min(clientX + 12, window.innerWidth - tooltip.offsetWidth - 12); const y = Math.min(clientY + 12, window.innerHeight - tooltip.offsetHeight - 12); tooltip.style.left = `${{Math.max(8, x)}}px`; tooltip.style.top = `${{Math.max(8, y)}}px`; }};
   const hideTip = () => {{ tooltip.hidden = true; }};
   document.querySelectorAll('[data-tooltip]').forEach((node) => {{ node.addEventListener('pointermove', showTip); node.addEventListener('focus', showTip); node.addEventListener('pointerleave', hideTip); node.addEventListener('blur', hideTip); }});
   const buttons = [...document.querySelectorAll('[data-tab]')];

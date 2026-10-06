@@ -51,6 +51,18 @@ def test_report_model_is_the_only_source_and_hostile_text_is_escaped() -> None:
     assert "workspace-artifact://" not in output or "data-tooltip" in output
 
 
+def test_chart_geometry_stays_inside_viewbox_and_theme_uses_selected_palette() -> None:
+    output = DossierHTMLRenderer().render(_model())
+
+    assert 'width="100.000%"' not in output
+    assert 'fill="var(--chart-' in output
+    assert "--chart-0:#2a78d6" in output
+    assert "--chart-0:#3987e5" in output
+    assert "window.matchMedia('(prefers-color-scheme: dark)')" in output
+    assert 'aria-describedby="tooltip"' in output
+    assert "event.currentTarget.getBoundingClientRect()" in output
+
+
 def test_palette_validation_covers_both_selected_themes() -> None:
     result = validate_chart_palette()
 
