@@ -1,5 +1,12 @@
 """Reader v1 UI-only contract; v0 owner/API schemas remain unchanged."""
 
+from .fixtures import (
+    READER_FIXTURE_STATES,
+    ReaderFixtureProvider,
+    ReaderFixtureState,
+    build_reader_fixture,
+    reader_fixture_provider,
+)
 from .models import (
     READER_PROJECTION_SCHEMA,
     READER_PROJECTION_VERSION,
@@ -28,6 +35,7 @@ from .provider import (
 from .schema import READER_PROJECTION_JSON_SCHEMA
 
 __all__ = [
+    "READER_FIXTURE_STATES",
     "READER_PROJECTION_JSON_SCHEMA",
     "READER_PROJECTION_SCHEMA",
     "READER_PROJECTION_VERSION",
@@ -37,6 +45,8 @@ __all__ = [
     "ProjectionMode",
     "ProjectionReference",
     "RawSource",
+    "ReaderFixtureProvider",
+    "ReaderFixtureState",
     "ReadOnlyReaderProjectionProvider",
     "ReaderAvailability",
     "ReaderAvailabilityStatus",
@@ -48,6 +58,8 @@ __all__ = [
     "SampleData",
     "TemplateValue",
     "V0ReaderProjectionProvider",
+    "build_reader_fixture",
     "project_read_model",
+    "reader_fixture_provider",
     "project_v0",
 ]

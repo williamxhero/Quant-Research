@@ -68,7 +68,7 @@ class ProjectionMode(StrEnum):
 _GAP_KINDS = frozenset(
     {ClaimKind.MISSING, ClaimKind.BLOCKED, ClaimKind.STALE, ClaimKind.INCOMPARABLE}
 )
-_EXPLANATION_KEYS = {
+_EXPLANATION_KEYS: dict[ClaimKind, str] = {
     kind: f"reader.claim.{kind.value.lower()}" for kind in ClaimKind if kind is not ClaimKind.OWNER_TEXT
 }
 _EXPLANATION_KEYS[ClaimKind.OWNER_TEXT] = "reader.claim.owner_text"
@@ -240,7 +240,7 @@ class ReaderClaim:
             self.derivation.rule is None or self.derivation.version is None
         ):
             raise ValueError("non-direct claims require a named rule and version")
-        expected_status = {
+        expected_status: dict[ClaimKind, set[ReaderAvailabilityStatus]] = {
             ClaimKind.KNOWN: {ReaderAvailabilityStatus.KNOWN},
             ClaimKind.DERIVED: {ReaderAvailabilityStatus.DERIVED},
             ClaimKind.INTERPRETED: {ReaderAvailabilityStatus.INTERPRETED},
@@ -256,8 +256,8 @@ class ReaderClaim:
             },
             ClaimKind.STALE: {ReaderAvailabilityStatus.STALE},
             ClaimKind.INCOMPARABLE: {ReaderAvailabilityStatus.INCOMPARABLE},
-        }[self.kind]
-        if self.availability.status not in expected_status:
+        }
+        if self.availability.status not in expected_status[self.kind]:
             raise ValueError("claim kind and availability disagree")
         if self.kind is ClaimKind.OWNER_TEXT and not isinstance(self.value, str):
             raise ValueError("OwnerText must retain an original string")
@@ -464,9 +464,7 @@ class ReaderProjection:
         if self.sample_data is not None:
             if not isinstance(self.sample_data, SampleData):
                 raise ValueError("sample_data must be SampleData or null")
-            if not self.source_refs or any(
-                not ref.locator.startswith("fixture://") for ref in self.source_refs
-            ):
+            if any(not ref.locator.startswith("fixture://") for ref in self.source_refs):
                 raise ValueError("owner source scope cannot inherit sample metadata")
 
     def mode_reference(self, mode: ProjectionMode | str) -> ProjectionReference:
@@ -555,5 +553,13 @@ def project_read_model(
         tuple(model.source_refs), model.as_of, model.snapshot_token,
         Derivation("derived", "manager-gui.reader.identity-projection",
                    tuple(ref.source_id for ref in model.source_refs), READER_PROJECTION_VERSION),
-        ReaderAvailability.from_v0(model.availability), raw,
+        (
+            ReaderAvailability(
+                ReaderAvailabilityStatus.NOT_EVALUATED, False,
+                model.availability.reason, model.availability.retryable,
+            )
+            if model.availability.status.value == "known"
+            and any(error.code == "not_evaluated" for error in model.errors)
+            else ReaderAvailability.from_v0(model.availability)
+        ), raw,
     )
