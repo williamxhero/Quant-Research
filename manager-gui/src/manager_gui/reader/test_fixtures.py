@@ -22,7 +22,6 @@ from manager_gui.reader import (
     reader_fixture_provider,
 )
 
-
 EXPECTED_AVAILABILITY = {
     "empty": ReaderAvailabilityStatus.MISSING,
     "complete": ReaderAvailabilityStatus.KNOWN,
@@ -57,7 +56,10 @@ def test_fixture_gaps_are_typed_and_neutral() -> None:
         assert gaps or state == "empty"
         for claim in gaps:
             assert claim.kind in {
-                ClaimKind.MISSING, ClaimKind.BLOCKED, ClaimKind.STALE, ClaimKind.INCOMPARABLE,
+                ClaimKind.MISSING,
+                ClaimKind.BLOCKED,
+                ClaimKind.STALE,
+                ClaimKind.INCOMPARABLE,
             }
             assert claim.availability.status not in {
                 ReaderAvailabilityStatus.KNOWN,

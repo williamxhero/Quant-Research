@@ -69,7 +69,9 @@ _GAP_KINDS = frozenset(
     {ClaimKind.MISSING, ClaimKind.BLOCKED, ClaimKind.STALE, ClaimKind.INCOMPARABLE}
 )
 _EXPLANATION_KEYS: dict[ClaimKind, str] = {
-    kind: f"reader.claim.{kind.value.lower()}" for kind in ClaimKind if kind is not ClaimKind.OWNER_TEXT
+    kind: f"reader.claim.{kind.value.lower()}"
+    for kind in ClaimKind
+    if kind is not ClaimKind.OWNER_TEXT
 }
 _EXPLANATION_KEYS[ClaimKind.OWNER_TEXT] = "reader.claim.owner_text"
 
@@ -283,15 +285,26 @@ class ReaderClaim:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> ReaderClaim:
-        _fields(value, {
-            "claim_id", "kind", "source_refs", "derivation", "availability", "value",
-            "explanation_key",
-        }, "claim")
+        _fields(
+            value,
+            {
+                "claim_id",
+                "kind",
+                "source_refs",
+                "derivation",
+                "availability",
+                "value",
+                "explanation_key",
+            },
+            "claim",
+        )
         claim = cls(
             _text(value["claim_id"], "claim_id"),
             ClaimKind(_text(value["kind"], "kind")),
-            tuple(SourceReference.from_dict(_object(ref, "source_ref"))
-                  for ref in _array(value["source_refs"], "source_refs")),
+            tuple(
+                SourceReference.from_dict(_object(ref, "source_ref"))
+                for ref in _array(value["source_refs"], "source_refs")
+            ),
             Derivation.from_dict(_object(value["derivation"], "derivation")),
             ReaderAvailability.from_dict(_object(value["availability"], "availability")),
             _freeze(value["value"]),
@@ -320,8 +333,11 @@ class ReaderSummary:
         object.__setattr__(self, "params", _params(self.params))
 
     def to_dict(self) -> dict[str, object]:
-        return {"template_key": self.template_key, "claim_ids": list(self.claim_ids),
-                "params": dict(self.params)}
+        return {
+            "template_key": self.template_key,
+            "claim_ids": list(self.claim_ids),
+            "params": dict(self.params),
+        }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> ReaderSummary:
@@ -347,16 +363,23 @@ class SampleData:
             _text(getattr(self, name), name)
 
     def to_dict(self) -> dict[str, object]:
-        return {"fixture_state": self.fixture_state, "resource": self.resource,
-                "version": self.version, "banner_key": self.banner_key}
+        return {
+            "fixture_state": self.fixture_state,
+            "resource": self.resource,
+            "version": self.version,
+            "banner_key": self.banner_key,
+        }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> SampleData:
         _fields(value, {"fixture_state", "resource", "version", "banner_key"}, "sample_data")
         if value["banner_key"] != SAMPLE_BANNER_KEY:
             raise ValueError("invalid sample banner_key")
-        return cls(_text(value["fixture_state"], "fixture_state"),
-                   _text(value["resource"], "resource"), _text(value["version"], "version"))
+        return cls(
+            _text(value["fixture_state"], "fixture_state"),
+            _text(value["resource"], "resource"),
+            _text(value["version"], "version"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,8 +399,12 @@ class RawSource:
         return hashlib.sha256(self.raw_bytes).hexdigest()
 
     def to_dict(self) -> dict[str, object]:
-        return {"schema": self.schema, "encoding": "base64",
-                "bytes": base64.b64encode(self.raw_bytes).decode("ascii"), "sha256": self.sha256}
+        return {
+            "schema": self.schema,
+            "encoding": "base64",
+            "bytes": base64.b64encode(self.raw_bytes).decode("ascii"),
+            "sha256": self.sha256,
+        }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> RawSource:
@@ -453,13 +480,21 @@ class ReaderProjection:
             raise ValueError("claim_ids must be unique across claims, limitations and unknowns")
         if self.summary is not None and not set(self.summary.claim_ids) <= set(ids):
             raise ValueError("summary references an unknown claim")
-        if self.derivation.kind != "derived" or not self.derivation.rule or not self.derivation.version:
+        if (
+            self.derivation.kind != "derived"
+            or not self.derivation.rule
+            or not self.derivation.version
+        ):
             raise ValueError("Reader projection must name its GUI derivation rule and version")
         if not set(self.derivation.inputs) <= set(source_index):
             raise ValueError("projection derivation inputs must name source_refs")
         original = ManagerReadModel.from_json(self.raw_source.raw_bytes.decode("utf-8"))
-        if (_thaw(self.data) != original.data or self.source_refs != original.source_refs
-                or self.as_of != original.as_of or self.snapshot_token != original.snapshot_token):
+        if (
+            _thaw(self.data) != original.data
+            or self.source_refs != original.source_refs
+            or self.as_of != original.as_of
+            or self.snapshot_token != original.snapshot_token
+        ):
             raise ValueError("projection must preserve v0 data and source provenance")
         if self.sample_data is not None:
             if not isinstance(self.sample_data, SampleData):
@@ -470,10 +505,15 @@ class ReaderProjection:
     def mode_reference(self, mode: ProjectionMode | str) -> ProjectionReference:
         selected = ProjectionMode(mode)
         if selected is ProjectionMode.READER:
-            return ProjectionReference(selected, self.schema, self.snapshot_token,
-                                       hashlib.sha256(self.to_json().encode("utf-8")).hexdigest())
-        return ProjectionReference(selected, self.raw_source.schema, self.snapshot_token,
-                                   self.raw_source.sha256)
+            return ProjectionReference(
+                selected,
+                self.schema,
+                self.snapshot_token,
+                hashlib.sha256(self.to_json().encode("utf-8")).hexdigest(),
+            )
+        return ProjectionReference(
+            selected, self.raw_source.schema, self.snapshot_token, self.raw_source.sha256
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -493,28 +533,50 @@ class ReaderProjection:
         }
 
     def to_json(self, *, indent: int | None = None) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, allow_nan=False,
-                          sort_keys=True, indent=indent)
+        return json.dumps(
+            self.to_dict(), ensure_ascii=False, allow_nan=False, sort_keys=True, indent=indent
+        )
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> ReaderProjection:
-        _fields(value, {"schema", "data", "summary", "claims", "limitations", "unknowns",
-                        "source_refs", "as_of", "snapshot_token", "derivation", "availability",
-                        "raw_source", "sample_data"}, "projection")
+        _fields(
+            value,
+            {
+                "schema",
+                "data",
+                "summary",
+                "claims",
+                "limitations",
+                "unknowns",
+                "source_refs",
+                "as_of",
+                "snapshot_token",
+                "derivation",
+                "availability",
+                "raw_source",
+                "sample_data",
+            },
+            "projection",
+        )
         if value["schema"] != READER_PROJECTION_SCHEMA:
             raise ValueError("projection.schema is not ReaderProjection v1")
         summary, sample = value["summary"], value["sample_data"]
         groups = {
-            name: tuple(ReaderClaim.from_dict(_object(entry, name))
-                        for entry in _array(value[name], name))
+            name: tuple(
+                ReaderClaim.from_dict(_object(entry, name)) for entry in _array(value[name], name)
+            )
             for name in ("claims", "limitations", "unknowns")
         }
         return cls(
             _freeze(value["data"]),
             None if summary is None else ReaderSummary.from_dict(_object(summary, "summary")),
-            groups["claims"], groups["limitations"], groups["unknowns"],
-            tuple(SourceReference.from_dict(_object(entry, "source_ref"))
-                  for entry in _array(value["source_refs"], "source_refs")),
+            groups["claims"],
+            groups["limitations"],
+            groups["unknowns"],
+            tuple(
+                SourceReference.from_dict(_object(entry, "source_ref"))
+                for entry in _array(value["source_refs"], "source_refs")
+            ),
             _optional_text(value["as_of"], "as_of"),
             _optional_text(value["snapshot_token"], "snapshot_token"),
             Derivation.from_dict(_object(value["derivation"], "derivation")),
@@ -549,17 +611,30 @@ def project_read_model(
     if original.to_dict() != model.to_dict():
         raise ValueError("raw_bytes must describe the supplied v0 envelope")
     return ReaderProjection(
-        _freeze(model.data), summary, claims, limitations, unknowns,
-        tuple(model.source_refs), model.as_of, model.snapshot_token,
-        Derivation("derived", "manager-gui.reader.identity-projection",
-                   tuple(ref.source_id for ref in model.source_refs), READER_PROJECTION_VERSION),
+        _freeze(model.data),
+        summary,
+        claims,
+        limitations,
+        unknowns,
+        tuple(model.source_refs),
+        model.as_of,
+        model.snapshot_token,
+        Derivation(
+            "derived",
+            "manager-gui.reader.identity-projection",
+            tuple(ref.source_id for ref in model.source_refs),
+            READER_PROJECTION_VERSION,
+        ),
         (
             ReaderAvailability(
-                ReaderAvailabilityStatus.NOT_EVALUATED, False,
-                model.availability.reason, model.availability.retryable,
+                ReaderAvailabilityStatus.NOT_EVALUATED,
+                False,
+                model.availability.reason,
+                model.availability.retryable,
             )
             if model.availability.status.value == "known"
             and any(error.code == "not_evaluated" for error in model.errors)
             else ReaderAvailability.from_v0(model.availability)
-        ), raw,
+        ),
+        raw,
     )
