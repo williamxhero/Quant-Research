@@ -415,11 +415,12 @@ def render_claim_explanation(
     key = claim.explanation_key
     if key not in EXPLANATION_KEYS.values() or key not in READER_TEMPLATES:
         raise TranslationError(f"claim explanation key is not registered: {key!r}")
-    params = (
-        ReaderTemplateParams(text=claim.value)
-        if claim.kind is ClaimKind.OWNER_TEXT
-        else ReaderTemplateParams()
-    )
+    if claim.kind is ClaimKind.OWNER_TEXT:
+        if not isinstance(claim.value, str):
+            raise TypeError("OwnerText claim value must be source text")
+        params = ReaderTemplateParams(text=claim.value)
+    else:
+        params = ReaderTemplateParams()
     return render_reader_template(translator, key, params=params, as_html=as_html)
 
 
@@ -459,7 +460,7 @@ def render_projection_summary(
 
 
 def _validate_reader_policy() -> None:
-    names = set()
+    names: set[str] = set()
     for spec in READER_TEMPLATES.values():
         names.update(spec.params)
     if not names <= READER_PLACEHOLDER_NAMES:
