@@ -62,8 +62,8 @@ def test_reader_catalog_is_additive_and_has_the_required_bilingual_surfaces() ->
     }
     assert required <= set(ENTRIES)
     assert all(key.startswith(("reader.", "label.reader_")) for key in ENTRIES)
-    # R1-T4 owns central registration; importing this module must not mutate it.
-    assert not set(ENTRIES) & set(CATALOG)
+    # R1-T4 registers this additive namespace in the central validated registry.
+    assert set(ENTRIES) <= set(CATALOG)
 
 
 def test_every_claim_kind_has_one_stable_explanation_entry() -> None:

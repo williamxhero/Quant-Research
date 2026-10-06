@@ -14,7 +14,14 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from ..fixtures import FixtureState, build_fixture
 from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
-from ..reader import ProjectionMode, SampleData, render_mode_switch, render_sample_banner
+from ..reader import (
+    ProjectionMode,
+    ReaderProjection,
+    project_reader_model,
+    render_mode_switch,
+    render_reader_contract,
+    render_sample_banner,
+)
 from .assets import CSS, render_js
 from .atlas import render_atlas_view
 from .comparison import (
@@ -350,6 +357,22 @@ class ManagerGUIApp:
         resource = self._resource_for_view(state.view)
         return provider.read(resource, snapshot_token=dict(state.context).get("snapshot_token"))
 
+    def reader_projection(self, url: str = "/") -> ReaderProjection:
+        """Project the current public v0 read into the UI-only Reader contract."""
+
+        state = self.request_state(url)
+        return self._project_reader_model(state, self.read_model(state))
+
+    def _project_reader_model(
+        self, state: WebRequestState, model: ManagerReadModel
+    ) -> ReaderProjection:
+        return project_reader_model(
+            model,
+            resource=self._resource_for_view(state.view),
+            sample=self._provider is None,
+            sample_state=state.fixture.value,
+        )
+
     @staticmethod
     def _resource_for_view(view: ViewId) -> str:
         if view is ViewId.STRATEGIES:
@@ -394,17 +417,13 @@ class ManagerGUIApp:
         state = self.request_state(url)
         normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
+        projection = self._project_reader_model(state, model)
         item = navigation_item(state.view)
         translator = Translator(state.locale)
         page = self._render_page(
             state, model, normalized_url, translator=translator
         )
         page = self._localize_internal_links(page, state.lang)
-        sample_data = (
-            SampleData(state.fixture.value, self._resource_for_view(state.view))
-            if self._provider is None
-            else None
-        )
         return self._render_document(
             state,
             model,
@@ -412,7 +431,7 @@ class ManagerGUIApp:
             page,
             translator=translator,
             raw_url=normalized_url,
-            sample_data=sample_data,
+            reader_projection=projection,
         )
 
     def render_json(self, url: str = "/") -> str:
@@ -643,7 +662,7 @@ class ManagerGUIApp:
         *,
         translator: Translator,
         raw_url: str,
-        sample_data: SampleData | None = None,
+        reader_projection: ReaderProjection,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
         label = navigation_label(item.view_id, translator)
@@ -717,14 +736,11 @@ class ManagerGUIApp:
             },
             current_attribute="true",
         )
-        sample_banner = (
-            render_sample_banner(
-                sample_data,
-                locale=state.locale.value,
-                text=translator.t("shell.sample_data_banner"),
-            )
-            if sample_data is not None
-            else ""
+        reader_contract = render_reader_contract(reader_projection, state.mode)
+        sample_banner = render_sample_banner(
+            reader_projection,
+            locale=state.locale.value,
+            text=translator.t("shell.sample_data_banner"),
         )
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
@@ -793,6 +809,7 @@ class ManagerGUIApp:
   </aside>
 </div>
 {render_js(translator=translator)}
+{reader_contract}
 </body>
 </html>"""
 

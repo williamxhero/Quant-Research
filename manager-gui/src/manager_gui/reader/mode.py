@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from html import escape
+import json
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from manager_gui.models import MANAGER_READ_MODEL_SCHEMA
@@ -31,6 +32,7 @@ READER_CONTEXT_KEYS = (
 READER_MODE_VALUES = tuple(mode.value for mode in ProjectionMode)
 SAMPLE_BANNER_TEXT = "样例数据，不代表真实研究结果"
 SAMPLE_BANNER_TEXT_EN = "Sample data; not a real research result."
+READER_SHELL_CONTRACT_SCHEMA = "manager-gui.reader-shell.v1"
 
 _QueryPair = tuple[str, str]
 _QueryContext = str | Mapping[str, object] | Sequence[tuple[str, object]]
@@ -395,6 +397,52 @@ fixture_sample_banner = render_sample_banner
 sample_banner = render_sample_banner
 
 
+def reader_contract_payload(
+    projection: ReaderProjection,
+    mode: ProjectionMode | str,
+) -> dict[str, object]:
+    """Return the shell-only Reader payload without changing the v0 response."""
+
+    if not isinstance(projection, ReaderProjection):
+        raise TypeError("projection must be a ReaderProjection")
+    selected = ProjectionMode(mode)
+    return {
+        "schema": READER_SHELL_CONTRACT_SCHEMA,
+        "mode": selected.value,
+        "projection": projection.to_dict(),
+    }
+
+
+def render_reader_contract(
+    projection: ReaderProjection,
+    mode: ProjectionMode | str,
+) -> str:
+    """Expose Reader v1 fields to future page consumers through HTML only.
+
+    The payload is deliberately not an API/read-model response.  ``<`` is escaped
+    at JSON serialization time so owner text cannot terminate the JSON script tag;
+    no client-side behavior or generated prose is introduced by this seam.
+    """
+
+    payload = reader_contract_payload(projection, mode)
+    selected = ProjectionMode(mode)
+    encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True)
+    encoded = encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    gaps = len(projection.limitations) + len(projection.unknowns)
+    sample = "true" if projection.sample_data is not None else "false"
+    return (
+        f'<section class="reader-contract-seam" data-reader-contract="v1" '
+        f'data-reader-mode="{escape(selected.value, quote=True)}" '
+        f'data-reader-availability="{escape(projection.availability.status.value, quote=True)}" '
+        f'data-reader-complete="{str(projection.availability.complete).lower()}" '
+        f'data-reader-claims="{len(projection.claims)}" data-reader-gaps="{gaps}" '
+        f'data-reader-source-refs="{len(projection.source_refs)}" '
+        f'data-reader-sample="{sample}" hidden>'
+        f'<script id="reader-contract" type="application/json">{encoded}</script>'
+        "</section>"
+    )
+
+
 def compatibility_reference(
     projection: ReaderProjection,
     mode: ProjectionMode | str,
@@ -431,6 +479,7 @@ __all__ = [
     "READER_CONTEXT_KEYS",
     "READER_MODE_QUERY_KEY",
     "READER_MODE_VALUES",
+    "READER_SHELL_CONTRACT_SCHEMA",
     "SAMPLE_BANNER_TEXT",
     "SAMPLE_BANNER_TEXT_EN",
     "ReaderURLState",
@@ -447,8 +496,10 @@ __all__ = [
     "reader_mode_url",
     "render_mode_switch",
     "render_mode_switch_form",
+    "render_reader_contract",
     "render_reader_mode_switch",
     "render_sample_banner",
+    "reader_contract_payload",
     "raw_reference",
     "sample_banner",
     "sample_banner_text",

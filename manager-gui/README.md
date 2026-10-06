@@ -653,3 +653,60 @@ when it was requested; raw JSON and API/export payloads remain language-neutral.
 Page-specific prose is intentionally not translated by the shared shell slice.
 Its page hooks receive the same request translator so later route migrations can
 add catalog entries without introducing a second i18n layer.
+
+## Reader R1 contract and shell consumption
+
+Reader R1 is a UI-only projection over one already-read `ManagerReadModel v0`.
+It does not replace or extend the owner envelope. `ManagerGUIApp.reader_projection(url)`
+and the HTML `reader-contract` seam expose the same immutable projection to future
+Reader pages. The seam carries `data`, optional `summary`, `claims`, `limitations`,
+`unknowns`, `source_refs`, `as_of`, `snapshot_token`, `derivation`, and
+`availability`, plus the retained v0 `raw_source`. Claims always name source
+references and a derivation; Reader copy stores stable catalog keys and typed
+parameters rather than generated prose.
+
+The shell mounts that contract on all 17 routes without implementing a concrete
+Reader page. The global `mode=reader|expert|raw` links are ordinary GET links and
+retain repeated opaque query parameters, blank values, `lang`, fixture, scope,
+root, filters, and snapshot context. Reader mode consumes the projection; Expert
+and Raw remain compatibility references to the unchanged `ManagerReadModel v0`
+bytes. `/api/read-model` and `/api/export` do not include Reader projection data or
+presentation-only mode state, and remain byte-stable across language and mode
+changes.
+
+Fixture-backed shell reads pass explicit `sample_data` and show the fixed sample
+banner. An injected owner provider never receives fixture metadata or a sample
+banner, even when its source values resemble a fixture. Source references and
+owner free text remain verbatim (escaped once at the HTML boundary); no URL,
+locator, count, or status is promoted to an owner fact.
+
+`known`, `derived`, and `interpreted` retain their stated semantics. `missing`,
+`blocked`, `not_evaluated`, `stale`, `incomparable`, integrity failure, and API
+unavailability remain explicit gaps or limitations and are never relabeled as
+success or failure. `partial` means incomplete scope, not a negative result.
+Reader explanations come only from reproducible templates and typed source facts;
+there is no LLM call, private-storage/SQLite read, file-system scan, recalculation,
+write, retry, publish, or mutation seam. The central i18n registry registers the
+Reader catalog once and validates bilingual placeholder parity and duplicate-key
+rejection before use.
+
+### R2–R5 consumption rules
+
+R2 Overview and Research Story, R3 Strategy/Genome, R4 Memory/Failure, and R5
+Evidence/Lineage/Comparison may consume the projection only through the shell
+contract or `reader_projection` helper. Each page must:
+
+1. preserve `source_refs`, `as_of`, `snapshot_token`, `derivation`, and
+   `availability`, and keep `claims`, `limitations`, and `unknowns` visibly
+   distinct;
+2. label every GUI computation as `Derived` with a named rule and version, and
+   never upgrade it or owner free text to a canonical fact;
+3. render missing, blocked, not-evaluated, stale, and incomparable states using
+   the fixed Reader catalog language without mapping them to a pass/fail outcome;
+4. keep Reader, Expert, and Raw URL state shareable and preserve all opaque query
+   pairs, while leaving v0 API/export and the read-only HTTP boundary unchanged;
+5. use the approved public `ManagerDataProvider.read` seam only; no SQLite,
+   private storage, owner mutation, LLM, revalidation, or fallback inference; and
+6. keep page-specific structure in the owning R2–R5 route and consume the shared
+   shell's mode controls, sample boundary, status/ARIA surfaces, Inspector, and
+   raw JSON drawer rather than adding a second envelope.
