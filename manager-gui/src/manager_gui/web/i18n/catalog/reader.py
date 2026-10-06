@@ -23,6 +23,8 @@ from typing import Final, cast
 from manager_gui.models import SourceReference
 from manager_gui.reader import (
     ClaimKind,
+    ReaderAvailability,
+    ReaderAvailabilityStatus,
     ReaderClaim,
     ReaderProjection,
     ReaderSummary,
@@ -48,6 +50,24 @@ EXPLANATION_KEYS: Mapping[ClaimKind, str] = MappingProxyType(
             else f"reader.claim.{kind.value.lower()}"
         )
         for kind in ClaimKind
+    }
+)
+
+# Availability has three machine states that do not have a one-to-one ClaimKind.
+# The remaining states deliberately reuse their claim explanation, keeping one
+# deterministic sentence for each public gap/truth category.
+AVAILABILITY_EXPLANATION_KEYS: Mapping[ReaderAvailabilityStatus, str] = MappingProxyType(
+    {
+        ReaderAvailabilityStatus.KNOWN: EXPLANATION_KEYS[ClaimKind.KNOWN],
+        ReaderAvailabilityStatus.DERIVED: EXPLANATION_KEYS[ClaimKind.DERIVED],
+        ReaderAvailabilityStatus.INTERPRETED: EXPLANATION_KEYS[ClaimKind.INTERPRETED],
+        ReaderAvailabilityStatus.MISSING: EXPLANATION_KEYS[ClaimKind.MISSING],
+        ReaderAvailabilityStatus.BLOCKED: EXPLANATION_KEYS[ClaimKind.BLOCKED],
+        ReaderAvailabilityStatus.STALE: EXPLANATION_KEYS[ClaimKind.STALE],
+        ReaderAvailabilityStatus.INCOMPARABLE: EXPLANATION_KEYS[ClaimKind.INCOMPARABLE],
+        ReaderAvailabilityStatus.NOT_EVALUATED: "reader.availability.not_evaluated",
+        ReaderAvailabilityStatus.INTEGRITY_FAILURE: "reader.availability.integrity_failure",
+        ReaderAvailabilityStatus.API_UNAVAILABLE: "reader.availability.api_unavailable",
     }
 )
 SAMPLE_BANNER_KEY: Final[str] = "reader.sample.banner"
@@ -121,6 +141,7 @@ class ReaderTemplateSpec:
     key: str
     params: tuple[str, ...] = ()
     source_refs: bool = False
+    count_source_refs: bool = False
 
 
 # The metadata is intentionally explicit.  It prevents a caller from turning
@@ -132,14 +153,23 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.source.reference": ReaderTemplateSpec(
             "reader.source.reference", ("source_id",), source_refs=True
         ),
+        "reader.source.count": ReaderTemplateSpec(
+            "reader.source.count", ("n",), source_refs=True, count_source_refs=True
+        ),
         "reader.derivation.detail": ReaderTemplateSpec(
             "reader.derivation.detail", ("source_id", "value"), source_refs=True
         ),
-            "reader.limitation.detail": ReaderTemplateSpec(
+        "reader.limitation.detail": ReaderTemplateSpec(
             "reader.limitation.detail", ("source_id", "value"), source_refs=True
         ),
         "reader.gap.detail": ReaderTemplateSpec(
             "reader.gap.detail", ("source_id", "value"), source_refs=True
+        ),
+        "reader.summary.claim_count": ReaderTemplateSpec(
+            "reader.summary.claim_count", ("n",)
+        ),
+        "reader.summary.gap_count": ReaderTemplateSpec(
+            "reader.summary.gap_count", ("n",)
         ),
         "reader.summary.source_note": ReaderTemplateSpec(
             "reader.summary.source_note", ("text",)
@@ -152,6 +182,15 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.claim.blocked": ReaderTemplateSpec("reader.claim.blocked"),
         "reader.claim.stale": ReaderTemplateSpec("reader.claim.stale"),
         "reader.claim.incomparable": ReaderTemplateSpec("reader.claim.incomparable"),
+        "reader.availability.not_evaluated": ReaderTemplateSpec(
+            "reader.availability.not_evaluated"
+        ),
+        "reader.availability.integrity_failure": ReaderTemplateSpec(
+            "reader.availability.integrity_failure"
+        ),
+        "reader.availability.api_unavailable": ReaderTemplateSpec(
+            "reader.availability.api_unavailable"
+        ),
     }
 )
 
@@ -192,6 +231,39 @@ ENTRIES: Mapping[str, M] = {
     "reader.gap.detail": M(
         "知识缺口（来源：{source_id}）：{value}",
         "Knowledge gap (source: {source_id}): {value}",
+    ),
+    "reader.source.count": M(
+        "当前范围有 {n} 条来源引用；数量不表示证据强度。",
+        {
+            "one": "There is {n} source reference in this scope; the count is not evidence strength.",
+            "other": "There are {n} source references in this scope; the count is not evidence strength.",
+        },
+    ),
+    "reader.summary.claim_count": M(
+        "当前引用了 {n} 条带来源的陈述；数量不表示研究成功或结论已验证。",
+        {
+            "one": "This summary references {n} sourced claim; the count establishes neither research success nor a verified conclusion.",
+            "other": "This summary references {n} sourced claims; the count establishes neither research success nor a verified conclusion.",
+        },
+    ),
+    "reader.summary.gap_count": M(
+        "当前引用了 {n} 项知识缺口；无法判断的内容不视为失败。",
+        {
+            "one": "This summary references {n} knowledge gap; an undetermined result is not treated as a failure.",
+            "other": "This summary references {n} knowledge gaps; an undetermined result is not treated as a failure.",
+        },
+    ),
+    "reader.availability.not_evaluated": M(
+        "当前来源范围尚未评估；未评估不表示成功或失败。",
+        "The source scope has not been evaluated; not evaluated means neither success nor failure.",
+    ),
+    "reader.availability.integrity_failure": M(
+        "来源未通过完整性核验；这不是研究失败的结论。",
+        "The source failed integrity verification; this is not a conclusion that the research failed.",
+    ),
+    "reader.availability.api_unavailable": M(
+        "批准的公开读取 API 当前不可用；无法读取不表示没有记录。",
+        "The approved public read API is unavailable; an unreadable source is not an empty record.",
     ),
     "reader.summary.source_note": M("来源说明：{text}", "Source note: {text}"),
     # Every key below is referenced by ReaderClaim.explanation_key.  None of
@@ -349,10 +421,16 @@ def _render_params(
     if spec.source_refs:
         if not source_refs:
             raise ValueError(f"{spec.key} requires at least one source reference")
-        joined = translator.join(ref.source_id for ref in source_refs)
-        if params.source_id is not None and params.source_id != joined:
-            raise ValueError("source_id must match the supplied source_refs")
-        values["source_id"] = joined
+        if "source_id" in spec.params:
+            joined = translator.join(ref.source_id for ref in source_refs)
+            if params.source_id is not None and params.source_id != joined:
+                raise ValueError("source_id must match the supplied source_refs")
+            values["source_id"] = joined
+        if spec.count_source_refs:
+            if params.n is None:
+                raise ValueError(f"{spec.key} requires a count")
+            if params.n != len(source_refs):
+                raise ValueError("n must match source_refs")
     elif source_refs:
         raise ValueError(f"{spec.key} does not accept source_refs")
 
@@ -392,6 +470,13 @@ def render_reader_template(
         raise TypeError("params must be ReaderTemplateParams")
     refs = _validated_source_refs(source_refs)
     values = _render_params(spec, selected, refs, translator)
+    if "n" in spec.params:
+        count = cast(int, values["n"])
+        if as_html:
+            return translator.html(key, **dict(values))
+        plain_values = dict(values)
+        plain_values.pop("n")
+        return translator.count(key, count, **plain_values)
     if as_html:
         return translator.html(key, **dict(values))
     return translator.t(key, **dict(values))
@@ -422,6 +507,27 @@ def render_claim_explanation(
     else:
         params = ReaderTemplateParams()
     return render_reader_template(translator, key, params=params, as_html=as_html)
+
+
+def render_availability_explanation(
+    translator: Translator,
+    availability: ReaderAvailability | ReaderAvailabilityStatus | str,
+    *,
+    as_html: bool = False,
+) -> str:
+    """Render one fixed explanation for a typed availability status."""
+
+    if isinstance(availability, ReaderAvailability):
+        status = availability.status
+    else:
+        try:
+            status = ReaderAvailabilityStatus(availability)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("availability must be ReaderAvailability or ReaderAvailabilityStatus") from exc
+    key = AVAILABILITY_EXPLANATION_KEYS[status]
+    return render_reader_template(
+        translator, key, params=ReaderTemplateParams(), as_html=as_html
+    )
 
 
 def render_summary(
@@ -476,6 +582,7 @@ _validate_reader_policy()
 
 
 __all__ = [
+    "AVAILABILITY_EXPLANATION_KEYS",
     "ENTRIES",
     "EXPLANATION_KEYS",
     "READER_PLACEHOLDER_NAMES",
@@ -484,6 +591,7 @@ __all__ = [
     "ReaderTemplateParams",
     "ReaderTemplateSpec",
     "reader_catalog_policy_violations",
+    "render_availability_explanation",
     "render_claim_explanation",
     "render_projection_summary",
     "render_reader_template",
