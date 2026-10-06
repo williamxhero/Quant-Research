@@ -263,6 +263,13 @@ class DossierSourceRefs:
             raise ValueError("holdout lock and access proof must be supplied together")
         if optional and tuple(ref.record_type for ref in optional) != (LOCK_TYPE, PROOF_TYPE):
             raise ValueError("dossier Holdout reference types differ")
+        if optional and tuple(ref.record_id for ref in optional) != (
+            PRIMARY_HOLDOUT_LOCK_ID,
+            PRIMARY_HOLDOUT_ACCESS_PROOF_ID,
+        ):
+            raise ValueError(
+                "dossier Holdout references differ from the registered primary boundary"
+            )
         all_refs = refs + optional
         if len({ref.record_id for ref in all_refs}) != len(all_refs):
             raise ValueError("dossier source identities must be unique")
@@ -660,6 +667,7 @@ class DossierReport:
     causal_inference: str = "forbidden"
     production_approval_inference: str = "forbidden"
     holdout_results: str = "not_evaluated"
+    data_roles: tuple[str, ...] = ("development", "validation")
 
     schema: ClassVar[str] = DOSSIER_REPORT_SCHEMA
 
@@ -717,6 +725,10 @@ class DossierReport:
             raise ValueError("dossier inference policies are forbidden")
         if self.holdout_results != "not_evaluated":
             raise ValueError("holdout results must remain not_evaluated")
+        roles = tuple(self.data_roles)
+        if roles != ("development", "validation"):
+            raise ValueError("dossier data roles must be development and validation")
+        object.__setattr__(self, "data_roles", roles)
         object.__setattr__(self, "sections", sections)
         object.__setattr__(self, "source_records", records)
         object.__setattr__(self, "source_artifacts", artifacts)
@@ -735,6 +747,7 @@ class DossierReport:
             "causal_inference": self.causal_inference,
             "production_approval_inference": self.production_approval_inference,
             "holdout_results": self.holdout_results,
+            "data_roles": list(self.data_roles),
         }
 
     def to_json(self, *, indent: int | None = None) -> str:
@@ -758,8 +771,13 @@ class DossierReport:
             "causal_inference",
             "production_approval_inference",
             "holdout_results",
+            "data_roles",
         }
-        if set(item) != expected or item.get("schema") != DOSSIER_REPORT_SCHEMA:
+        legacy_expected = expected - {"data_roles"}
+        if (
+            set(item) not in (expected, legacy_expected)
+            or item.get("schema") != DOSSIER_REPORT_SCHEMA
+        ):
             raise ValueError("invalid Dossier v2 schema or fields")
         return cls(
             DossierSourceRefs.from_dict(_mapping(item["source_refs"], "source_refs")),
@@ -782,6 +800,12 @@ class DossierReport:
             _text(item["causal_inference"], "causal_inference"),
             _text(item["production_approval_inference"], "production_approval_inference"),
             _text(item["holdout_results"], "holdout_results"),
+            tuple(
+                _text(role, "data_roles[]")
+                for role in _sequence(
+                    item.get("data_roles", ("development", "validation")), "data_roles"
+                )
+            ),
         )
 
     @classmethod

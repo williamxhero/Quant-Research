@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from manager_gui.reader.dossier import (
@@ -16,22 +17,37 @@ from manager_gui.reader.dossier import (
 from manager_gui.reader.dossier_cli import main as dossier_main
 from manager_gui.reader.dossier_release import DossierReleaseGate
 from manager_gui.reader.dossier_schema import DOSSIER_REPORT_JSON_SCHEMA
+from manager_gui.reader.interim_monitor import (
+    PRIMARY_HOLDOUT_ACCESS_PROOF_ID,
+    PRIMARY_HOLDOUT_LOCK_ID,
+)
 
-from .test_dossier import Provider, _fixture, _root
+from .test_dossier import Provider, _fixture
 
 
 def _holdout_model():
     records, refs = _fixture()
-    lock_id, lock = _root(
-        LOCK_TYPE,
-        "record_id",
-        {"schema": LOCK_TYPE, "status": "locked", "results": "not_accessed"},
-    )
-    proof_id, proof = _root(
-        PROOF_TYPE,
-        "record_id",
-        {"schema": PROOF_TYPE, "status": "not_accessed", "holdout_results": "not_evaluated"},
-    )
+    lock_id, proof_id = PRIMARY_HOLDOUT_LOCK_ID, PRIMARY_HOLDOUT_ACCESS_PROOF_ID
+    lock = {
+        "schema": "quant-research.publication.v1",
+        "record_id": lock_id,
+        "record_type": LOCK_TYPE,
+        "payload": {"schema": LOCK_TYPE, "status": "locked", "results": "not_accessed"},
+        "artifacts": [],
+        "lineage": [],
+    }
+    proof = {
+        "schema": "quant-research.publication.v1",
+        "record_id": proof_id,
+        "record_type": PROOF_TYPE,
+        "payload": {
+            "schema": PROOF_TYPE,
+            "status": "not_accessed",
+            "holdout_results": "not_evaluated",
+        },
+        "artifacts": [],
+        "lineage": [],
+    }
     records.update({lock_id: lock, proof_id: proof})
     refs = DossierSourceRefs(
         refs.matrix,
@@ -42,7 +58,20 @@ def _holdout_model():
         DossierRecordRef(lock_id, LOCK_TYPE),
         DossierRecordRef(proof_id, PROOF_TYPE),
     )
-    return DossierReportBuilder(Provider(records)).build(refs)
+    model = DossierReportBuilder(Provider(records)).build(refs)
+    quarantine_index = next(
+        index for index, section in enumerate(model.sections) if section.name == "quarantine"
+    )
+    quarantine = model.sections[quarantine_index]
+    evidence = quarantine.evidence[0]
+    excluded_fact = replace(evidence.facts[0], path="/excluded", value="excluded")
+    evidence = replace(
+        evidence,
+        facts=tuple(sorted((*evidence.facts, excluded_fact), key=lambda fact: fact.path)),
+    )
+    sections = list(model.sections)
+    sections[quarantine_index] = replace(quarantine, evidence=(evidence,))
+    return replace(model, sections=tuple(sections))
 
 
 def test_current_source_refs_bind_exact_primary_holdout_records() -> None:
@@ -88,6 +117,8 @@ def test_report_schema_and_cli_are_available_without_external_dependencies(
     assert DOSSIER_REPORT_JSON_SCHEMA["$id"] == "urn:manager-gui:dossier-report:v2"
     source_refs_schema = DOSSIER_REPORT_JSON_SCHEMA["properties"]["source_refs"]
     assert "holdout_lock" in source_refs_schema["anyOf"][0]["required"]  # type: ignore[index]
+    assert "data_roles" in DOSSIER_REPORT_JSON_SCHEMA["required"]
+    assert DOSSIER_REPORT_JSON_SCHEMA["properties"]["data_roles"]["maxItems"] == 2
 
     exit_code = dossier_main(["rebuild", "--model", str(model_path)])
     output = json.loads(capsys.readouterr().out)

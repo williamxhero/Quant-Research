@@ -166,6 +166,7 @@ DOSSIER_REPORT_JSON_SCHEMA: Final[dict[str, object]] = {
         "causal_inference",
         "production_approval_inference",
         "holdout_results",
+        "data_roles",
     ],
     "properties": {
         "schema": {"const": "manager-gui.dossier-report.v2"},
@@ -180,6 +181,12 @@ DOSSIER_REPORT_JSON_SCHEMA: Final[dict[str, object]] = {
         "causal_inference": {"const": "forbidden"},
         "production_approval_inference": {"const": "forbidden"},
         "holdout_results": {"const": "not_evaluated"},
+        "data_roles": {
+            "type": "array",
+            "prefixItems": [{"const": "development"}, {"const": "validation"}],
+            "minItems": 2,
+            "maxItems": 2,
+        },
     },
     "additionalProperties": False,
 }
