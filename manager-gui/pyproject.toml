@@ -12,6 +12,7 @@ license = {text = "Proprietary"}
 
 [project.scripts]
 manager-gui = "manager_gui.__main__:main"
+manager-gui-dossier = "manager_gui.reader.dossier_cli:main"
 manager-gui-web = "manager_gui.web.server:main"
 
 [dependency-groups]

@@ -33,7 +33,18 @@ uv run --directory manager-gui python -m manager_gui --fixture complete --pretty
 uv run --directory manager-gui manager-gui-web --fixture complete --port 8765
 # Equivalent module invocation
 uv run --directory manager-gui python -m manager_gui.web --fixture complete --port 8765
+
+# Offline Dossier v2 audit (readback files are named by exact SHA-256 ID)
+uv run --directory manager-gui manager-gui-dossier rebuild \
+  --model path/to/dossier-model.json --readback-dir path/to/public-readback \
+  --baseline-ref <root-id> --current-root-id <root-id> --old-publication-id <old-id>
 ```
+
+`manager-gui-dossier inspect`, `verify`, and `rebuild` only consume the explicit
+canonical model and operator-exported public readback bytes. They do not discover
+records, access SQLite/private storage, call Runtime or Holdout APIs, or write a
+publication. Every command reports `published`, `runtime_submission_calls`, exact
+old-record/publication byte identity, and HTML boundary/accessibility checks.
 
 ## 语言与 `lang` 查询参数
 

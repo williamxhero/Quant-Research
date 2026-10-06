@@ -19,6 +19,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import ClassVar, Protocol, TypeAlias, cast, runtime_checkable
 
+from .interim_monitor import (
+    HOLDOUT_ACCESS_PROOF_SCHEMA,
+    HOLDOUT_LOCK_SCHEMA,
+    PRIMARY_HOLDOUT_ACCESS_PROOF_ID,
+    PRIMARY_HOLDOUT_LOCK_ID,
+)
+
 DOSSIER_REPORT_SCHEMA = "manager-gui.dossier-report.v2"
 DOSSIER_REPORT_VERSION = "v2"
 
@@ -31,8 +38,8 @@ FACTS_TYPE = "apex-research.study-runtime-facts.v1"
 METRICS_TYPE = "apex-research.cpa-object-performance.v1"
 COMPARISON_TYPE = "apex-research.cpa-bootstrap-comparison.v1"
 ATTRIBUTION_TYPE = "apex-research.cpa-object-attribution.v2"
-LOCK_TYPE = "apex-research.prospective-holdout-lock.v1"
-PROOF_TYPE = "apex-research.prospective-holdout-access-proof.v1"
+LOCK_TYPE = HOLDOUT_LOCK_SCHEMA
+PROOF_TYPE = HOLDOUT_ACCESS_PROOF_SCHEMA
 REGISTRATION_TYPE = "apex-research.study-registration.v1"
 EXCLUDED_TYPE = "apex-research.v1.2-s5-formal-matrix-excluded-attempts.v1"
 
@@ -220,13 +227,15 @@ StudyRecordRef = DossierRecordRef
 
 @dataclass(frozen=True, slots=True)
 class DossierSourceRefs:
-    """The five explicit roots from which a Dossier v2 can be projected."""
+    """Explicit report roots, including the immutable primary Holdout boundary."""
 
     matrix: DossierRecordRef | Mapping[str, object]
     t2: DossierRecordRef | Mapping[str, object]
     report_source: DossierRecordRef | Mapping[str, object]
     quarantine: DossierRecordRef | Mapping[str, object]
     conclusion: DossierRecordRef | Mapping[str, object]
+    holdout_lock: DossierRecordRef | Mapping[str, object] | None = None
+    holdout_proof: DossierRecordRef | Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         refs = tuple(
@@ -242,32 +251,62 @@ class DossierSourceRefs:
         expected = (MATRIX_TYPE, T2_TYPE, SOURCE_TYPE, QUARANTINE_TYPE, CONCLUSION_TYPE)
         if tuple(ref.record_type for ref in refs) != expected:
             raise ValueError("dossier source reference types differ")
-        if len({ref.record_id for ref in refs}) != len(refs):
+        optional = tuple(
+            _record_ref(value, name)
+            for name, value in (
+                ("holdout_lock", self.holdout_lock),
+                ("holdout_proof", self.holdout_proof),
+            )
+            if value is not None
+        )
+        if optional and len(optional) != 2:
+            raise ValueError("holdout lock and access proof must be supplied together")
+        if optional and tuple(ref.record_type for ref in optional) != (LOCK_TYPE, PROOF_TYPE):
+            raise ValueError("dossier Holdout reference types differ")
+        all_refs = refs + optional
+        if len({ref.record_id for ref in all_refs}) != len(all_refs):
             raise ValueError("dossier source identities must be unique")
         object.__setattr__(self, "matrix", refs[0])
         object.__setattr__(self, "t2", refs[1])
         object.__setattr__(self, "report_source", refs[2])
         object.__setattr__(self, "quarantine", refs[3])
         object.__setattr__(self, "conclusion", refs[4])
+        object.__setattr__(self, "holdout_lock", optional[0] if optional else None)
+        object.__setattr__(self, "holdout_proof", optional[1] if optional else None)
+
+    @property
+    def has_holdout_boundary(self) -> bool:
+        return self.holdout_lock is not None and self.holdout_proof is not None
 
     def records(self) -> tuple[DossierRecordRef, ...]:
-        return (self.matrix, self.t2, self.report_source, self.quarantine, self.conclusion)
+        roots = (self.matrix, self.t2, self.report_source, self.quarantine, self.conclusion)
+        if not self.has_holdout_boundary:
+            return roots
+        return (*roots, self.holdout_lock, self.holdout_proof)  # type: ignore[return-value]
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        result = {
             name: ref.to_dict()
             for name, ref in zip(
                 ("matrix", "t2", "report_source", "quarantine", "conclusion"),
-                self.records(),
+                (self.matrix, self.t2, self.report_source, self.quarantine, self.conclusion),
                 strict=True,
             )
         }
+        if self.has_holdout_boundary:
+            assert self.holdout_lock is not None and self.holdout_proof is not None
+            result.update(
+                holdout_lock=self.holdout_lock.to_dict(),
+                holdout_proof=self.holdout_proof.to_dict(),
+            )
+        return result
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> DossierSourceRefs:
         item = _mapping(value, "source_refs")
-        expected = {"matrix", "t2", "report_source", "quarantine", "conclusion"}
-        if set(item) != expected:
+        base = {"matrix", "t2", "report_source", "quarantine", "conclusion"}
+        extended = base | {"holdout_lock", "holdout_proof"}
+        if set(item) not in (base, extended):
             raise ValueError("source_refs fields are incomplete")
         return cls(
             _record_ref(item["matrix"], "matrix"),
@@ -275,6 +314,12 @@ class DossierSourceRefs:
             _record_ref(item["report_source"], "report_source"),
             _record_ref(item["quarantine"], "quarantine"),
             _record_ref(item["conclusion"], "conclusion"),
+            None
+            if "holdout_lock" not in item
+            else _record_ref(item["holdout_lock"], "holdout_lock"),
+            None
+            if "holdout_proof" not in item
+            else _record_ref(item["holdout_proof"], "holdout_proof"),
         )
 
 
@@ -294,6 +339,8 @@ CURRENT_DOSSIER_SOURCE_REFS = DossierSourceRefs(
     conclusion=DossierRecordRef(
         "539390079a3dc4eb8061d83f52ca59f2ad169f38ee3d2419b9ffba99164e5dc9", CONCLUSION_TYPE
     ),
+    holdout_lock=DossierRecordRef(PRIMARY_HOLDOUT_LOCK_ID, LOCK_TYPE),
+    holdout_proof=DossierRecordRef(PRIMARY_HOLDOUT_ACCESS_PROOF_ID, PROOF_TYPE),
 )
 
 
@@ -844,19 +891,24 @@ class DossierReportBuilder:
     def _verify_bindings(
         refs: DossierSourceRefs, roots: Mapping[tuple[str, str], _Publication]
     ) -> None:
-        for ref, identity_field in zip(
-            refs.records(),
-            ("matrix_id", "source_id", "source_id", "quarantine_id", "conclusion_id"),
-            strict=True,
-        ):
+        identity_fields = {
+            MATRIX_TYPE: "matrix_id",
+            T2_TYPE: "source_id",
+            SOURCE_TYPE: "source_id",
+            QUARANTINE_TYPE: "quarantine_id",
+            CONCLUSION_TYPE: "conclusion_id",
+        }
+        for ref in refs.records():
             payload = roots[(ref.record_type, ref.record_id)].payload
-            if identity_field in payload:
-                if payload.get(identity_field) != ref.record_id:
-                    raise DossierBuildError(f"dossier {identity_field} identity differs")
-                identity = dict(payload)
-                identity.pop(identity_field, None)
-                if _content_sha256(identity) != ref.record_id:
-                    raise DossierBuildError(f"dossier {identity_field} canonical identity differs")
+            identity_field = identity_fields.get(ref.record_type)
+            if identity_field is None or identity_field not in payload:
+                continue
+            if payload.get(identity_field) != ref.record_id:
+                raise DossierBuildError(f"dossier {identity_field} identity differs")
+            identity = dict(payload)
+            identity.pop(identity_field, None)
+            if _content_sha256(identity) != ref.record_id:
+                raise DossierBuildError(f"dossier {identity_field} canonical identity differs")
         matrix = roots[(MATRIX_TYPE, refs.matrix.record_id)].payload
         t2 = roots[(T2_TYPE, refs.t2.record_id)].payload
         source = roots[(SOURCE_TYPE, refs.report_source.record_id)].payload
@@ -922,16 +974,19 @@ class DossierReportBuilder:
             if not isinstance(value, Mapping):
                 return
             record_id, record_type = value.get("record_id"), value.get("record_type")
-            if (holdout and record_type not in {LOCK_TYPE, PROOF_TYPE}) or not (
+            if record_type is None:
+                return
+            if not (
                 isinstance(record_id, str)
                 and isinstance(record_type, str)
                 and record_type in _RECORD_SECTIONS
             ):
-                return
-            try:
-                ref = DossierRecordRef(record_id, record_type)
-            except ValueError:
-                return
+                raise DossierBuildError("dossier contains an unrecognized public record reference")
+            if holdout and record_type not in {LOCK_TYPE, PROOF_TYPE}:
+                raise DossierBuildError(
+                    "dossier Holdout reference is outside the lock/proof boundary"
+                )
+            ref = DossierRecordRef(record_id, record_type)
             selected[(record_type, record_id)] = ref
 
         def visit(value: object, *, holdout: bool = False) -> None:
@@ -984,8 +1039,10 @@ class DossierReportBuilder:
 
     def _project(self, publication: _Publication) -> DossierEvidence:
         facts = _project_scalars(publication.payload, publication.record)
+        if publication.record.record_type == METRICS_TYPE:
+            facts = [_metric_without_native_artifact(fact) for fact in facts]
         artifacts: list[DossierArtifactRef] = []
-        if publication.record.record_type == FACTS_TYPE:
+        if publication.record.record_type in {FACTS_TYPE, METRICS_TYPE}:
             for index, raw in enumerate(publication.artifacts):
                 name = raw.get("name")
                 if not isinstance(name, str) or not name.endswith(_NATIVE_ARTIFACT_SUFFIXES):
@@ -1154,6 +1211,20 @@ def _scalars(value: object, pointer: str = "", inherited: str | None = None):
         )
 
 
+def _metric_without_native_artifact(fact: DossierValue) -> DossierValue:
+    """Keep metric-like owner fields unavailable until a native artifact proves them."""
+
+    return DossierValue(
+        fact.path,
+        None,
+        "not_evaluated",
+        "not_evaluated",
+        "metric values require a verified native artifact or RuntimeFacts owner",
+        fact.sources,
+        "metric owner record has no verified native artifact citation",
+    )
+
+
 def _unavailable(path: str, ref: DossierRecordRef, reason: str) -> DossierValue:
     return DossierValue(
         path,
@@ -1223,8 +1294,10 @@ __all__ = [
     "DOSSIER_REPORT_VERSION",
     "DOSSIER_SECTION_ORDER",
     "FACTS_TYPE",
+    "LOCK_TYPE",
     "MATRIX_TYPE",
     "METRICS_TYPE",
+    "PROOF_TYPE",
     "QUARANTINE_TYPE",
     "SOURCE_TYPE",
     "T2_TYPE",

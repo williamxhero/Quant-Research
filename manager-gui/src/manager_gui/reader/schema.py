@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
+from .dossier_schema import DOSSIER_REPORT_JSON_SCHEMA
 from .models import (
     READER_PROJECTION_SCHEMA,
     ClaimKind,
@@ -164,4 +165,4 @@ READER_PROJECTION_JSON_SCHEMA: Final[dict[str, object]] = {
     "additionalProperties": False,
 }
 
-__all__ = ["READER_PROJECTION_JSON_SCHEMA"]
+__all__ = ["DOSSIER_REPORT_JSON_SCHEMA", "READER_PROJECTION_JSON_SCHEMA"]

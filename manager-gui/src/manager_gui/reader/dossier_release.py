@@ -861,7 +861,7 @@ class DossierReleaseGate:
             archive_identical,
             baseline_same and current_same,
             old_same,
-            0,
+            runtime_submission_calls,
             html_verification,
             tuple(dict.fromkeys(errors)),
             external_readback_verified,
