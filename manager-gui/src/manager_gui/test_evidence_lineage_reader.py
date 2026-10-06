@@ -46,6 +46,9 @@ def test_reader_default_is_table_trace_and_links_preserve_opaque_context() -> No
     )
     rendered = render_evidence_lineage_reader(
         build_evidence_lineage_reader_fixture("complete"),
+        projection=project_evidence_lineage_reader(
+            build_evidence_lineage_reader_fixture("complete"), sample=True
+        ),
         query_context=context,
         translator=Translator(Locale.EN),
     )
@@ -67,7 +70,13 @@ def test_reader_default_is_table_trace_and_links_preserve_opaque_context() -> No
         query = parse_qsl(urlsplit(link).query, keep_blank_values=True)
         assert query.count(("filter", "a")) == 1
         assert query.count(("filter", "b")) == 1
-        assert ("snapshot_token", "evidence-complete-v0") in query
+        if "view=lineage" in link:
+            assert ("snapshot_token", "evidence-complete-v0") not in query
+            assert ("page", "") not in query
+            assert ("page_size", "") not in query
+            assert ("cursor", "") not in query
+        else:
+            assert ("snapshot_token", "evidence-complete-v0") in query
 
 
 def test_expert_graph_and_raw_modes_remain_explicit() -> None:
@@ -131,7 +140,7 @@ def test_lineage_relation_without_explicit_reason_stays_unknown_not_inferred() -
     assert view.relations[0].recorded is True
     assert view.relations[0].why is None
     assert view.relations[0].availability.status.value == "missing"
-    assert "why this relation exists" in render_evidence_lineage_reader(
+    assert "The association reason is not explicitly recorded" in render_evidence_lineage_reader(
         evidence, translator=Translator(Locale.EN)
     )
 

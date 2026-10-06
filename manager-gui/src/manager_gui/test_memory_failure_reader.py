@@ -78,36 +78,42 @@ def test_failure_reader_statuses_are_distinct_and_gaps_are_not_failures() -> Non
                     "failure_id": "success-1",
                     "title": "A successful check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "outcome": "success",
                 },
                 {
                     "failure_id": "failure-1",
                     "title": "A failed check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "outcome": "failure",
                 },
                 {
                     "failure_id": "blocked-1",
                     "title": "A blocked check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "status": "blocked",
                 },
                 {
                     "failure_id": "unevaluated-1",
                     "title": "An unevaluated check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "status": "not_evaluated",
                 },
                 {
                     "failure_id": "stale-1",
                     "title": "A stale check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "status": "stale",
                 },
                 {
                     "failure_id": "incomparable-1",
                     "title": "An incomparable check",
                     "failure_category": "check",
+                    "references": ["evidence-fixture-1"],
                     "status": "incomparable",
                 },
             ]
@@ -226,7 +232,7 @@ def test_reader_links_preserve_repeated_context_and_missing_source_is_not_a_url(
     assert query.count(("filter", "b")) == 1
     assert query.count(("filter", "")) == 1
     assert "https://unknown-source" not in document
-    assert "Missing / Unconfirmed source" in document
+    assert "Missing or unconfirmed source" in document
 
 
 @pytest.mark.parametrize(

@@ -28,7 +28,6 @@ from .comparison import (
     COMPARISON_RESOURCE,
     ComparisonFixtureState,
     build_genome_comparison_fixture,
-    render_genome_comparison_view,
 )
 from .comparison_reader import (
     project_comparison_reader,
@@ -53,6 +52,7 @@ from .evidence_comparison import (
 )
 from .evidence_lineage_reader import (
     ReaderTraceMode,
+    build_evidence_lineage_reader_fixture,
     project_evidence_lineage_reader,
     render_evidence_lineage_reader,
     render_lineage_reader,
@@ -251,6 +251,8 @@ class _FixtureReadProvider:
             return build_conditions_fixture(self._conditions_fixture_state())
         if resource == COMPARISON_RESOURCE:
             return build_genome_comparison_fixture(self._comparison_fixture_state())
+        if resource == EVIDENCE_RESOURCE:
+            return build_evidence_lineage_reader_fixture(self.fixture.value)
         if resource == "methodology":
             return self._methodology()
         if resource == "history":
@@ -343,7 +345,7 @@ def _legacy_reader_compat(markup: str) -> str:
         markup,
     )
     markup = re.sub(r'href="#([^"]+)"', r'href="#legacy-\1"', markup)
-    return '<div class="reader-legacy-compat">' + re.sub(
+    return '<div class="reader-legacy-compat" hidden>' + re.sub(
         r'<h1(\b[^>]*)>(.*?)</h1>',
         _heading,
         markup,
@@ -606,29 +608,12 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.COMPARISON:
-            if state.mode is ProjectionMode.READER:
-                reader_markup = render_comparison_reader(
-                    model,
-                    query_context=url,
-                    translator=translator,
-                    projection=reader_projection,
-                    mode=state.mode,
-                )
-                # The R4 explanation is additive; keep the published Genome
-                # Comparison ledger mounted so v0 result/detail links remain usable.
-                return reader_markup + _legacy_reader_compat(
-                    render_genome_comparison_view(
-                        cached,
-                        query_context=url,
-                        snapshot_token=model.snapshot_token,
-                        translator=translator,
-                    )
-                )
-            return render_genome_comparison_view(
-                cached,
+            return render_comparison_reader(
+                model,
                 query_context=url,
-                snapshot_token=model.snapshot_token,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.MEMORY:
             if state.mode is ProjectionMode.READER:

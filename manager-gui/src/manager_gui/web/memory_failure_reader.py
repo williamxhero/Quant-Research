@@ -293,14 +293,19 @@ def _record(
     summary: str | None,
     memory_target_id: str | None = None,
 ) -> MemoryFailureReaderRecord:
+    source_ids = _source_ids(raw)
+    source_index = {ref.source_id: ref for ref in model.source_refs}
+    source_refs = tuple(
+        source_index[source_id] for source_id in source_ids if source_id in source_index
+    )
     return MemoryFailureReaderRecord(
         record_id=record_id,
         title=title,
         summary=summary,
         layer=layer,
         state=_state(raw, model),
-        source_ids=_source_ids(raw),
-        source_refs=tuple(model.source_refs),
+        source_ids=source_ids,
+        source_refs=source_refs,
         raw=raw,
         memory_target_id=memory_target_id,
     )
@@ -438,8 +443,9 @@ def _claim(
     status: ReaderAvailabilityStatus,
     rule: str | None = None,
     complete: bool = True,
+    source_refs: Sequence[SourceReference] | None = None,
 ) -> ReaderClaim | None:
-    refs = tuple(model.source_refs)
+    refs = tuple(model.source_refs) if source_refs is None else tuple(source_refs)
     if not refs:
         return None
     source_ids = tuple(ref.source_id for ref in refs)
@@ -478,7 +484,7 @@ def _scope_gap(model: ManagerReadModel, claim_id: str) -> ReaderClaim | None:
     return _claim(
         model,
         claim_id,
-        "The requested Memory/Failure Reader scope is not complete.",
+        "reader.reason.scope_incomplete",
         kind=_gap_kind(status),
         status=status,
         complete=False,
@@ -518,6 +524,7 @@ def _projection(
                     kind=_gap_kind(status),
                     status=status,
                     complete=False,
+                    source_refs=record.source_refs,
                 )
                 if gap is not None:
                     (unknowns if gap.kind is ClaimKind.MISSING else limitations).append(gap)
@@ -530,6 +537,7 @@ def _projection(
                 kind=kind,
                 status=ReaderAvailabilityStatus.DERIVED if record.derived else ReaderAvailabilityStatus.KNOWN,
                 rule=MEMORY_FAILURE_READER_RULE if record.derived else None,
+                source_refs=record.source_refs,
             )
             if fact is not None:
                 claims.append(fact)
@@ -539,6 +547,7 @@ def _projection(
                 record.title,
                 kind=ClaimKind.KNOWN,
                 status=ReaderAvailabilityStatus.KNOWN,
+                source_refs=record.source_refs,
             )
             if title is not None:
                 claims.append(title)
@@ -546,7 +555,7 @@ def _projection(
         gap = _claim(
             model,
             f"{resource}.records",
-            "No record is published in this Reader scope.",
+            "reader.reason.record_missing",
             kind=ClaimKind.MISSING,
             status=ReaderAvailabilityStatus.MISSING,
             complete=False,
@@ -633,8 +642,6 @@ def _record_boundary_details(
 ) -> str:
     """Expose owner-published Memory boundaries without deriving new prose."""
 
-    if record.layer is not ReaderRecordLayer.FORMAL_MEMORY:
-        return ""
     fields = (
         ("where_produced", "reader.memory.where_produced"),
         ("produced_by", "reader.memory.where_produced"),
@@ -666,8 +673,17 @@ def _record_boundary_details(
         rendered.append(
             f'<div><dt>{escape(translator.t(label_key))}</dt><dd>{content}</dd></div>'
         )
-    if not rendered:
-        return ""
+    for label_key in (
+        "reader.memory.where_produced",
+        "reader.memory.limitations",
+        "reader.memory.counterexample",
+    ):
+        if label_key in seen:
+            continue
+        rendered.append(
+            f'<div><dt>{escape(translator.t(label_key))}</dt><dd>'
+            f'<span class="memory-reader-boundary-missing">{escape(translator.t("reader.memory.not_recorded"))}</span></dd></div>'
+        )
     return f'<dl class="memory-reader-boundaries">{"".join(rendered)}</dl>'
 
 
@@ -764,7 +780,7 @@ def _render_page(
                 entry.raw,
                 model,
                 layer=ReaderRecordLayer.FORMAL_MEMORY,
-                record_id=entry.failure_id,
+                record_id=entry.memory_id,
                 title=entry.title,
                 summary=entry.summary,
                 memory_target_id=entry.memory_id,
@@ -815,7 +831,7 @@ def _render_page(
     lineage_by_id: dict[str, FailureLineage] = {}
     if isinstance(view, FailureReaderViewModel):
         lineage_by_id.update(
-            {entry.failure_id: entry.lineage for entry in view.formal_memory}
+            {entry.memory_id: entry.lineage for entry in view.formal_memory}
         )
         lineage_by_id.update(
             {entry.failure_id: entry.lineage for entry in view.failure_view.failures}

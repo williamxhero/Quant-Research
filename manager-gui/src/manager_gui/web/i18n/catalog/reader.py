@@ -72,6 +72,26 @@ AVAILABILITY_EXPLANATION_KEYS: Mapping[ReaderAvailabilityStatus, str] = MappingP
 )
 SAMPLE_BANNER_KEY: Final[str] = "reader.sample.banner"
 
+# Generated Reader boundary reasons are opaque tokens in the projection.  They
+# are rendered here so page adapters never store or display generated prose.
+READER_REASON_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "reader.reason.conclusion_missing": "reader.reason.conclusion_missing",
+        "reader.reason.source_reference_missing": "reader.reason.source_reference_missing",
+        "reader.reason.source_missing": "reader.reason.source_missing",
+        "reader.reason.artifact_missing": "reader.reason.artifact_missing",
+        "reader.reason.lineage_relation_missing": "reader.reason.lineage_relation_missing",
+        "reader.reason.relation_reason_missing": "reader.reason.relation_reason_missing",
+        "reader.reason.scope_incomplete": "reader.reason.scope_incomplete",
+        "reader.reason.record_missing": "reader.reason.record_missing",
+        "reader.reason.no_comparison": "reader.reason.no_comparison",
+        "reader.reason.comparison_equal": "reader.reason.comparison_equal",
+        "reader.reason.comparison_different": "reader.reason.comparison_different",
+        "reader.reason.comparison_missing": "reader.reason.comparison_missing",
+        "reader.reason.comparison_not_comparable": "reader.reason.comparison_not_comparable",
+    }
+)
+
 # These are the only named values a Reader template may receive.  They are
 # deliberately a subset of the shared glossary's audited placeholder names.
 READER_PLACEHOLDER_NAMES: Final[frozenset[str]] = frozenset(
@@ -194,6 +214,10 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.availability.reason": ReaderTemplateSpec(
             "reader.availability.reason", ("text",)
         ),
+        **{
+            key: ReaderTemplateSpec(key)
+            for key in READER_REASON_KEYS.values()
+        },
     }
 )
 
@@ -324,7 +348,7 @@ ENTRIES: Mapping[str, M] = {
     "reader.comparison.left": M("左侧对象", "Left object"),
     "reader.comparison.right": M("右侧对象", "Right object"),
     "reader.comparison.reason": M("这意味着什么", "What this means"),
-    "reader.comparison.sources": M("来源 / 派生", "Source / derivation"),
+    "reader.comparison.sources": M("来源与派生", "Source and derivation"),
     "reader.comparison.equal": M("相同", "Equal"),
     "reader.comparison.different": M("不同", "Different"),
     "reader.comparison.missing": M("缺失", "Missing"),
@@ -485,6 +509,55 @@ ENTRIES: Mapping[str, M] = {
     "reader.availability.reason": M(
         "来源可用性说明：{text}", "Availability note from the source: {text}"
     ),
+    "reader.reason.conclusion_missing": M(
+        "当前没有属主记录支持结论；无法得出结论。",
+        "No owner record currently supports a conclusion; no conclusion can be drawn.",
+    ),
+    "reader.reason.source_reference_missing": M(
+        "来源引用未能在当前来源范围内解析。",
+        "A source reference cannot be resolved within the current source scope.",
+    ),
+    "reader.reason.source_missing": M(
+        "来源未发布或当前不可用。", "The source is not published or is unavailable here."
+    ),
+    "reader.reason.artifact_missing": M(
+        "制品未发布或当前不可用。", "The artifact is not published or is unavailable here."
+    ),
+    "reader.reason.lineage_relation_missing": M(
+        "谱系关系未在当前范围内发布。",
+        "The lineage relation is not published in the current scope.",
+    ),
+    "reader.reason.relation_reason_missing": M(
+        "关联原因未明确记录；无法得出关联原因。",
+        "The association reason is not explicitly recorded; no reason can be concluded.",
+    ),
+    "reader.reason.scope_incomplete": M(
+        "证据与谱系范围不完整；无法得出完整结论。",
+        "The evidence and lineage scope is incomplete; no complete conclusion can be drawn.",
+    ),
+    "reader.reason.record_missing": M(
+        "当前范围没有已发布记录。", "No record is published in the current scope."
+    ),
+    "reader.reason.no_comparison": M(
+        "当前没有明确记录支持比较；无法得出比较结论。",
+        "No explicit comparison is recorded; no comparison conclusion can be drawn.",
+    ),
+    "reader.reason.comparison_equal": M(
+        "该轴两侧已发布值相同；这不是有效性结论。",
+        "The published values on this axis match; this is not a validity conclusion.",
+    ),
+    "reader.reason.comparison_different": M(
+        "该轴两侧已发布值不同；差异本身不表示哪一侧更好。",
+        "The published values on this axis differ; the difference alone does not say which side is better.",
+    ),
+    "reader.reason.comparison_missing": M(
+        "该轴没有两侧都具备的明确记录；没有默认值被补入。",
+        "Both sides do not have an explicit record for this axis; no default was filled in.",
+    ),
+    "reader.reason.comparison_not_comparable": M(
+        "该轴身份、资格、来源生成、快照或协议不一致或缺失，因此拒绝比较。",
+        "Identity, eligibility, source generation, snapshot, or protocol is inconsistent or missing, so comparison is refused.",
+    ),
     # Every key below is referenced by ReaderClaim.explanation_key.  None of
     # these messages turns an absence or interpretation into a success/failure.
     "reader.claim.known": M(
@@ -611,16 +684,17 @@ ENTRIES: Mapping[str, M] = {
         "当前范围没有记录失败记录或派生模式。",
         "No failure records or derived patterns are recorded in this scope.",
     ),
-    "reader.memory.missing_source": M("未记录 / 未确认来源", "Missing / Unconfirmed source"),
+    "reader.memory.missing_source": M("未记录或未确认来源", "Missing or unconfirmed source"),
     "reader.memory.open_record": M("打开记录", "Open record"),
     "reader.memory.layer_label": M("记录层", "Record layer"),
     "reader.failure.state_label": M("记录状态", "Record state"),
     "reader.memory.layer.formal_research_memory": M("正式研究记忆", "Formal Research Memory"),
     "reader.memory.layer.failure_record": M("普通失败记录", "Ordinary failure record"),
     "reader.memory.layer.gui_derived": M("GUI 派生模式", "GUI-derived pattern"),
-    "reader.memory.where_produced": M("产生位置 / 谱系", "Where produced / lineage"),
+    "reader.memory.where_produced": M("产生位置与谱系", "Where produced and lineage"),
     "reader.memory.limitations": M("限制与边界", "Limitations and boundaries"),
-    "reader.memory.counterexample": M("反例 / 冲突", "Counterexample / conflict"),
+    "reader.memory.counterexample": M("反例与冲突", "Counterexample and conflict"),
+    "reader.memory.not_recorded": M("未明确记录", "Not explicitly recorded"),
     "reader.failure.state.success": M("成功", "Success"),
     "reader.failure.state.failure": M("失败", "Failure"),
     "reader.failure.state.blocked": M("已阻塞", "Blocked"),
@@ -762,6 +836,20 @@ def render_reader_template(
     return translator.t(key, **dict(values))
 
 
+def render_reader_reason(
+    translator: Translator,
+    reason: str,
+    *,
+    as_html: bool = False,
+) -> str | None:
+    """Render a generated boundary token, or return ``None`` for owner text."""
+
+    key = READER_REASON_KEYS.get(reason)
+    if key is None:
+        return None
+    return translator.html(key) if as_html else translator.t(key)
+
+
 def _claim_source_detail(
     translator: Translator,
     claim: ReaderClaim,
@@ -782,12 +870,22 @@ def _claim_source_detail(
             as_html=as_html,
         )
     if claim.is_gap:
+        reason = claim.availability.reason
+        generated = render_reader_reason(translator, reason, as_html=as_html) if reason else None
+        if generated is not None:
+            source = render_reader_template(
+                translator,
+                "reader.source.reference",
+                source_refs=claim.source_refs,
+                as_html=as_html,
+            )
+            return f"{generated} {source}"
         key = "reader.gap.detail" if claim.kind is ClaimKind.MISSING else "reader.limitation.detail"
         return render_reader_template(
             translator,
             key,
             params=ReaderTemplateParams(
-                value=claim.availability.reason or claim.kind.value,
+                value=reason or claim.kind.value,
             ),
             source_refs=claim.source_refs,
             as_html=as_html,
@@ -852,6 +950,9 @@ def render_availability_explanation(
     )
     if reason is None:
         return base
+    generated = render_reader_reason(translator, reason, as_html=as_html)
+    if generated is not None:
+        return f"{base} {generated}"
     detail = render_reader_template(
         translator,
         "reader.availability.reason",
@@ -917,6 +1018,7 @@ __all__ = [
     "ENTRIES",
     "EXPLANATION_KEYS",
     "READER_PLACEHOLDER_NAMES",
+    "READER_REASON_KEYS",
     "READER_TEMPLATES",
     "SAMPLE_BANNER_KEY",
     "ReaderTemplateParams",
@@ -925,6 +1027,7 @@ __all__ = [
     "render_availability_explanation",
     "render_claim_explanation",
     "render_projection_summary",
+    "render_reader_reason",
     "render_reader_template",
     "render_summary",
 ]

@@ -619,12 +619,10 @@ ComparisonAxisResult = ComparisonReaderAxisResult
 
 def _axis_reason(state: ComparisonReaderAxisState) -> str:
     return {
-        ComparisonReaderAxisState.EQUAL: "The published axis values are equal.",
-        ComparisonReaderAxisState.DIFFERENT: "The published axis values differ.",
-        ComparisonReaderAxisState.MISSING: "The axis is not published for both objects.",
-        ComparisonReaderAxisState.NOT_COMPARABLE: (
-            "Identity, eligibility, source generation, snapshot, or protocol is inconsistent or missing."
-        ),
+        ComparisonReaderAxisState.EQUAL: "reader.reason.comparison_equal",
+        ComparisonReaderAxisState.DIFFERENT: "reader.reason.comparison_different",
+        ComparisonReaderAxisState.MISSING: "reader.reason.comparison_missing",
+        ComparisonReaderAxisState.NOT_COMPARABLE: "reader.reason.comparison_not_comparable",
     }[state]
 
 
@@ -903,7 +901,7 @@ def _projection_claims(
         )
         return (), (gap,), ()
     if comparison is None:
-        availability = ReaderAvailability(ReaderAvailabilityStatus.MISSING, False, "No explicit comparison is recorded.")
+        availability = ReaderAvailability(ReaderAvailabilityStatus.MISSING, False, "reader.reason.no_comparison")
         gap = ReaderClaim(
             "comparison.record",
             ClaimKind.MISSING,
@@ -1047,6 +1045,7 @@ def _render_axis(axis: ComparisonReaderAxisResult, *, context: QueryContext, tra
         f'<td><span class="comparison-axis-state" data-axis-state="{escape(axis.state.value, quote=True)}">{escape(state_label)}</span></td>'
         f'<td data-axis-availability="{axis.availability_status.value}"><span translate="no">{axis.availability_status.value}</span></td>'
         f'<td>{_owner(axis.left_value, translator)}</td><td>{_owner(axis.right_value, translator)}</td>'
+        f'<td data-axis-derivation="{escape(COMPARISON_READER_RULE, quote=True)}"><code translate="no">{escape(COMPARISON_READER_RULE)}</code></td>'
         f'<td>{_reason(axis, translator)}</td><td>{_render_sources(axis.source_refs, context=context, translator=translator)}</td></tr>'
     )
 
@@ -1158,7 +1157,7 @@ def render_comparison_reader(
                 f'<th>{escape(selected.t("reader.comparison.axis"))}</th><th>{escape(selected.t("reader.comparison.state"))}</th>'
                 f'<th>{escape(selected.t("reader.comparison.availability"))}</th>'
                 f'<th>{escape(selected.t("reader.comparison.left"))}</th><th>{escape(selected.t("reader.comparison.right"))}</th>'
-                f'<th>{escape(selected.t("reader.comparison.reason"))}</th><th>{escape(selected.t("reader.comparison.sources"))}</th>'
+                f'<th>{escape(selected.t("reader.derivation"))}</th><th>{escape(selected.t("reader.comparison.reason"))}</th><th>{escape(selected.t("reader.comparison.sources"))}</th>'
                 f'</tr></thead><tbody>{"".join(_render_axis(axis, context=query_context, translator=selected) for axis in comparison.axes)}</tbody></table>'
                 f'<p class="comparison-reader-boundary" data-statistics="not-generated">{escape(selected.t("reader.comparison.no_statistics"))}</p>'
                 f'</section>'

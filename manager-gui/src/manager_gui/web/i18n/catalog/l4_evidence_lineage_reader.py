@@ -63,7 +63,7 @@ ENTRIES: dict[str, M] = {
         "原始证据与谱系载荷", "Raw evidence and lineage payload"
     ),
     "reader.evidence_lineage.sample_banner": M(
-        "以下为完整公开样例，不代表实时数据。", "Complete public fixture; not live data."
+        "以下为样例数据，不代表实时数据。", "Sample data; not live data."
     ),
     "reader.evidence_lineage.derived_boundary": M(
         "这是阅读器派生的解释，不是属主事实。",
