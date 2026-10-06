@@ -21,9 +21,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus
 from ..provider import ManagerDataProvider
+from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import clear_filters_link
+from .reader_surface import ReaderPage, render_reader_surface
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 LIFECYCLE_SPINE: tuple[str, ...] = (
@@ -166,14 +168,11 @@ def _stable_query(pairs: Sequence[tuple[str, str]]) -> str:
     """Encode query pairs in a deterministic order while retaining context."""
 
     order = {key: index for index, key in enumerate(_CONTEXT_ORDER)}
-    unique: dict[str, list[str]] = {}
+    grouped: dict[str, list[str]] = {}
     for key, value in pairs:
-        if key not in unique:
-            unique[key] = []
-        if value not in unique[key]:
-            unique[key].append(value)
-    ordered_keys = sorted(unique, key=lambda key: (order.get(key, len(order)), key))
-    flattened = [(key, value) for key in ordered_keys for value in unique[key]]
+        grouped.setdefault(key, []).append(value)
+    ordered_keys = sorted(grouped, key=lambda key: (order.get(key, len(order)), key))
+    flattened = [(key, value) for key in ordered_keys for value in grouped[key]]
     return urlencode(flattened)
 
 
@@ -551,7 +550,7 @@ def _story_link(record: AtlasRecord, query_context: QueryContext) -> str:
     pairs = [
         (key, value)
         for key, value in _query_pairs(query_context)
-        if key not in {"view", "record_id", "mode"}
+        if key not in {"view", "record_id"}
     ]
     pairs.append(("view", "stories"))
     pairs.append(("record_id", record.record_id))
@@ -770,6 +769,7 @@ def render_atlas(
     *,
     query_context: QueryContext = None,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
 ) -> str:
     """Render an Atlas page fragment; the shared shell owns the document chrome."""
 
@@ -783,6 +783,7 @@ def render_atlas(
     )
     model = view.read_model
     fixture = _is_fixture(model)
+    projection = reader_projection or project_read_model(model)
     context = _context_with_filters(view, query_context)
     source_ids = [source.source_id for source in model.source_refs]
     source_text = (
@@ -816,6 +817,12 @@ def render_atlas(
         f'<span><strong>{escape(selected_translator.t("atlas.snapshot"))}</strong> {snapshot}</span>'
         f'<span><strong>{escape(selected_translator.t("atlas.sources"))}</strong> '
         f'{source_text}</span></p>',
+        render_reader_surface(
+            projection,
+            page=ReaderPage.ATLAS,
+            query_context=query_context,
+            translator=selected_translator,
+        ),
         render_status_block(
             _fixture_status_model(model, selected_translator) if fixture else model,
             translator=selected_translator,
@@ -927,6 +934,7 @@ def render_atlas_view(
     query_context: QueryContext = None,
     snapshot_token: str | None = None,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
 ) -> str:
     """T5 integration hook: read and render the Atlas view without shell logic."""
 
@@ -939,6 +947,7 @@ def render_atlas_view(
         ),
         query_context=query_context,
         translator=translator,
+        reader_projection=reader_projection,
     )
 
 

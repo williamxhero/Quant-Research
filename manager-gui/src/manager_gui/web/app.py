@@ -422,7 +422,7 @@ class ManagerGUIApp:
         item = navigation_item(state.view)
         translator = Translator(state.locale)
         page = self._render_page(
-            state, model, normalized_url, translator=translator
+            state, model, normalized_url, translator=translator, reader_projection=projection
         )
         page = self._localize_internal_links(page, state.lang)
         return self._render_document(
@@ -478,6 +478,7 @@ class ManagerGUIApp:
         url: str,
         *,
         translator: Translator,
+        reader_projection: ReaderProjection,
     ) -> str | None:
         """Mount a page hook while leaving all shell chrome in this app."""
 
@@ -488,6 +489,7 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 translator=translator,
+                reader_projection=reader_projection,
             )
         if state.view is ViewId.STORIES:
             return render_research_story(
@@ -496,6 +498,7 @@ class ManagerGUIApp:
                 base_path=url,
                 query=url,
                 translator=translator,
+                reader_projection=reader_projection,
             )
         if state.view is ViewId.STRATEGIES:
             return render_genome_view(

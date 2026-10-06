@@ -19,8 +19,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
+from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
+from .navigation import context_link
+from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
 
@@ -685,20 +688,36 @@ class ResearchStoryViewModel:
 
         selected = StoryMode(mode)
         parsed = urlsplit(base_path)
-        values: dict[str, str] = {
-            key: value for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        }
+        base_pairs = list(parse_qsl(parsed.query, keep_blank_values=True))
         if isinstance(query, str):
             query_string = (
                 urlsplit(query).query if "?" in query or "://" in query else query.lstrip("?")
             )
-            values.update({key: value for key, value in parse_qsl(query_string, keep_blank_values=True)})
+            query_pairs = list(parse_qsl(query_string, keep_blank_values=True))
         elif query is not None:
+            query_pairs = []
             for key, value in query.items():
-                if value is not None:
-                    values[str(key)] = str(value)
-        values["view"] = values.get("view", "stories")
-        values["mode"] = selected.value
+                if isinstance(value, (list, tuple)):
+                    query_pairs.extend((str(key), str(item)) for item in value if item is not None)
+                elif value is not None:
+                    query_pairs.append((str(key), str(value)))
+        else:
+            query_pairs = []
+        query_keys = {key for key, _ in query_pairs}
+        pairs = [(key, value) for key, value in base_pairs if key not in query_keys]
+        pairs.extend(query_pairs)
+
+        mode_values = {"reader", "expert", "raw"}
+        has_global_mode = any(
+            key == "mode" and value in mode_values for key, value in pairs
+        )
+        pairs = [(key, value) for key, value in pairs if key not in {"view", "mode", "story_mode"}]
+        pairs.append(("view", "stories"))
+        if has_global_mode:
+            pairs.append(("mode", next(value for key, value in query_pairs + base_pairs if key == "mode" and value in mode_values)))
+            pairs.append(("story_mode", selected.value))
+        else:
+            pairs.append(("mode", selected.value))
         root_values = {
             "campaign": self.root.campaign_id,
             "study": self.root.study_id,
@@ -706,8 +725,9 @@ class ResearchStoryViewModel:
         }
         for key, value in root_values.items():
             if value:
-                values[key] = value
-        query_string = urlencode(sorted(values.items()))
+                pairs = [(pair_key, pair_value) for pair_key, pair_value in pairs if pair_key != key]
+                pairs.append((key, value))
+        query_string = urlencode(sorted(pairs))
         return urlunsplit(
             (parsed.scheme, parsed.netloc, parsed.path or "/", query_string, parsed.fragment)
         )
@@ -718,11 +738,13 @@ class ResearchStoryViewModel:
         base_path: str = "/?view=stories",
         query: Mapping[str, object] | str | None = None,
         translator: Translator | None = None,
+        reader_projection: ReaderProjection | None = None,
     ) -> str:
         """Render a mountable, accessible HTML fragment for the selected mode."""
 
         selected_translator = translator or Translator()
         fixture = _is_fixture(self.model, "stories")
+        projection = reader_projection or project_read_model(self.model)
         root_label = _root_label(self.root)
         heading = _display_text(
             root_label, "story.root_unavailable", translator=selected_translator, fixture=fixture
@@ -736,10 +758,17 @@ class ResearchStoryViewModel:
             )
             for mode in StoryMode
         )
+        story_context = query if query is not None else base_path
         sections = {
-            StoryMode.NARRATIVE: self._render_narrative(translator=selected_translator, fixture=fixture),
-            StoryMode.EVIDENCE: self._render_evidence(translator=selected_translator, fixture=fixture),
-            StoryMode.TIMELINE: self._render_timeline(translator=selected_translator, fixture=fixture),
+            StoryMode.NARRATIVE: self._render_narrative(
+                translator=selected_translator, fixture=fixture, query_context=story_context
+            ),
+            StoryMode.EVIDENCE: self._render_evidence(
+                translator=selected_translator, fixture=fixture, query_context=story_context
+            ),
+            StoryMode.TIMELINE: self._render_timeline(
+                translator=selected_translator, fixture=fixture, query_context=story_context
+            ),
         }
         return (
             f'<section class="research-story" data-integration-hook="research-story-view" '
@@ -752,21 +781,44 @@ class ResearchStoryViewModel:
             f'<nav class="story-mode-nav" '
             f'aria-label="{escape(selected_translator.t("story.mode.aria"), quote=True)}">'
             f'{mode_links}</nav></header>'
+            f'{render_reader_surface(projection, page=ReaderPage.STORY, query_context=query if query is not None else base_path, translator=selected_translator)}'
             f"{render_status_block(_fixture_status_copy(self.model, selected_translator) if fixture else self.model, translator=selected_translator)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'
             f"</section>"
         )
 
-    def _render_narrative(self, *, translator: Translator, fixture: bool) -> str:
+    def _render_narrative(
+        self,
+        *,
+        translator: Translator,
+        fixture: bool,
+        query_context: Mapping[str, object] | str | None,
+    ) -> str:
         chapters = "".join(
-            _render_narrative_chapter(chapter, translator=translator, fixture=fixture)
+            _render_narrative_chapter(
+                chapter,
+                translator=translator,
+                fixture=fixture,
+                query_context=query_context,
+            )
             for chapter in self.chapters
         )
         return f'<div class="story-narrative" data-reading-mode="narrative">{chapters}</div>'
 
-    def _render_evidence(self, *, translator: Translator, fixture: bool) -> str:
+    def _render_evidence(
+        self,
+        *,
+        translator: Translator,
+        fixture: bool,
+        query_context: Mapping[str, object] | str | None,
+    ) -> str:
         rows = "".join(
-            _render_evidence_row(entry, translator=translator, fixture=fixture)
+            _render_evidence_row(
+                entry,
+                translator=translator,
+                fixture=fixture,
+                query_context=query_context,
+            )
             for entry in self.entries
         )
         if not rows:
@@ -784,14 +836,25 @@ class ResearchStoryViewModel:
             f'<thead><tr>{headers}</tr></thead><tbody>{rows}</tbody></table></div>'
         )
 
-    def _render_timeline(self, *, translator: Translator, fixture: bool) -> str:
+    def _render_timeline(
+        self,
+        *,
+        translator: Translator,
+        fixture: bool,
+        query_context: Mapping[str, object] | str | None,
+    ) -> str:
         if not self.timeline_events:
             return (
                 '<div class="story-empty" data-timeline-state="missing">'
                 f'{escape(translator.t("story.timeline.empty"))}</div>'
             )
         events = "".join(
-            _render_timeline_event(event, translator=translator, fixture=fixture)
+            _render_timeline_event(
+                event,
+                translator=translator,
+                fixture=fixture,
+                query_context=query_context,
+            )
             for event in self.timeline_events
         )
         return (
@@ -907,7 +970,12 @@ def _render_link_label(link: StoryLink, *, translator: Translator) -> str:
     return f"{label} [{kind}]"
 
 
-def _render_links(links: Sequence[StoryLink], *, translator: Translator) -> str:
+def _render_links(
+    links: Sequence[StoryLink],
+    *,
+    translator: Translator,
+    query_context: Mapping[str, object] | str | None = None,
+) -> str:
     if not links:
         return f'<span class="source-missing">{escape(translator.t("story.source_missing"))}</span>'
     rendered: list[str] = []
@@ -922,6 +990,15 @@ def _render_links(links: Sequence[StoryLink], *, translator: Translator) -> str:
             rendered.append(
                 f'<span class="source-link-unconfirmed" data-link-kind="{escape(link.kind, quote=True)}">'
                 f'{label} — {escape(translator.t("story.link.missing"))}</span>'
+            )
+        if link.source_id:
+            evidence_href = context_link(
+                query_context, view="evidence", source_id=link.source_id
+            )
+            rendered.append(
+                f'<a class="story-evidence-link" data-source-id="{escape(link.source_id, quote=True)}" '
+                f'href="{escape(evidence_href, quote=True)}">'
+                f'{escape(translator.t("reader.evidence_entry"))}</a>'
             )
     return '<span class="story-links">' + " · ".join(rendered) + "</span>"
 
@@ -949,7 +1026,11 @@ def _owner_or_catalog(
 
 
 def _render_narrative_chapter(
-    chapter: StoryChapter, *, translator: Translator, fixture: bool
+    chapter: StoryChapter,
+    *,
+    translator: Translator,
+    fixture: bool,
+    query_context: Mapping[str, object] | str | None,
 ) -> str:
     if not chapter.entries:
         body = f'<p class="chapter-empty">{escape(translator.t("story.chapter.empty"))}</p>'
@@ -963,8 +1044,15 @@ def _render_narrative_chapter(
                 f'<p>{_owner_or_catalog(entry.summary, "story.entry.summary_missing", translator=translator, fixture=fixture)}</p>'
                 f'<p class="story-entry-meta"><span>{translator.html("story.record_id", record_id=entry.record_id or translator.t("story.missing"))}</span> '
                 f'{_render_evidence_state(entry.evidence_state, translator=translator)}</p>'
+                f'<p class="story-entry-reader-provenance" '
+                f'data-reader-availability="{escape(entry.evidence_state, quote=True)}" '
+                f'data-reader-derivation="unrecorded">'
+                f'<span><strong>{escape(translator.t("reader.status"))}:</strong> '
+                f'{_render_evidence_state(entry.evidence_state, translator=translator)}</span> · '
+                f'<span><strong>{escape(translator.t("reader.derivation"))}:</strong> '
+                f'<code translate="no">{escape(translator.t("reader.derivation.unrecorded"))}</code></span></p>'
                 f'<p class="story-entry-temporal">{_render_temporal(entry, translator=translator)}</p>'
-                f'<p class="story-entry-sources">{_render_links(entry.links, translator=translator)}</p></article>'
+                f'<p class="story-entry-sources">{_render_links(entry.links, translator=translator, query_context=query_context)}</p></article>'
             )
         body = "".join(entries)
     return (
@@ -974,7 +1062,11 @@ def _render_narrative_chapter(
 
 
 def _render_evidence_row(
-    entry: StoryEntry, *, translator: Translator, fixture: bool
+    entry: StoryEntry,
+    *,
+    translator: Translator,
+    fixture: bool,
+    query_context: Mapping[str, object] | str | None,
 ) -> str:
     record_id = (
         f'<span translate="no">{translator.source_text(entry.record_id)}</span>'
@@ -991,7 +1083,9 @@ def _render_evidence_row(
         if entry.known_at
         else escape(translator.t("story.missing"))
     )
-    source_links = _render_links(entry.links, translator=translator)
+    source_links = _render_links(
+        entry.links, translator=translator, query_context=query_context
+    )
     title = _owner_or_catalog(
         entry.title, "story.entry.title_missing", translator=translator, fixture=fixture
     )
@@ -1006,7 +1100,11 @@ def _render_evidence_row(
 
 
 def _render_timeline_event(
-    event: TimelineEvent, *, translator: Translator, fixture: bool
+    event: TimelineEvent,
+    *,
+    translator: Translator,
+    fixture: bool,
+    query_context: Mapping[str, object] | str | None,
 ) -> str:
     entry = event.entry
     category = (
@@ -1023,7 +1121,7 @@ def _render_timeline_event(
         f'<strong>{_owner_or_catalog(entry.title, "story.entry.title_missing", translator=translator, fixture=fixture)}</strong> '
         f'{_render_outcome(entry.outcome, translator=translator)}'
         f'<p>{_owner_or_catalog(entry.summary, "story.entry.summary_missing", translator=translator, fixture=fixture)}</p>'
-        f'<p>{_render_links(entry.links, translator=translator)}</p></li>'
+        f'<p>{_render_links(entry.links, translator=translator, query_context=query_context)}</p></li>'
     )
 
 
@@ -1038,6 +1136,7 @@ def render_research_story(
     base_path: str = "/?view=stories",
     query: Mapping[str, object] | str | None = None,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
 ) -> str:
     """Integration hook for ``app.py`` and future shells.
 
@@ -1048,7 +1147,10 @@ def render_research_story(
     """
 
     return ResearchStoryViewModel.from_read_model(model, mode=mode).render(
-        base_path=base_path, query=query, translator=translator
+        base_path=base_path,
+        query=query,
+        translator=translator,
+        reader_projection=reader_projection,
     )
 
 
