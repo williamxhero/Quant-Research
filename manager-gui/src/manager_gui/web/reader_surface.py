@@ -29,10 +29,14 @@ from .navigation import context_link
 
 
 class ReaderPage(StrEnum):
-    """R2 page identities with fixed catalogue copy."""
+    """Reader page identities with fixed catalogue copy."""
 
     ATLAS = "atlas"
     STORY = "story"
+    GENOME = "genome"
+    CONDITIONS = "conditions"
+    REVISIONS = "revisions"
+    COMPARISON = "comparison"
 
 
 ReaderQueryContext = str | Mapping[str, object] | None
@@ -67,6 +71,30 @@ _PAGE_COPY: Final[dict[ReaderPage, dict[str, str]]] = {
         "confirmed": "reader.story.confirmed",
         "unknown": "reader.story.unknown",
         "why": "reader.story.why",
+    },
+    ReaderPage.GENOME: {
+        "question": "reader.genome.question",
+        "confirmed": "reader.genome.confirmed",
+        "unknown": "reader.genome.unknown",
+        "why": "reader.genome.why",
+    },
+    ReaderPage.CONDITIONS: {
+        "question": "reader.conditions.question",
+        "confirmed": "reader.conditions.confirmed",
+        "unknown": "reader.conditions.unknown",
+        "why": "reader.conditions.why",
+    },
+    ReaderPage.REVISIONS: {
+        "question": "reader.revisions.question",
+        "confirmed": "reader.revisions.confirmed",
+        "unknown": "reader.revisions.unknown",
+        "why": "reader.revisions.why",
+    },
+    ReaderPage.COMPARISON: {
+        "question": "reader.comparison.question",
+        "confirmed": "reader.comparison.confirmed",
+        "unknown": "reader.comparison.unknown",
+        "why": "reader.comparison.why",
     },
 }
 

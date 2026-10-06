@@ -85,11 +85,13 @@ from .navigation import (
     navigation_label,
 )
 from .portal import REPORT_SOURCE_RESOURCE, render_portal_view
+from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE, render_search_view
 from .status import render_status_block
+from .strategy_reader import project_strategy_reader, render_strategy_reader
 
 _INTERNAL_HREF = re.compile(r'''(?P<prefix>href=["'])(?P<url>/\?[^"']*)(?P<suffix>["'])''')
 
@@ -367,6 +369,13 @@ class ManagerGUIApp:
     def _project_reader_model(
         self, state: WebRequestState, model: ManagerReadModel
     ) -> ReaderProjection:
+        if state.view in {ViewId.STRATEGIES, ViewId.CONDITIONS, ViewId.COMPARISON}:
+            return project_strategy_reader(
+                model,
+                resource=self._resource_for_view(state.view),
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -501,6 +510,14 @@ class ManagerGUIApp:
                 reader_projection=reader_projection,
             )
         if state.view is ViewId.STRATEGIES:
+            if state.mode is ProjectionMode.READER:
+                return render_strategy_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    page=ReaderPage.GENOME,
+                    projection=reader_projection,
+                )
             return render_genome_view(
                 cached,
                 query_context=url,
@@ -509,6 +526,14 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.CONDITIONS:
+            if state.mode is ProjectionMode.READER:
+                return render_strategy_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    page=ReaderPage.CONDITIONS,
+                    projection=reader_projection,
+                )
             return render_genome_conditions_view(
                 cached,
                 query_context=url,
@@ -517,6 +542,14 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.COMPARISON:
+            if state.mode is ProjectionMode.READER:
+                return render_strategy_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    page=ReaderPage.COMPARISON,
+                    projection=reader_projection,
+                )
             return render_genome_comparison_view(
                 cached,
                 query_context=url,

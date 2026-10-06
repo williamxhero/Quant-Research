@@ -7,7 +7,7 @@ from html import unescape
 from urllib.parse import parse_qsl, urlsplit
 
 from manager_gui.fixtures import build_fixture
-from manager_gui.models import Derivation, MANAGER_READ_MODEL_SCHEMA, SourceReference
+from manager_gui.models import MANAGER_READ_MODEL_SCHEMA, Derivation, SourceReference
 from manager_gui.reader import (
     ProjectionMode,
     ReaderURLState,
@@ -21,7 +21,6 @@ from manager_gui.reader import (
     render_mode_switch_form,
     render_sample_banner,
 )
-
 
 CONTEXT_URL = (
     "/reader?lang=en&fixture=complete&scope=A0&root=record-1&filter=state%3Dknown"
