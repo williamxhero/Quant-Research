@@ -172,6 +172,7 @@ def test_reader_claim_gap_and_availability_matrix_is_typed_and_neutral() -> None
                 assert rendered == render_claim_explanation(translator, claim)
                 assert all(source.source_id in rendered for source in claim.source_refs)
                 if claim.kind is ClaimKind.DERIVED:
+                    assert claim.derivation.rule is not None
                     assert claim.derivation.rule in rendered
                 if claim.is_gap and claim.availability.reason is not None:
                     assert claim.availability.reason in rendered
