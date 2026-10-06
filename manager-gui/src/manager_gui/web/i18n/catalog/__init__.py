@@ -125,10 +125,21 @@ REGISTRY.register(l4_evidence_lineage_reader.ENTRIES)
 
 # L5 Search and Portal namespaces are registered exactly once at the integration
 # boundary, preserving the append-only collision checks used by every slice.
-from . import l5_portal, l5_search  # noqa: E402
+from . import (  # noqa: E402
+    l5_history_documents_reader,
+    l5_methodology_reader,
+    l5_portal,
+    l5_portal_reader,
+    l5_search,
+    l5_search_reader,
+)
 
 REGISTRY.register(l5_search.ENTRIES)
 REGISTRY.register(l5_portal.ENTRIES)
+REGISTRY.register(l5_portal_reader.ENTRIES)
+REGISTRY.register(l5_methodology_reader.ENTRIES)
+REGISTRY.register(l5_history_documents_reader.ENTRIES)
+REGISTRY.register(l5_search_reader.ENTRIES)
 
 # Reader owns its bilingual templates, while this module owns the one validated
 # process-wide registry.  Registration here makes Reader copy available to the

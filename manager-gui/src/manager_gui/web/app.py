@@ -43,7 +43,6 @@ from .documents import (
     DOCUMENTS_RESOURCE,
     ApprovedDirectoryBoundary,
     build_source_documents_fixture,
-    render_source_documents_view,
 )
 from .evidence import EVIDENCE_RESOURCE, render_evidence_view
 from .evidence_comparison import (
@@ -70,7 +69,13 @@ from .genome import (
     build_genome_fixture,
     render_genome_view,
 )
-from .history import HISTORY_SCOPES, build_history_fixture, render_history_view
+from .history import HISTORY_SCOPES, build_history_fixture
+from .history_documents_reader import (
+    project_history_reader,
+    project_source_documents_reader,
+    render_history_reader,
+    render_source_documents_reader,
+)
 from .i18n import DEFAULT_LOCALE, Locale, Translator, resolve_locale, with_lang
 from .interaction import (
     export_json as render_current_view_export_json,
@@ -91,7 +96,10 @@ from .memory_failure_reader import (
 from .methodology import (
     MethodologyFixtureState,
     build_methodology_fixture,
-    render_methodology_view,
+)
+from .methodology_reader import (
+    project_methodology_reader,
+    render_methodology_reader,
 )
 from .navigation import (
     NAVIGATION,
@@ -101,12 +109,14 @@ from .navigation import (
     navigation_item,
     navigation_label,
 )
-from .portal import REPORT_SOURCE_RESOURCE, render_portal_view
+from .portal import REPORT_SOURCE_RESOURCE
+from .portal_reader import project_portal_reader, render_portal_reader
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
-from .search import SEARCH_RESOURCE, render_search_view
+from .search import SEARCH_RESOURCE
+from .search_reader import project_search_reader, render_search_reader
 from .status import render_status_block
 from .strategy_reader import project_strategy_reader, render_strategy_reader
 
@@ -442,6 +452,40 @@ class ManagerGUIApp:
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
+        if state.view is ViewId.METHODOLOGY:
+            return project_methodology_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.HISTORY:
+            return project_history_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.SOURCE_DOCUMENTS:
+            return project_source_documents_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.SEARCH:
+            context = dict(state.context)
+            return project_search_reader(
+                model,
+                query=state.query,
+                record_type=context.get("record_type") or context.get("type"),
+                source=context.get("source"),
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.PORTAL:
+            return project_portal_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -747,46 +791,52 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.METHODOLOGY:
-            return render_methodology_view(
-                cached,
-                snapshot_token=model.snapshot_token,
+            return render_methodology_reader(
+                model,
                 query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.HISTORY:
-            return render_history_view(
+            return render_history_reader(
                 model,
                 scope=self._scope_for_state(state),
-                base_path=url,
-                query=url,
+                query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.SOURCE_DOCUMENTS:
-            return render_source_documents_view(
+            return render_source_documents_reader(
                 model,
                 scope=self._scope_for_state(state),
+                approved_directories=self._approved_directories,
                 boundary=ApprovedDirectoryBoundary(self._approved_directories),
-                base_path=url,
-                query=url,
+                query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.SEARCH:
             context = dict(state.context)
-            return render_search_view(
-                cached,
-                base_path=url,
-                query_context=url,
+            return render_search_reader(
+                model,
+                query=state.query,
                 record_type=context.get("record_type") or context.get("type"),
                 source_filter=context.get("source"),
-                snapshot_token=model.snapshot_token,
+                query_context=url,
+                projection=reader_projection,
+                mode=state.mode,
                 translator=translator,
             )
         if state.view is ViewId.PORTAL:
-            return render_portal_view(
-                cached,
+            return render_portal_reader(
+                model,
                 base_path=url,
                 query_context=url,
-                snapshot_token=model.snapshot_token,
+                projection=reader_projection,
+                mode=state.mode,
                 translator=translator,
             )
         return None

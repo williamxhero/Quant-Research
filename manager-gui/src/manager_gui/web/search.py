@@ -578,22 +578,51 @@ def _stable_key(values: Mapping[str, str], *, kind: str, record_type: str, sourc
     )
 
 
-def _matching_fields(values: Mapping[str, str], query: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+def _matching_fields(
+    values: Mapping[str, str], query: str
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[SearchHitExplanation, ...]] | None:
     terms = _query_terms(query)
     if not terms:
-        return (), ()
+        return (), (), ()
     matched: list[str] = []
     reasons: list[str] = []
+    explanations: list[SearchHitExplanation] = []
     for term in terms:
-        fields = tuple(field_name for field_name in SEARCH_FIELDS if term in values.get(field_name, "").casefold())
+        fields = tuple(
+            field_name
+            for field_name in SEARCH_FIELDS
+            if term in values.get(field_name, "").casefold()
+        )
         if not fields:
             return None
         for field_name in fields:
             if field_name not in matched:
                 matched.append(field_name)
         reasons.append(f"{term!r} matched {', '.join(fields)}")
+        explanations.append(SearchHitExplanation(term, fields))
     ordered = tuple(field_name for field_name in SEARCH_FIELDS if field_name in matched)
-    return ordered, tuple(reasons)
+    return ordered, tuple(reasons), tuple(explanations)
+
+
+@dataclass(frozen=True, slots=True)
+class SearchHitExplanation:
+    """Typed, replayable reason for one query term matching one or more fields."""
+
+    query_term: str
+    fields: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.query_term.strip():
+            raise ValueError("query_term must be non-empty")
+        if not self.fields or any(field_name not in SEARCH_FIELDS for field_name in self.fields):
+            raise ValueError("fields must contain approved Search field names")
+
+    @property
+    def matched_fields(self) -> tuple[str, ...]:
+        return self.fields
+
+    def to_dict(self) -> dict[str, object]:
+        return {"query_term": self.query_term, "fields": list(self.fields)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,6 +654,7 @@ class SearchHit:
     stable_url: str | None = None
     target_view: str = ViewId.ATLAS.value
     target_id: str | None = None
+    match_explanations: tuple[SearchHitExplanation, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.result_id.strip() or not self.record_id.strip():
@@ -635,6 +665,8 @@ class SearchHit:
             raise ValueError("record_type must be non-empty")
         if tuple(field for field in self.matched_fields if field not in SEARCH_FIELDS):
             raise ValueError("matched_fields contains an unknown search field")
+        if not all(isinstance(explanation, SearchHitExplanation) for explanation in self.match_explanations):
+            raise ValueError("match_explanations must contain SearchHitExplanation values")
         if not all(isinstance(source, SourceReference) for source in self.source_refs):
             raise ValueError("source_refs must contain SourceReference values")
 
@@ -673,6 +705,10 @@ class SearchHit:
         return self.matched_fields
 
     @property
+    def explanations(self) -> tuple[SearchHitExplanation, ...]:
+        return self.match_explanations
+
+    @property
     def source(self) -> tuple[SourceReference, ...]:
         return self.source_refs
 
@@ -701,6 +737,7 @@ class SearchHit:
             "matched_fields": list(self.matched_fields),
             "matched_field_names": list(self.matched_fields),
             "match_reasons": list(self.match_reasons),
+            "match_explanations": [explanation.to_dict() for explanation in self.match_explanations],
             "match_reason": self.match_reason,
             "reason": self.reason,
             "stable_url": self.stable_url,
@@ -792,7 +829,7 @@ class SearchViewModel:
             matches = _matching_fields(values, selected_query)
             if matches is None:
                 continue
-            matched_fields, reasons = matches
+            matched_fields, reasons, explanations = matches
             marker = (kind, record_id, values.get("revision", ""), source_ids)
             if marker in seen:
                 continue
@@ -823,6 +860,7 @@ class SearchViewModel:
                     source_locator=_source_locator(item, source_map, source_ids),
                     matched_fields=matched_fields,
                     match_reasons=reasons,
+                    match_explanations=explanations,
                     target_view=target_view,
                     target_id=target_id or record_id,
                 )
@@ -1109,19 +1147,21 @@ def _safe_source_link(source: SourceReference, *, translator: Translator) -> str
 
 
 def _localized_match_reason(hit: SearchHit, translator: Translator) -> str:
-    if not hit.match_reasons:
+    if not hit.match_explanations:
         return translator.t("l5.search.browse_reason")
     reasons: list[str] = []
-    for reason in hit.match_reasons:
-        term, separator, raw_fields = reason.partition(" matched ")
-        if not separator:
-            reasons.append(reason)
-            continue
-        fields = tuple(field.strip() for field in raw_fields.split(",") if field.strip())
+    for explanation in hit.match_explanations:
         labels = translator.join(
-            translator.label("l5_search_field", field_name) for field_name in fields
+            translator.label("l5_search_field", field_name)
+            for field_name in explanation.fields
         )
-        reasons.append(translator.t("l5.search.match_reason_terms", query_term=term, fields=labels))
+        reasons.append(
+            translator.t(
+                "l5.search.match_reason_terms",
+                query_term=repr(explanation.query_term),
+                fields=labels,
+            )
+        )
     return "; ".join(reasons)
 
 
@@ -1538,6 +1578,7 @@ __all__ = [
     "SearchFixtureProvider",
     "SearchFixtureState",
     "SearchHit",
+    "SearchHitExplanation",
     "SearchPagination",
     "SearchResult",
     "SearchResultState",
