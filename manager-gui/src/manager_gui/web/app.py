@@ -48,6 +48,11 @@ from .evidence_comparison import (
     render_evidence_comparison_view,
 )
 from .evidence_trace import render_evidence_trace
+from .evidence_lineage_reader import (
+    ReaderTraceMode,
+    project_evidence_lineage_reader,
+    render_evidence_lineage_reader,
+)
 from .failure_grouping import FAILURE_GROUPING_RESOURCE, render_failure_grouping_view
 from .failure_patterns import (
     FAILURE_PATTERNS_RESOURCE,
@@ -71,6 +76,13 @@ from .interaction import (
 )
 from .lineage import LINEAGE_RESOURCE, render_lineage_view
 from .memory import render_memory_view
+from .memory_failure_reader import (
+    project_failure_reader,
+    project_memory_reader,
+    render_failure_patterns_reader,
+    render_failure_reader,
+    render_memory_reader,
+)
 from .methodology import (
     MethodologyFixtureState,
     build_methodology_fixture,
@@ -376,6 +388,24 @@ class ManagerGUIApp:
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
+        if state.view is ViewId.MEMORY:
+            return project_memory_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view in {ViewId.MEMORY_FAILURES, ViewId.FAILURE_PATTERNS}:
+            return project_failure_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view in {ViewId.EVIDENCE, ViewId.LINEAGE}:
+            return project_evidence_lineage_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -557,6 +587,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.MEMORY:
+            if state.mode is ProjectionMode.READER:
+                return render_memory_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                )
             return render_memory_view(
                 cached,
                 query_context=url,
@@ -565,6 +602,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.MEMORY_FAILURES:
+            if state.mode is ProjectionMode.READER:
+                return render_failure_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                )
             return render_memory_failure_view(
                 cached,
                 query_context=url,
@@ -573,6 +617,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.FAILURE_PATTERNS:
+            if state.mode is ProjectionMode.READER:
+                return render_failure_patterns_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                )
             return render_failure_patterns_view(
                 cached,
                 query_context=url,
@@ -580,6 +631,23 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.EVIDENCE:
+            if state.mode is ProjectionMode.READER:
+                return render_evidence_lineage_reader(
+                    model,
+                    projection=reader_projection,
+                    query_context=url,
+                    mode=ReaderTraceMode.READER,
+                    translator=translator,
+                    page=ReaderPage.EVIDENCE,
+                )
+            if state.mode is ProjectionMode.RAW:
+                return render_evidence_lineage_reader(
+                    model,
+                    projection=reader_projection,
+                    query_context=url,
+                    mode=ReaderTraceMode.RAW,
+                    translator=translator,
+                )
             # The trace reuses the already-read envelope: still exactly one provider read.
             return render_evidence_view(
                 cached,
@@ -588,12 +656,21 @@ class ManagerGUIApp:
                 translator=translator,
             ) + render_evidence_trace(model, query_context=url, translator=translator)
         if state.view is ViewId.LINEAGE:
-            return render_lineage_view(
-                cached,
+            if state.mode is not ProjectionMode.READER:
+                return render_lineage_view(
+                    cached,
+                    query_context=url,
+                    snapshot_token=model.snapshot_token,
+                    record_id=dict(state.context).get("record_id"),
+                    translator=translator,
+                )
+            return render_evidence_lineage_reader(
+                model,
+                projection=reader_projection,
                 query_context=url,
-                snapshot_token=model.snapshot_token,
-                record_id=dict(state.context).get("record_id"),
+                mode=ReaderTraceMode.READER,
                 translator=translator,
+                page=ReaderPage.LINEAGE,
             )
         if state.view is ViewId.EVIDENCE_COMPARISON:
             return render_evidence_comparison_view(

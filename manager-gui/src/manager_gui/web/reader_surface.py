@@ -40,6 +40,8 @@ class ReaderPage(StrEnum):
     MEMORY = "memory"
     FAILURE = "failure"
     FAILURE_PATTERNS = "failure-patterns"
+    EVIDENCE = "evidence"
+    LINEAGE = "lineage"
 
 
 ReaderQueryContext = str | Mapping[str, object] | None
@@ -116,6 +118,18 @@ _PAGE_COPY: Final[dict[ReaderPage, dict[str, str]]] = {
         "confirmed": "reader.failure.confirmed",
         "unknown": "reader.failure.unknown",
         "why": "reader.failure.why",
+    },
+    ReaderPage.EVIDENCE: {
+        "question": "reader.evidence.question",
+        "confirmed": "reader.evidence.confirmed",
+        "unknown": "reader.evidence.unknown",
+        "why": "reader.evidence.why",
+    },
+    ReaderPage.LINEAGE: {
+        "question": "reader.lineage.question",
+        "confirmed": "reader.lineage.confirmed",
+        "unknown": "reader.lineage.unknown",
+        "why": "reader.lineage.why",
     },
 }
 

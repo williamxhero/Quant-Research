@@ -303,6 +303,38 @@ ENTRIES: Mapping[str, M] = {
         "比较结果保留明确轴、来源、快照和不可比较原因，不使用看起来相同的默认值。",
         "Comparison retains explicit axes, sources, snapshots, and incomparability reasons without filling defaults that merely look equal.",
     ),
+    "reader.evidence.question": M(
+        "当前结论能沿明确记录的证据、来源和制品追溯到哪里？",
+        "How far can the current conclusion be traced through explicitly recorded evidence, sources, and artifacts?",
+    ),
+    "reader.evidence.confirmed": M(
+        "候选证据、符合协议的证据和来源只按属主记录的类别呈现。",
+        "Candidate evidence, protocol-conforming evidence, and sources are shown only under their owner-recorded classes.",
+    ),
+    "reader.evidence.unknown": M(
+        "未记录的证据、来源、制品或评估状态不能被补成成功或失败。",
+        "Unrecorded evidence, sources, artifacts, or evaluation states are not filled in as success or failure.",
+    ),
+    "reader.evidence.why": M(
+        "追溯链保留原始来源、派生方式和可用性；缺口保持为缺口。",
+        "The trace keeps original sources, derivation, and availability; gaps remain gaps.",
+    ),
+    "reader.lineage.question": M(
+        "当前证据和结论之间有哪些明确发布的谱系关系？",
+        "Which lineage relations between the current evidence and conclusion are explicitly published?",
+    ),
+    "reader.lineage.confirmed": M(
+        "只呈现已发布的节点、边和关系类型，不从相邻记录推断关联。",
+        "Only published nodes, edges, and relation types are shown; adjacency never infers an association.",
+    ),
+    "reader.lineage.unknown": M(
+        "没有明确边或关联原因时，无法得出谱系结论。",
+        "Without an explicit edge or association reason, no lineage conclusion can be drawn.",
+    ),
+    "reader.lineage.why": M(
+        "谱系表逐项标明关系、原因、来源和可用性，并显示缺失边界。",
+        "The lineage table separates relation, reason, source, and availability and shows missing boundaries.",
+    ),
     "reader.no_conclusion": M(
         "当前没有属主记录支持结论；无法得出结论。",
         "No owner record currently supports a conclusion; no conclusion can be drawn.",
