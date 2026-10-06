@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
-from manager_gui import Availability, Derivation, ManagerReadModel, ReadModelError, ReadModelStatus
+from manager_gui import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
 from manager_gui.fixtures import build_fixture
 from manager_gui.models import JSONValue
 from manager_gui.reader import ClaimKind, ReaderAvailabilityStatus
@@ -29,7 +29,9 @@ EN = Translator("en", strict=True, catalog=CATALOG)
 ZH = Translator("zh-CN", strict=True, catalog=CATALOG)
 
 
-def _failure_model(data: object, *, status: ReadModelStatus = ReadModelStatus.KNOWN, complete: bool = True) -> ManagerReadModel:
+def _failure_model(
+    data: object, *, status: ReadModelStatus = ReadModelStatus.KNOWN, complete: bool = True
+) -> ManagerReadModel:
     base = build_fixture("complete", resource="memory")
     return replace(
         base,
@@ -72,12 +74,42 @@ def test_failure_reader_statuses_are_distinct_and_gaps_are_not_failures() -> Non
     model = _failure_model(
         {
             "failures": [
-                {"failure_id": "success-1", "title": "A successful check", "failure_category": "check", "outcome": "success"},
-                {"failure_id": "failure-1", "title": "A failed check", "failure_category": "check", "outcome": "failure"},
-                {"failure_id": "blocked-1", "title": "A blocked check", "failure_category": "check", "status": "blocked"},
-                {"failure_id": "unevaluated-1", "title": "An unevaluated check", "failure_category": "check", "status": "not_evaluated"},
-                {"failure_id": "stale-1", "title": "A stale check", "failure_category": "check", "status": "stale"},
-                {"failure_id": "incomparable-1", "title": "An incomparable check", "failure_category": "check", "status": "incomparable"},
+                {
+                    "failure_id": "success-1",
+                    "title": "A successful check",
+                    "failure_category": "check",
+                    "outcome": "success",
+                },
+                {
+                    "failure_id": "failure-1",
+                    "title": "A failed check",
+                    "failure_category": "check",
+                    "outcome": "failure",
+                },
+                {
+                    "failure_id": "blocked-1",
+                    "title": "A blocked check",
+                    "failure_category": "check",
+                    "status": "blocked",
+                },
+                {
+                    "failure_id": "unevaluated-1",
+                    "title": "An unevaluated check",
+                    "failure_category": "check",
+                    "status": "not_evaluated",
+                },
+                {
+                    "failure_id": "stale-1",
+                    "title": "A stale check",
+                    "failure_category": "check",
+                    "status": "stale",
+                },
+                {
+                    "failure_id": "incomparable-1",
+                    "title": "An incomparable check",
+                    "failure_category": "check",
+                    "status": "incomparable",
+                },
             ]
         }
     )
@@ -96,10 +128,24 @@ def test_failure_reader_statuses_are_distinct_and_gaps_are_not_failures() -> Non
     assert any(claim.kind is ClaimKind.BLOCKED for claim in projection.limitations)
     assert any(claim.kind is ClaimKind.STALE for claim in projection.limitations)
     assert any(claim.kind is ClaimKind.INCOMPARABLE for claim in projection.limitations)
-    assert any(claim.availability.status is ReaderAvailabilityStatus.NOT_EVALUATED for claim in projection.unknowns)
+    assert any(
+        claim.availability.status is ReaderAvailabilityStatus.NOT_EVALUATED
+        for claim in projection.unknowns
+    )
 
-    document = render_failure_reader(view, query_context="/?view=memory-failures&fixture=complete&filter=a&filter=b", translator=EN)
-    for marker in ('data-record-state="success"', 'data-record-state="failure"', 'data-record-state="blocked"', 'data-record-state="not_evaluated"', 'data-record-state="stale"', 'data-record-state="incomparable"'):
+    document = render_failure_reader(
+        view,
+        query_context="/?view=memory-failures&fixture=complete&filter=a&filter=b",
+        translator=EN,
+    )
+    for marker in (
+        'data-record-state="success"',
+        'data-record-state="failure"',
+        'data-record-state="blocked"',
+        'data-record-state="not_evaluated"',
+        'data-record-state="stale"',
+        'data-record-state="incomparable"',
+    ):
         assert marker in document
     assert "Success" in document
     assert "Blocked" in document
@@ -192,7 +238,9 @@ def test_reader_links_preserve_repeated_context_and_missing_source_is_not_a_url(
         (ReadModelStatus.KNOWN, False, ReaderAvailabilityStatus.NOT_EVALUATED),
     ],
 )
-def test_scope_status_is_kept_in_projection(status: ReadModelStatus, complete: bool, expected: ReaderAvailabilityStatus) -> None:
+def test_scope_status_is_kept_in_projection(
+    status: ReadModelStatus, complete: bool, expected: ReaderAvailabilityStatus
+) -> None:
     model = _failure_model({}, status=status, complete=complete)
     projection = project_memory_reader(model)
     gaps = projection.limitations + projection.unknowns

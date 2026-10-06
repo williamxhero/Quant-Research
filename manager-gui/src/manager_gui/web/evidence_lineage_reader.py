@@ -12,7 +12,6 @@ only when ``mode=expert`` is requested.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -40,14 +39,14 @@ from .evidence import (
     EvidenceViewModel,
 )
 from .i18n import Translator
-from .i18n.catalog import CATALOG, CatalogError
+from .i18n.catalog import CATALOG, CatalogError, merge
 from .i18n.catalog.l4_evidence_lineage_reader import ENTRIES as READER_ENTRIES
 from .i18n.catalog.l4_lineage import ENTRIES as LINEAGE_ENTRIES
-from .i18n.catalog import merge
 from .lineage import LineageQuery, LineageViewModel, render_lineage
 from .locators import public_locator
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .status import display_state_for
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
 
@@ -216,18 +215,18 @@ class EvidenceLineageReaderViewModel:
                     locator=source.locator,
                 )
             )
-        for source in model.source_refs:
-            if source.source_id not in seen_sources:
+        for source_ref in model.source_refs:
+            if source_ref.source_id not in seen_sources:
                 steps.append(
                     _step(
-                        f"evidence.source.{source.source_id}",
+                        f"evidence.source.{source_ref.source_id}",
                         TraceStepKind.SOURCE,
-                        source.source_id,
-                        cast(JSONValue, source.to_dict()),
-                        (source,),
+                        source_ref.source_id,
+                        cast(JSONValue, source_ref.to_dict()),
+                        (source_ref,),
                         model=model,
                         availability=scope,
-                        locator=source.locator,
+                        locator=source_ref.locator,
                     )
                 )
 
@@ -339,12 +338,30 @@ def _missing_availability(reason: str) -> ReaderAvailability:
 def _refs_for_evidence(
     refs: Sequence[object], index: Mapping[str, SourceReference], fallback: tuple[SourceReference, ...]
 ) -> tuple[SourceReference, ...]:
+    """Resolve only explicitly named sources; do not infer provenance from scope."""
+
+    if not refs:
+        return fallback
     selected: list[SourceReference] = []
     for ref in refs:
         source_id = getattr(ref, "source_id", None)
-        if isinstance(source_id, str) and source_id in index:
-            selected.append(index[source_id])
-    return tuple(dict.fromkeys(selected)) or fallback
+        if not isinstance(source_id, str) or not source_id:
+            continue
+        source = index.get(source_id)
+        if source is not None:
+            selected.append(source)
+        else:
+            # Keep an unresolved owner reference visible as a gap rather than
+            # attributing the record to an unrelated source in the envelope.
+            selected.append(
+                SourceReference(
+                    source_id=source_id,
+                    owner="unresolved-owner-record",
+                    kind="unresolved-source-reference",
+                    locator="unresolved://source-reference",
+                )
+            )
+    return tuple(dict.fromkeys(selected))
 
 
 def _record_availability(record: EvidenceRecord, scope: ReaderAvailability) -> ReaderAvailability:
@@ -460,12 +477,29 @@ def _nested_relations(
         relation = _first(item, "relation", "kind", "type")
         if source_id is None or target_id is None:
             continue
-        source_ids = tuple(
-            value
-            for value in (_text(entry) for entry in _sequence(item.get("source_refs", item.get("sources"))))
-            if value is not None and value in source_index
+        raw_sources = item.get("source_refs", item.get("sources"))
+        source_values = tuple(
+            value for value in (_text(entry) for entry in _sequence(raw_sources)) if value is not None
         )
-        refs = tuple(source_index[value] for value in dict.fromkeys(source_ids)) or fallback
+        if not source_values and isinstance(raw_sources, str) and raw_sources:
+            source_values = (raw_sources,)
+        if source_values:
+            refs_list: list[SourceReference] = []
+            for source_id in dict.fromkeys(source_values):
+                source = source_index.get(source_id)
+                refs_list.append(
+                    source
+                    if source is not None
+                    else SourceReference(
+                        source_id=source_id,
+                        owner="unresolved-owner-record",
+                        kind="unresolved-source-reference",
+                        locator="unresolved://source-reference",
+                    )
+                )
+            refs = tuple(refs_list)
+        else:
+            refs = fallback
         why = _first(item, "why", "reason", "rationale", "association_reason")
         relation_id = _first(item, "id", "relation_id", "edge_id") or f"relation-{index}"
         derivation = Derivation("direct", inputs=tuple(ref.source_id for ref in refs), version="v0") if refs else Derivation("direct")
@@ -512,7 +546,7 @@ def _build_gaps(
         return ()
     scope = _scope_availability(model)
     gaps: list[ReaderClaim] = []
-    if scope.status is not ReaderAvailabilityStatus.KNOWN:
+    if scope.status is not ReaderAvailabilityStatus.KNOWN or not scope.complete:
         gaps.append(_gap_claim("reader.scope", refs, scope, "The evidence and lineage scope is not complete."))
         return tuple(gaps)
     for step in steps:
@@ -568,6 +602,20 @@ def _gap_claim(
 def _build_claims(view: EvidenceLineageReaderViewModel) -> tuple[tuple[ReaderClaim, ...], tuple[ReaderClaim, ...]]:
     claims: list[ReaderClaim] = []
     gaps = list(view.gaps)
+    if not view.read_model.source_refs:
+        return (), tuple(gaps)
+    scope = _scope_availability(view.read_model)
+    if not scope.complete or scope.status is not ReaderAvailabilityStatus.KNOWN:
+        if not any(gap.claim_id == "reader.scope" for gap in gaps):
+            gaps.append(
+                _gap_claim(
+                    "reader.scope",
+                    view.read_model.source_refs,
+                    scope,
+                    "The evidence and lineage scope is not complete.",
+                )
+            )
+        return (), tuple(gaps)
     for step in view.steps:
         if not step.source_refs:
             continue
@@ -602,8 +650,6 @@ def _build_claims(view: EvidenceLineageReaderViewModel) -> tuple[tuple[ReaderCla
 
 def _sample_projection(projection: ReaderProjection, state: str, resource: str) -> ReaderProjection:
     if projection.sample_data is not None:
-        return projection
-    if not projection.source_refs or any(not ref.locator.startswith("fixture://") for ref in projection.source_refs):
         return projection
     return replace(projection, sample_data=SampleData(state, resource))
 
@@ -675,7 +721,7 @@ def _fixture_owner(value: str | None, translator: Translator, *, fixture: bool) 
         return escape(translator.t("reader.evidence_lineage.no_value"))
     if fixture and value in _FIXTURE_TEXT_KEYS:
         return escape(translator.t(_FIXTURE_TEXT_KEYS[value]))
-    return f'<span data-owner-text="true">{escape(value)}</span>'
+    return f'<span data-owner-text="true" translate="no">{escape(value)}</span>'
 
 
 def _id_owner(value: str) -> str:
@@ -685,7 +731,7 @@ def _id_owner(value: str) -> str:
 def _availability(value: ReaderAvailability, translator: Translator) -> str:
     label = translator.label("reader_trace_availability", value.status.value)
     reason = (
-        f' <span class="reader-availability-reason" data-owner-text="true">{escape(value.reason)}</span>'
+        f' <span class="reader-availability-reason" data-owner-text="true" translate="no">{escape(value.reason)}</span>'
         if value.reason
         else ""
     )
@@ -820,8 +866,9 @@ def _render_reader(
         query_context=context,
         translator=translator,
     )
+    integration_hook = "lineage-view" if page is ReaderPage.LINEAGE else "evidence-view"
     return (
-        f'<section class="evidence-lineage-reader" data-reader-hook="{EVIDENCE_LINEAGE_READER_HOOK}" data-reader-mode="reader" data-status="{escape(view.availability.status.value, quote=True)}" data-evidence-status="{escape(view.evidence.status.value, quote=True)}" aria-labelledby="evidence-lineage-reader-title">'
+        f'<section class="evidence-lineage-reader" data-reader-hook="{EVIDENCE_LINEAGE_READER_HOOK}" data-integration-hook="{integration_hook}" data-reader-mode="reader" data-status="{escape(view.read_model.availability.status.value, quote=True)}" data-display-state="{display_state_for(view.read_model).value}" data-evidence-status="{escape(view.evidence.status.value, quote=True)}" aria-labelledby="evidence-lineage-reader-title">'
         f'<p class="eyebrow">{escape(translator.t("reader.evidence_lineage.eyebrow"))}</p>'
         f'<h1 id="evidence-lineage-reader-title" tabindex="-1">{escape(translator.t("reader.evidence_lineage.title"))}</h1>'
         f'<p class="reader-intro">{escape(translator.t("reader.evidence_lineage.intro"))}</p>{banner}{evidence_boundary}{surface}'
@@ -842,11 +889,11 @@ def _render_raw(
     del model
     raw = projection.raw_source.raw_bytes.decode("utf-8")
     lineage_raw = "" if lineage_model is None else f"\n{lineage_model.to_json()}"
-    # Raw mode is an explicit transport view: preserve the canonical bytes
-    # verbatim rather than translating or rewriting owner payload values.
+    # Raw mode is an explicit transport view: preserve the canonical text while
+    # escaping only the HTML boundary so owner bytes cannot become markup.
     return (
         f'<section class="evidence-lineage-reader" data-reader-hook="{EVIDENCE_LINEAGE_READER_HOOK}" data-reader-mode="raw">'
-        f'<h1>{escape(translator.t("reader.evidence_lineage.raw_heading"))}</h1><pre class="reader-raw-json">{raw + lineage_raw}</pre></section>'
+        f'<h1>{escape(translator.t("reader.evidence_lineage.raw_heading"))}</h1><pre class="reader-raw-json">{escape(raw + lineage_raw, quote=False)}</pre></section>'
     )
 
 
@@ -920,11 +967,55 @@ def render_evidence_lineage_reader(
 
 def render_evidence_lineage_reader_view(
     source: ManagerReadModel | EvidenceLineageReaderViewModel | ReaderProjection,
-    **kwargs: object,
+    *,
+    projection: ReaderProjection | None = None,
+    lineage_model: ManagerReadModel | None = None,
+    query_context: QueryContext = None,
+    mode: ReaderTraceMode | str = ReaderTraceMode.READER,
+    translator: Translator | None = None,
+    page: ReaderPage = ReaderPage.EVIDENCE,
 ) -> str:
     """Compatibility alias following the other Manager GUI page hooks."""
 
-    return render_evidence_lineage_reader(source, **cast(dict[str, object], kwargs))
+    return render_evidence_lineage_reader(
+        source,
+        projection=projection,
+        lineage_model=lineage_model,
+        query_context=query_context,
+        mode=mode,
+        translator=translator,
+        page=page,
+    )
+
+
+def render_lineage_reader(
+    source: ManagerReadModel | LineageViewModel,
+    *,
+    projection: ReaderProjection | None = None,
+    query_context: QueryContext = None,
+    translator: Translator | None = None,
+) -> str:
+    """Render lineage through its own Reader boundary, not as Evidence data."""
+
+    selected = _reader_translator(translator)
+    model = source.read_model if isinstance(source, LineageViewModel) else source
+    selected_projection = projection or project_read_model(model)
+    surface = render_reader_surface(
+        selected_projection,
+        page=ReaderPage.LINEAGE,
+        query_context=query_context,
+        translator=selected,
+    )
+    return (
+        f'<section class="lineage-reader-page" data-reader-hook="lineage-reader" '
+        f'data-integration-hook="lineage-view" data-reader-mode="reader" '
+        f'data-status="{escape(model.availability.status.value, quote=True)}" '
+        f'data-display-state="{display_state_for(model).value}">'
+        f'<p class="eyebrow">{escape(selected.t("reader.lineage.eyebrow"))}</p>'
+        f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.lineage.title"))}</h1>'
+        f'<p class="reader-intro">{escape(selected.t("reader.lineage.intro"))}</p>'
+        f'{surface}</section>'
+    )
 
 
 # Discoverable aliases used by integration slices.
@@ -951,4 +1042,5 @@ __all__ = [
     "render_evidence_lineage_reader",
     "render_evidence_lineage_reader_view",
     "render_evidence_trace_reader",
+    "render_lineage_reader",
 ]

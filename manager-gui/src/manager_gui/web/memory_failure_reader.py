@@ -35,13 +35,20 @@ from ..reader import (
     SampleData,
     project_read_model,
 )
-from .failure_patterns import FailureExperience, FailurePattern, FailureViewModel
+from .failure_lineage import FailureLineage
+from .failure_patterns import (
+    FailureExperience,
+    FailurePattern,
+    FailureViewModel,
+    render_failure_lineage,
+)
 from .i18n import Translator
-from .i18n.catalog.reader import render_claim_explanation, render_availability_explanation
+from .i18n.catalog.reader import render_claim_explanation
 from .locators import public_locator
-from .memory import MemoryEntry, MemoryViewModel
+from .memory import MemoryEntry, MemoryViewModel, render_memory_text
 from .navigation import context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .status import display_state_for
 
 # HTML fragments intentionally keep readable markup at the call site.
 # ruff: noqa: E501
@@ -172,6 +179,8 @@ def _source_ids(raw: Mapping[str, object]) -> tuple[str, ...]:
         value = raw[key]
         if isinstance(value, Mapping):
             values.extend(value.values() if not any(name in value for name in ("source_id", "record_id", "id")) else (value,))
+        elif isinstance(value, (str, int, float, bool)):
+            values.append(value)
         else:
             values.extend(_sequence(value))
     result: list[str] = []
@@ -187,6 +196,10 @@ def _state(raw: Mapping[str, object], model: ManagerReadModel) -> FailureReaderS
     status = _normalise(_first(raw, "reader_status", "record_status", "status", "state"))
     if status in _STATUS_TOKENS:
         return _STATUS_TOKENS[status]
+    if status in _SUCCESS_TOKENS:
+        return FailureReaderState.SUCCESS
+    if status in _FAILURE_TOKENS:
+        return FailureReaderState.FAILURE
     outcome = _normalise(_first(raw, "outcome", "outcome_state", "result", "failure_outcome"))
     if outcome in _SUCCESS_TOKENS:
         return FailureReaderState.SUCCESS
@@ -201,7 +214,9 @@ def _state(raw: Mapping[str, object], model: ManagerReadModel) -> FailureReaderS
         return FailureReaderState.INCOMPARABLE
     if source_status is ReadModelStatus.KNOWN and any(error.code == "not_evaluated" for error in model.errors):
         return FailureReaderState.NOT_EVALUATED
-    return FailureReaderState.MISSING if not outcome else FailureReaderState.UNKNOWN
+    if status is not None or outcome:
+        return FailureReaderState.UNKNOWN
+    return FailureReaderState.MISSING
 
 
 def _status_for_state(state: FailureReaderState) -> ReaderAvailabilityStatus:
@@ -227,10 +242,13 @@ class MemoryFailureReaderRecord:
     source_ids: tuple[str, ...]
     source_refs: tuple[SourceReference, ...]
     raw: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
+    memory_target_id: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def memory_id(self) -> str | None:
-        return self.record_id if self.layer is ReaderRecordLayer.FORMAL_MEMORY else None
+        if self.layer is not ReaderRecordLayer.FORMAL_MEMORY:
+            return None
+        return self.memory_target_id or self.record_id
 
     @property
     def failure_id(self) -> str | None:
@@ -257,6 +275,7 @@ class MemoryFailureReaderRecord:
             "state": self.state.value,
             "source_ids": list(self.source_ids),
             "source_refs": [ref.to_dict() for ref in self.source_refs],
+            "memory_id": self.memory_id,
         }
 
 
@@ -272,6 +291,7 @@ def _record(
     record_id: str,
     title: str,
     summary: str | None,
+    memory_target_id: str | None = None,
 ) -> MemoryFailureReaderRecord:
     return MemoryFailureReaderRecord(
         record_id=record_id,
@@ -282,6 +302,7 @@ def _record(
         source_ids=_source_ids(raw),
         source_refs=tuple(model.source_refs),
         raw=raw,
+        memory_target_id=memory_target_id,
     )
 
 
@@ -442,9 +463,17 @@ def _claim(
 def _scope_gap(model: ManagerReadModel, claim_id: str) -> ReaderClaim | None:
     availability = _reader_availability(model)
     status = availability.status
-    if status is ReaderAvailabilityStatus.KNOWN and availability.complete:
+    if status in {
+        ReaderAvailabilityStatus.KNOWN,
+        ReaderAvailabilityStatus.DERIVED,
+        ReaderAvailabilityStatus.INTERPRETED,
+    } and availability.complete:
         return None
-    if status is ReaderAvailabilityStatus.KNOWN:
+    if status in {
+        ReaderAvailabilityStatus.KNOWN,
+        ReaderAvailabilityStatus.DERIVED,
+        ReaderAvailabilityStatus.INTERPRETED,
+    }:
         status = ReaderAvailabilityStatus.MISSING
     return _claim(
         model,
@@ -474,7 +503,14 @@ def _projection(
         for record in records:
             state = record.state
             status = _status_for_state(state)
-            if state in {FailureReaderState.BLOCKED, FailureReaderState.STALE, FailureReaderState.INCOMPARABLE, FailureReaderState.NOT_EVALUATED, FailureReaderState.MISSING}:
+            if state in {
+                FailureReaderState.BLOCKED,
+                FailureReaderState.STALE,
+                FailureReaderState.INCOMPARABLE,
+                FailureReaderState.NOT_EVALUATED,
+                FailureReaderState.MISSING,
+                FailureReaderState.UNKNOWN,
+            }:
                 gap = _claim(
                     model,
                     f"{resource}.{record.layer.value}.{record.record_id}.status",
@@ -526,7 +562,7 @@ def _projection(
         limitations=tuple(limitations),
         unknowns=tuple(unknowns),
     )
-    if sample and projection.source_refs and all(ref.locator.startswith("fixture://") for ref in projection.source_refs):
+    if sample:
         projection = replace(projection, sample_data=SampleData(sample_state or "complete", resource))
     return projection
 
@@ -562,21 +598,77 @@ def build_failure_reader_fixture(state: FixtureState | str = FixtureState.COMPLE
 
 def _record_source_links(record: MemoryFailureReaderRecord, model: ManagerReadModel, *, translator: Translator) -> str:
     if not record.source_ids:
-        return f'<span class="memory-reader-source-missing">{translator.t("reader.memory.missing_source")}</span>'
+        return (
+            f'<span class="memory-reader-source-missing">{translator.t("reader.memory.missing_source")}</span>'
+            f' · <span class="memory-reader-lineage-missing">{translator.html("l4_memory.missing_link")}</span>'
+        )
     index = {ref.source_id: ref for ref in model.source_refs}
     rendered: list[str] = []
     for source_id in record.source_ids:
         source = index.get(source_id)
         if source is None:
-            rendered.append(f'<span class="memory-reader-source-unconfirmed" translate="no">{escape(source_id)}</span> · {translator.t("reader.memory.missing_source")}' )
+            rendered.append(
+                f'<span class="memory-reader-source-unconfirmed" translate="no">{escape(source_id)}</span>'
+                f' · {translator.t("reader.memory.missing_source")} · '
+                f'<span class="memory-reader-lineage-missing">{translator.html("l4_memory.missing_link")}</span>'
+            )
             continue
         target = public_locator(source.locator)
         label = f'<span translate="no">{escape(source.source_id)}</span>'
         if target:
             rendered.append(f'<a class="memory-reader-source-link" href="{escape(target, quote=True)}">{label}</a>')
         else:
-            rendered.append(f'<span class="memory-reader-source-unconfirmed">{label} · {translator.t("reader.memory.missing_source")}</span>')
+            rendered.append(
+                f'<span class="memory-reader-source-unconfirmed">{label} · '
+                f'{translator.t("reader.memory.missing_source")} · '
+                f'<span class="memory-reader-lineage-missing">{translator.html("l4_memory.missing_link")}</span></span>'
+            )
     return " · ".join(rendered)
+
+
+def _record_boundary_details(
+    record: MemoryFailureReaderRecord,
+    model: ManagerReadModel,
+    translator: Translator,
+) -> str:
+    """Expose owner-published Memory boundaries without deriving new prose."""
+
+    if record.layer is not ReaderRecordLayer.FORMAL_MEMORY:
+        return ""
+    fields = (
+        ("where_produced", "reader.memory.where_produced"),
+        ("produced_by", "reader.memory.where_produced"),
+        ("origin", "reader.memory.where_produced"),
+        ("production", "reader.memory.where_produced"),
+        ("limitations", "reader.memory.limitations"),
+        ("limitation", "reader.memory.limitations"),
+        ("bounds", "reader.memory.limitations"),
+        ("counterexample", "reader.memory.counterexample"),
+        ("counterexamples", "reader.memory.counterexample"),
+        ("conflicts", "reader.memory.counterexample"),
+        ("lineage", "reader.memory.where_produced"),
+    )
+    rendered: list[str] = []
+    seen: set[str] = set()
+    for key, label_key in fields:
+        value = record.raw.get(key)
+        if value is None or value in ("", [], {}):
+            continue
+        if isinstance(value, str):
+            content = render_memory_text(value, translator, model)
+        else:
+            content = (
+                f'<span translate="no">{escape(json.dumps(value, ensure_ascii=False, sort_keys=True))}</span>'
+            )
+        if label_key in seen:
+            continue
+        seen.add(label_key)
+        rendered.append(
+            f'<div><dt>{escape(translator.t(label_key))}</dt><dd>{content}</dd></div>'
+        )
+    if not rendered:
+        return ""
+    return f'<dl class="memory-reader-boundaries">{"".join(rendered)}</dl>'
 
 
 def _record_link(record: MemoryFailureReaderRecord, context: QueryContext) -> str:
@@ -587,27 +679,52 @@ def _record_link(record: MemoryFailureReaderRecord, context: QueryContext) -> st
     return context_link(context, view="memory-failures", failure_id=record.record_id)
 
 
-def _render_record(record: MemoryFailureReaderRecord, model: ManagerReadModel, *, context: QueryContext, translator: Translator) -> str:
+def _render_record(
+    record: MemoryFailureReaderRecord,
+    model: ManagerReadModel,
+    *,
+    context: QueryContext,
+    translator: Translator,
+    lineage: FailureLineage | None = None,
+) -> str:
     claim_kind = "derived" if record.derived else "known"
     claim_copy = translator.html(
         "reader.claim.derived" if record.derived else "reader.claim.known"
     )
     state_copy = translator.html(f"reader.failure.state.{record.state.value}")
     layer_copy = translator.html(f"reader.memory.layer.{record.layer.value}")
-    title = f'<span data-owner-text="true" translate="no">{translator.source_text(record.title)}</span>'
+    title = render_memory_text(record.title, translator, model)
     summary = (
-        f'<p class="memory-reader-record-summary" data-owner-text="true" translate="no">{translator.source_text(record.summary)}</p>'
+        f'<p class="memory-reader-record-summary">{render_memory_text(record.summary, translator, model)}</p>'
         if record.summary is not None
         else ""
     )
+    if record.layer is ReaderRecordLayer.FORMAL_MEMORY:
+        lineage_link = f'<p class="memory-reader-lineage-link"><a href="{escape(context_link(context, view="memory-failures", failure_id=record.record_id), quote=True)}">{translator.html("l4_memory.open_memory_failure")}</a></p>'
+    elif record.layer is ReaderRecordLayer.GUI_DERIVED:
+        lineage_link = f'<p class="memory-reader-lineage-link"><a href="{escape(context_link(context, view="failure-patterns", pattern_id=record.record_id), quote=True)}">{translator.html("l4_memory.failure_patterns_open")}</a></p>'
+    else:
+        lineage_link = ""
+    lineage_markup = (
+        render_failure_lineage(
+            lineage,
+            translator=translator,
+            query_context=context,
+            model=model,
+        )
+        if lineage is not None
+        else ""
+    )
+    pattern_attribute = ' data-pattern-status="derived"' if record.derived else ""
     return (
-        f'<article class="memory-reader-record" data-record-id="{escape(record.record_id, quote=True)}" data-record-layer="{record.layer.value}" data-record-state="{record.state.value}" data-claim-kind="{claim_kind}">'
+        f'<article class="memory-reader-record" data-record-id="{escape(record.record_id, quote=True)}" data-record-layer="{record.layer.value}" data-memory-authority="{record.layer.value}" data-record-state="{record.state.value}" data-claim-kind="{claim_kind}"{pattern_attribute}>'
         f'<h3><a class="failure-reader-detail-link" href="{escape(_record_link(record, context), quote=True)}">{title}</a></h3>'
         f'<p class="memory-reader-layer"><strong>{escape(translator.t("reader.memory.layer_label"))}</strong> {layer_copy}</p>'
         f'<p class="memory-reader-state"><strong>{escape(translator.t("reader.failure.state_label"))}</strong> {state_copy}</p>'
         f'{summary}<p class="memory-reader-claim-explanation">{claim_copy}</p>'
+        f'{_record_boundary_details(record, model, translator)}'
         f'<p class="memory-reader-sources"><strong>{escape(translator.t("reader.source"))}</strong> {_record_source_links(record, model, translator=translator)}</p>'
-        f'<p class="memory-reader-record-link"><a href="{escape(_record_link(record, context), quote=True)}">{escape(translator.t("reader.memory.open_record"))}</a></p></article>'
+        f'<p class="memory-reader-record-link"><a href="{escape(_record_link(record, context), quote=True)}">{escape(translator.t("reader.memory.open_record"))}</a></p>{lineage_link}{lineage_markup}</article>'
     )
 
 
@@ -642,15 +759,88 @@ def _render_page(
     model = view.read_model
     records = view.records
     if failure_only and isinstance(view, FailureReaderViewModel):
-        records = tuple(view.records) + tuple(_pattern_record(pattern, model) for pattern in view.derived_patterns)
+        formal_records = tuple(
+            _record(
+                entry.raw,
+                model,
+                layer=ReaderRecordLayer.FORMAL_MEMORY,
+                record_id=entry.failure_id,
+                title=entry.title,
+                summary=entry.summary,
+                memory_target_id=entry.memory_id,
+            )
+            for entry in view.formal_memory
+        )
+        records = (
+            formal_records
+            + tuple(view.records)
+            + tuple(_pattern_record(pattern, model) for pattern in view.derived_patterns)
+        )
     title_key = "reader.failure.title" if failure_only else "reader.memory.title"
     banner = ""
     if projection.sample_data is not None:
         banner = f'<aside class="memory-reader-sample-banner" data-sample-banner="fixture" role="note">{escape(translator.t("reader.sample.banner.fixed"))}</aside>'
+    empty = not records
+    display_state = display_state_for(model).value
+    empty_scope = empty and (
+        model.availability.status is ReadModelStatus.MISSING
+        or (
+            model.availability.status is ReadModelStatus.KNOWN
+            and model.availability.complete
+        )
+    )
+    if empty and failure_only and empty_scope:
+        empty_message = f'<p data-memory-empty="true" data-display-state="empty">{translator.html("l4_memory.no_formal_memory")}</p>'
+    elif empty and empty_scope:
+        explicit_memory_payload = (
+            isinstance(view, MemoryReaderViewModel)
+            and view.memory_view.explicit_memory_payload
+        )
+        empty_key = (
+            "l4_memory.no_formal_memory_scope"
+            if explicit_memory_payload
+            else "l4_memory.no_formal_memory"
+        )
+        empty_message = f'<p data-memory-empty="true" data-display-state="empty">{translator.html(empty_key)}</p>'
+    elif empty:
+        status = translator.t("label.status." + model.availability.status.value)
+        empty_message = f'<p data-memory-empty="true" data-memory-empty-state="not-determined" data-display-state="{display_state}">{translator.html("l4_memory.memory_not_determined", status=status)}</p>'
+    else:
+        empty_message = ""
+    partial_message = (
+        f'<p class="memory-partial-note">{translator.html("l4_memory.partial_memory_scope")}</p>'
+        if model.availability.status is ReadModelStatus.KNOWN and not model.availability.complete
+        else ""
+    )
+    lineage_by_id: dict[str, FailureLineage] = {}
+    if isinstance(view, FailureReaderViewModel):
+        lineage_by_id.update(
+            {entry.failure_id: entry.lineage for entry in view.formal_memory}
+        )
+        lineage_by_id.update(
+            {entry.failure_id: entry.lineage for entry in view.failure_view.failures}
+        )
+        lineage_by_id.update(
+            {pattern.pattern_id: pattern.lineage for pattern in view.derived_patterns}
+        )
+    rendered_lineages = tuple(
+        lineage_by_id[record.record_id]
+        for record in records
+        if record.record_id in lineage_by_id
+    )
+    layer_summary = (
+        f'<p class="memory-reader-layer-summary">'
+        f'<span data-memory-layer="formal-research-memory">{escape(translator.t("reader.memory.layer.formal_research_memory"))}</span> · '
+        f'<span data-memory-layer="failure-record">{escape(translator.t("l4_memory.ordinary_failure_records"))}</span> · '
+        f'<span data-memory-layer="gui-derived">{escape(translator.t("reader.memory.layer.gui_derived"))}</span></p>'
+        if failure_only
+        else ""
+    )
     details = (
         f'<section class="memory-reader-records" aria-labelledby="memory-reader-records-title">'
-        f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>'
-        f'{"".join(_render_record(record, model, context=context, translator=translator) for record in records)}'
+        f'{layer_summary}'
+        f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>{empty_message}{partial_message}'
+        f'{"".join(_render_record(record, model, context=context, translator=translator, lineage=lineage_by_id.get(record.record_id)) for record in records)}'
         f'</section>'
         f'<details class="memory-reader-raw"><summary>{escape(translator.t("reader.raw_source"))}</summary>'
         f'<pre translate="no">{translator.source_text(model.to_json())}</pre></details>'
@@ -661,10 +851,40 @@ def _render_page(
         query_context=context,
         translator=translator,
     )
+    memory_state = (
+        "empty"
+        if empty_scope
+        else "not-determined"
+        if empty
+        else "ready"
+    )
+    integration_hook = "failure-patterns-view" if failure_only else "memory-view"
+    lineage_coverage = ""
+    if failure_only and rendered_lineages:
+        coverage_values = tuple(lineage.coverage for lineage in rendered_lineages)
+        lineage_coverage = (
+            "complete"
+            if all(value == "complete" for value in coverage_values)
+            else "partial"
+            if any(value == "partial" for value in coverage_values)
+            else "missing"
+        )
+    lineage_attribute = (
+        f' data-lineage-coverage="{lineage_coverage}"'
+        if lineage_coverage
+        else ""
+    )
+    memory_layer = (
+        ' data-memory-layer="formal-research-memory"'
+        if failure_only and view.formal_memory
+        else ""
+    )
     return (
         f'<section class="memory-failure-reader-page" data-reader-hook="memory-failure-reader" '
-        f'data-integration-hook="{FAILURE_READER_HOOK if failure_only else MEMORY_READER_HOOK}" '
-        f'data-reader-resource="{"failure" if failure_only else "memory"}">'
+        f'data-integration-hook="{integration_hook}"{memory_layer}{lineage_attribute} '
+        f'data-reader-resource="{"failure" if failure_only else "memory"}" '
+        f'data-status="{escape(model.availability.status.value, quote=True)}" '
+        f'data-display-state="{display_state}" data-memory-state="{memory_state}">'
         f'<h1>{escape(translator.t(title_key))}</h1>{banner}{surface}{details}</section>'
     )
 
@@ -735,14 +955,14 @@ FailureReaderView = FailureReaderViewModel
 __all__ = [
     "FAILURE_READER_HOOK",
     "FAILURE_READER_RESOURCE",
-    "FailureReaderRecord",
-    "FailureReaderState",
-    "FailureReaderView",
-    "FailureReaderViewModel",
     "MEMORY_FAILURE_READER_RULE",
     "MEMORY_FAILURE_READER_VERSION",
     "MEMORY_READER_HOOK",
     "MEMORY_READER_RESOURCE",
+    "FailureReaderRecord",
+    "FailureReaderState",
+    "FailureReaderView",
+    "FailureReaderViewModel",
     "MemoryFailureReaderRecord",
     "MemoryFailureReaderView",
     "MemoryFailureReaderViewModel",

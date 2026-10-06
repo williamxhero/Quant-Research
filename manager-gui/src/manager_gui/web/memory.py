@@ -1371,7 +1371,7 @@ def render_memory_text(value: str | None, translator: Translator, model: Manager
     ) and (model.snapshot_token or "").startswith("fixture-s3-")
     if fixture and value in _S3_FIXTURE_COPY:
         return translator.html("l4_memory.fixture." + _S3_FIXTURE_COPY[value])
-    return f'<span data-owner-text="true">{translator.source_text(value)}</span>'
+    return f'<span data-owner-text="true" translate="no">{translator.source_text(value)}</span>'
 
 
 def render_memory_value(value: str | None, translator: Translator, domain: str | None = None, *, missing: str = "l4_memory.missing_unconfirmed") -> str:
