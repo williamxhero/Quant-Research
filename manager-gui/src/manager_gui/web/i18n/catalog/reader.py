@@ -239,6 +239,70 @@ ENTRIES: Mapping[str, M] = {
         "按故事来源、读取可用性和派生边界解释每个节点。",
         "Explain each story node through its sources, read availability, and derivation boundary.",
     ),
+    "reader.genome.question": M(
+        "这项策略的结构是什么，以及哪些有效性信息被明确记录？",
+        "What is this strategy's structure, and which validity information is explicitly recorded?",
+    ),
+    "reader.genome.confirmed": M(
+        "这里展示数据、信号、股票池、入场、出场、仓位规模和风险控制的来源支持字段。",
+        "This shows source-backed fields for data, signals, Universe, entry, exit, sizing, and risk controls.",
+    ),
+    "reader.genome.unknown": M(
+        "缺失字段、未评估条件和未记录资格不会被改写成成功或失败。",
+        "Missing fields, unevaluated conditions, and unrecorded qualification are not rewritten as success or failure.",
+    ),
+    "reader.genome.why": M(
+        "结构与有效性分开呈现；每项内容都保留来源范围和阅读器派生边界。",
+        "Structure and validity are shown separately; every item retains its source scope and Reader derivation boundary.",
+    ),
+    "reader.conditions.question": M(
+        "哪些条件适用、失效、已记录、未记录或尚未评估？",
+        "Which conditions apply, invalidate, are recorded, unrecorded, or not yet evaluated?",
+    ),
+    "reader.conditions.confirmed": M(
+        "这里只显示明确分类的适用条件、失效条件、描述性观察和反例。",
+        "Only explicitly classified applicability, invalidation, descriptor, and counterexample records are shown.",
+    ),
+    "reader.conditions.unknown": M(
+        "没有记录不等于条件成立；未评估、阻塞和缺失仍保持各自状态。",
+        "No record does not mean a condition holds; unevaluated, blocked, and missing remain distinct states.",
+    ),
+    "reader.conditions.why": M(
+        "条件结论只来自带来源的记录，且记录条件不证明策略有效。",
+        "Condition statements come only from sourced records, and recorded conditions do not prove strategy effectiveness.",
+    ),
+    "reader.revisions.question": M(
+        "策略从哪个父版本演进，发生了什么变化，以及有哪些结果和限制？",
+        "From which parent revision did the strategy evolve, what changed, and what results and limits were recorded?",
+    ),
+    "reader.revisions.confirmed": M(
+        "演进树只显示属主明确记录的父子关系、变化、原因、证据、结果和限制。",
+        "The evolution tree shows only owner-recorded parent/child links, changes, reasons, evidence, results, and limits.",
+    ),
+    "reader.revisions.unknown": M(
+        "未记录的原因不会被推测；修订编号、新旧时间或变化数量不代表更好。",
+        "Unrecorded reasons are not inferred; revision numbers, recency, and change counts do not mean better.",
+    ),
+    "reader.revisions.why": M(
+        "每个节点保留身份和来源，并链接到基因组、条件、证据和比较。",
+        "Each node retains identity and sources and links to Genome, conditions, Evidence, and comparison.",
+    ),
+    "reader.comparison.question": M(
+        "两个策略版本是否具备可比较的身份和资格条件？",
+        "Do the two strategy revisions have compatible identity and eligibility conditions for comparison?",
+    ),
+    "reader.comparison.confirmed": M(
+        "只呈现明确比较轴支持的相等、不同或不可比较结果。",
+        "Only equal, different, or incomparable outcomes supported by explicit axes are shown.",
+    ),
+    "reader.comparison.unknown": M(
+        "身份、数据版本或资格轴缺失时，不能声称相等或不同。",
+        "When identity, data version, or eligibility axes are missing, equality or difference cannot be claimed.",
+    ),
+    "reader.comparison.why": M(
+        "比较结果保留明确轴、来源、快照和不可比较原因，不使用看起来相同的默认值。",
+        "Comparison retains explicit axes, sources, snapshots, and incomparability reasons without filling defaults that merely look equal.",
+    ),
     "reader.no_conclusion": M(
         "当前没有属主记录支持结论；无法得出结论。",
         "No owner record currently supports a conclusion; no conclusion can be drawn.",

@@ -106,6 +106,183 @@ ENTRIES: Mapping[str, M] = {
     "genome.value_empty": M("空值", "Empty"),
     "genome.fixture_actor": M("样例数据", "fixture"),
     "genome.fixture_lineage_label": M("样例数据 {kind}", "Fixture {kind}"),
+    # Strategy Reader copy; structure is separate from effectiveness and revision quality.
+    "strategy_reader.title": M("策略阅读", "Strategy Reader"),
+    "strategy_reader.structure_title": M("策略结构", "Strategy structure"),
+    "strategy_reader.structure_intro": M(
+        "按已发布的行为字段说明策略结构；未记录的字段保持缺失，不推断策略有效。",
+        (
+            "Describe strategy structure through published behavior fields; unrecorded "
+            "fields remain missing and strategy effectiveness is not inferred."
+        ),
+    ),
+    "strategy_reader.structure_sentence": M(
+        "已记录的行为字段为：{text}。",
+        "The recorded behavior fields are: {text}.",
+        note=(
+            "Typed template: text is a deterministic list of published behavior values, "
+            "not an effectiveness claim."
+        ),
+    ),
+    "strategy_reader.validity_title": M("验证与有效性", "Validation and validity"),
+    "strategy_reader.validity_intro": M(
+        "分别查看验证绑定、资格评定、当前可用性和生命周期；这些记录不自动证明策略有效。",
+        (
+            "Inspect validation binding, qualification, current usability, and lifecycle "
+            "separately; these records do not automatically prove strategy effectiveness."
+        ),
+    ),
+    "strategy_reader.effectiveness_unknown": M(
+        "有效性信息未记录；无法判断策略是否有效。",
+        "Effectiveness information is not recorded; strategy effectiveness cannot be determined.",
+    ),
+    "strategy_reader.effectiveness_boundary": M(
+        "这里只展示已记录的验证和资格信息；记录、验证绑定或资格状态本身不构成策略有效的结论。",
+        (
+            "Only recorded validation and qualification information is shown; a record, "
+            "validation binding, or qualification status alone is not a conclusion of "
+            "strategy effectiveness."
+        ),
+    ),
+    "strategy_reader.conditions_title": M("条件与反例", "Conditions and counterexamples"),
+    "strategy_reader.conditions_intro": M(
+        "按明确记录的类别区分适用条件、失效条件、反例和描述性观察；未分类或未评估的内容不补成条件结论。",
+        (
+            "Separate applicability conditions, invalidation conditions, counterexamples, "
+            "and descriptive observations by their explicit recorded categories; "
+            "unclassified or unevaluated items do not become condition conclusions."
+        ),
+    ),
+    "strategy_reader.applicability": M("{term:applicable_condition}", "Applicability conditions"),
+    "strategy_reader.invalidation": M("{term:invalidating_condition}", "Invalidation conditions"),
+    "strategy_reader.counterexample": M("反例", "Counterexamples"),
+    "strategy_reader.descriptor": M("{term:descriptive_observation}", "Descriptive observations"),
+    "strategy_reader.unclassified": M("未分类", "Unclassified"),
+    "strategy_reader.qualification": M("{term:qualification}", "{term:qualification}"),
+    "strategy_reader.currency": M(
+        "当前可用性", "Current usability", note="Currency means current usability, not money."
+    ),
+    "strategy_reader.lifecycle": M("{term:lifecycle}", "{term:lifecycle}"),
+    "strategy_reader.revisions_title": M("策略修订演进", "Strategy revision evolution"),
+    "strategy_reader.revisions_intro": M(
+        "只展示明确记录的父子关系、变化、原因、证据、结果和限制；修订编号、新旧时间和变化数量不代表优劣排名。",
+        (
+            "Show only explicitly recorded parent/child relationships, changes, reasons, "
+            "evidence, results, and limitations; revision numbers, recency, and change "
+            "counts do not rank quality."
+        ),
+    ),
+    "strategy_reader.revisions_aria": M(
+        "策略修订演进关系", "Strategy revision evolution relationships"
+    ),
+    "strategy_reader.parent": M("父修订", "Parent revision"),
+    "strategy_reader.children": M("子修订", "Child revisions"),
+    "strategy_reader.changes": M("变化", "Changes"),
+    "strategy_reader.reason": M("原因", "Reason"),
+    "strategy_reader.reason_not_recorded": M(
+        "原因未记录；不推测修订动机。",
+        "The reason is not recorded; revision motivation is not inferred.",
+    ),
+    "strategy_reader.evidence": M("{term:evidence}", "{term:evidence}"),
+    "strategy_reader.result": M("结果", "Result"),
+    "strategy_reader.limitations": M("限制", "Limitations"),
+    "strategy_reader.condition_refs": M("条件引用", "Condition references"),
+    "strategy_reader.identity": M("身份", "Identity"),
+    "strategy_reader.eligibility": M("比较资格", "Comparison eligibility"),
+    "strategy_reader.genome_link": M("查看策略基因组", "View Strategy Genome"),
+    "strategy_reader.conditions_link": M("查看条件与证据", "View conditions and evidence"),
+    "strategy_reader.evidence_link": M("查看证据", "View evidence"),
+    "strategy_reader.comparison_link": M("查看比较", "View comparison"),
+    "strategy_reader.expert_link": M("查看专业模式", "View Expert mode"),
+    "strategy_reader.raw_link": M("查看原始模式", "View Raw mode"),
+    "strategy_reader.related_aria": M("策略阅读相关视图", "Strategy Reader related views"),
+    "strategy_reader.not_recorded": M(
+        "未记录；无法得出结论。", "Not recorded; no conclusion can be drawn."
+    ),
+    "strategy_reader.empty_value": M("空值", "Empty value"),
+    "strategy_reader.record_boundary": M(
+        "已记录只表示来源发布了这项内容，不表示已经核实或策略有效。",
+        (
+            "Recorded means only that the source published this item; it does not mean "
+            "the item was verified or the strategy is effective."
+        ),
+    ),
+    "strategy_reader.derived_boundary": M(
+        "这是按已命名输入和固定规则生成的派生视图；它不新增属主事实，也不证明策略有效。",
+        (
+            "This is a derived view generated from named inputs and a fixed rule; "
+            "it adds no owner facts and does not prove strategy effectiveness."
+        ),
+    ),
+    "strategy_reader.owner_boundary": M(
+        "属主原文保持原样；界面不会翻译、改写或将其提升为已验证结论。",
+        (
+            "Owner text is preserved as supplied; the interface does not translate, "
+            "rewrite, or promote it to a verified conclusion."
+        ),
+    ),
+    "strategy_reader.gap_boundary": M(
+        "缺失、未评估、已阻塞、已过时和不可比较保持各自状态；知识缺口不表示成功或失败。",
+        (
+            "Missing, not evaluated, blocked, stale, and incomparable retain their "
+            "distinct states; a knowledge gap means neither success nor failure."
+        ),
+    ),
+    "strategy_reader.revision_graph_gap": M(
+        "父修订缺失、重复或父子关系成环时，无法推断有效的修订链。",
+        (
+            "Missing or duplicate parent revisions, or cyclic parent/child relationships, "
+            "prevent inference of a valid revision chain."
+        ),
+    ),
+    "strategy_reader.comparison_boundary": M(
+        "身份和比较资格必须明确记录且兼容；否则为不可比较，不能声称相等或不同。",
+        (
+            "Identity and comparison eligibility must be explicitly recorded and "
+            "compatible; otherwise the revisions are incomparable and equality or "
+            "difference cannot be claimed."
+        ),
+    ),
+    "strategy_reader.comparison_axes": M("比较轴", "Comparison axes"),
+    "strategy_reader.comparison_missing": M(
+        "明确的比较记录或所需比较轴未记录；无法得出比较结论。",
+        (
+            "An explicit comparison record or required axes are not recorded; no comparison "
+            "conclusion can be drawn."
+        ),
+    ),
+    "strategy_reader.schema": M("模式", "Schema"),
+    "strategy_reader.validation": M("{term:validation_binding}", "{term:validation_binding}"),
+    "strategy_reader.owner_summary": M("属主摘要", "Owner summary"),
+    "strategy_reader.interpretation": M("结构解读", "Structure interpretation"),
+    "strategy_reader.scope": M("范围", "Scope"),
+    "strategy_reader.outcome": M("结果", "Outcome"),
+    "strategy_reader.evidence_level": M("{term:evidence_grade}", "Evidence level"),
+    "strategy_reader.time_range": M("时间范围", "Time range"),
+    "strategy_reader.data_version": M("数据版本", "Data version"),
+    "strategy_reader.sample": M("样本", "Sample"),
+    "strategy_reader.source": M("{term:source}", "{term:source}"),
+    "strategy_reader.derivation": M("{term:derivation}", "{term:derivation}"),
+    "strategy_reader.availability": M("读取可用性", "Read availability"),
+    "strategy_reader.expert_details": M("专业详情", "Expert details"),
+    "strategy_reader.catalog": M("策略基因组目录", "Strategy Genome catalog"),
+    "strategy_reader.catalog_aria": M("策略阅读基因组目录", "Strategy Reader Genome catalog"),
+    "strategy_reader.select_genome": M("选择策略基因组", "Select a Strategy Genome"),
+    "strategy_reader.revisions_link": M("查看修订演进", "View revision evolution"),
+    "strategy_reader.revision_link": M("查看修订", "View revision"),
+    "strategy_reader.validation_result": M("验证结果", "Validation result"),
+    "strategy_reader.current_state": M("当前状态", "Current state"),
+    "strategy_reader.behavior_unknown": M(
+        "行为字段未记录；无法描述该项策略结构。",
+        (
+            "The behavior field is not recorded; this part of the strategy structure "
+            "cannot be described."
+        ),
+    ),
+    "strategy_reader.structure_table": M("策略行为字段表", "Strategy behavior fields"),
+    "strategy_reader.field": M("字段", "Field"),
+    "strategy_reader.value": M("值", "Value"),
+    "strategy_reader.root_revision": M("父修订未记录", "Parent revision not recorded"),
     # Conditions page copy.
     "conditions.eyebrow": M(
         "策略 / 条件 · {term:read_only}", "Strategies / Conditions · read-only"
