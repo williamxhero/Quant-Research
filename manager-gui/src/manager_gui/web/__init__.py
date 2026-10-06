@@ -121,11 +121,6 @@ from .portal import (
     render_portal,
     render_portal_view,
 )
-from .research_story import (
-    StoryMode,
-    render_research_story,
-    render_research_story_view,
-)
 from .reader_shell import (
     READER_ROUTE_BY_VIEW,
     READER_ROUTES,
@@ -134,6 +129,11 @@ from .reader_shell import (
     reader_route,
     reader_route_context,
     render_unavailable_reader,
+)
+from .research_story import (
+    StoryMode,
+    render_research_story,
+    render_research_story_view,
 )
 from .s6_fixtures import S6_FIXTURE_STATES, S6_RESOURCES, build_s6_fixture
 from .search import (
@@ -195,10 +195,9 @@ __all__ = [
     "NAVIGATION",
     "PORTAL_INTEGRATION_HOOK",
     "PORTAL_RESOURCE",
-    "REPORT_SOURCE_RESOURCE",
-    "READER_ROUTE_BY_VIEW",
     "READER_ROUTES",
-    "ReaderRoute",
+    "READER_ROUTE_BY_VIEW",
+    "REPORT_SOURCE_RESOURCE",
     "S6_FIXTURE_STATES",
     "S6_RESOURCES",
     "SEARCH_INTEGRATION_HOOK",
@@ -225,6 +224,7 @@ __all__ = [
     "PortalArtifactState",
     "PortalFixtureState",
     "PortalViewModel",
+    "ReaderRoute",
     "SearchFixtureState",
     "SearchHit",
     "SearchPagination",
@@ -237,6 +237,7 @@ __all__ = [
     "Translator",
     "ViewId",
     "WebRequestState",
+    "annotate_reader_mount",
     "build_evidence_comparison_fixture",
     "build_evidence_fixture",
     "build_failure_grouping_fixture",
@@ -259,6 +260,8 @@ __all__ = [
     "lineage_fixture_provider",
     "opaque_copy_button",
     "query_values",
+    "reader_route",
+    "reader_route_context",
     "render_alternative_view",
     "render_atlas_view",
     "render_common_state",
@@ -286,11 +289,8 @@ __all__ = [
     "render_search_view",
     "render_source_documents_view",
     "render_status_block",
-    "render_view_mode_controls",
-    "annotate_reader_mount",
-    "reader_route",
-    "reader_route_context",
     "render_unavailable_reader",
+    "render_view_mode_controls",
     "resolve_locale",
     "run_server",
     "search_result_link",
