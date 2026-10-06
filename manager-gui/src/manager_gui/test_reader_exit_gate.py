@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from html import unescape
 from urllib.parse import parse_qsl, urlsplit
-from dataclasses import replace
 
 import pytest
 
-from manager_gui import FORBIDDEN_PROVIDER_METHODS, FixtureState, fixture_provider, public_provider_methods
+from manager_gui import (
+    FORBIDDEN_PROVIDER_METHODS,
+    FixtureState,
+    fixture_provider,
+    public_provider_methods,
+)
 from manager_gui.models import Derivation, SourceReference
 from manager_gui.reader import (
     ClaimKind,
-    READER_PROJECTION_JSON_SCHEMA,
     ReaderAvailabilityStatus,
     ReaderFixtureState,
     ReaderProjection,
@@ -27,7 +31,6 @@ from manager_gui.web.i18n.catalog.reader import (
     render_availability_explanation,
     render_claim_explanation,
 )
-
 
 ROUTES = (
     "atlas",
@@ -67,7 +70,7 @@ EXPECTED_AVAILABILITY = {
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize("fixture", tuple(FixtureState))
 def test_reader_i18n_mode_fixture_matrix(route: str, fixture: FixtureState) -> None:
-    """17 routes × 11 states × 3 modes × 2 locales keep the shell contract stable."""
+    """17 routes x 11 states x 3 modes x 2 locales keep the shell contract stable."""
 
     app = ManagerGUIApp(default_fixture=fixture)
     base = (
@@ -202,7 +205,13 @@ def test_reader_fixture_and_owner_matrix_keeps_sample_provenance_separate() -> N
         assert owner_projection.raw_source.raw_bytes == owner_model.to_json().encode("utf-8")
 
         class OwnerProvider:
-            def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            def read(
+                self,
+                resource: str = "atlas",
+                *,
+                snapshot_token: str | None = None,
+                owner_model: object = owner_model,
+            ):
                 del resource, snapshot_token
                 return owner_model
 

@@ -170,7 +170,11 @@ _CLAIM: Final[dict[str, object]] = {
         },
         {
             "if": {"properties": {"kind": {"const": "Stale"}}},
-            "then": {"properties": {"availability": {"properties": {"status": {"const": "stale"}}}}},
+            "then": {
+                "properties": {
+                    "availability": {"properties": {"status": {"const": "stale"}}}
+                }
+            },
         },
         {
             "if": {"properties": {"kind": {"const": "Incomparable"}}},
