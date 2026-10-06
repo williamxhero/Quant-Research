@@ -25,6 +25,7 @@ from manager_gui.web.i18n.catalog.reader import (
     READER_TEMPLATES,
     ReaderTemplateParams,
     reader_catalog_policy_violations,
+    render_availability_explanation,
     render_claim_explanation,
     render_projection_summary,
     render_reader_template,
@@ -140,6 +141,57 @@ def test_typed_template_params_and_source_refs_are_required() -> None:
         render_reader_template(zh, "reader.generated.prose")
     with pytest.raises(TypeError, match="ReaderTemplateParams"):
         render_reader_template(zh, "reader.sample.banner", params={"fixture": "x"})  # type: ignore[arg-type]
+
+
+def test_plural_reader_templates_use_typed_counts_and_source_refs() -> None:
+    sources = (
+        SourceReference("record-1", "owner", "record", "https://owner.invalid/1"),
+        SourceReference("record-2", "owner", "record", "https://owner.invalid/2"),
+    )
+    zh = _translator(Locale.ZH_CN)
+    en = _translator(Locale.EN)
+
+    assert render_reader_template(
+        zh,
+        "reader.source.count",
+        params=ReaderTemplateParams(n=len(sources)),
+        source_refs=sources,
+    ) == "当前范围有 2 条来源引用；数量不表示证据强度。"
+    assert render_reader_template(
+        en,
+        "reader.source.count",
+        params=ReaderTemplateParams(n=1),
+        source_refs=(sources[0],),
+    ) == "There is 1 source reference in this scope; the count is not evidence strength."
+    with pytest.raises(ValueError, match="requires a count"):
+        render_reader_template(zh, "reader.source.count", source_refs=sources)
+    with pytest.raises(ValueError, match="match source_refs"):
+        render_reader_template(
+            en,
+            "reader.source.count",
+            params=ReaderTemplateParams(n=1),
+            source_refs=sources,
+        )
+    with pytest.raises(ValueError, match="does not accept source_refs"):
+        render_reader_template(
+            zh,
+            "reader.summary.claim_count",
+            params=ReaderTemplateParams(n=2),
+            source_refs=(sources[0],),
+        )
+
+
+def test_availability_explanations_cover_non_claim_statuses() -> None:
+    for status in (
+        ReaderAvailabilityStatus.NOT_EVALUATED,
+        ReaderAvailabilityStatus.INTEGRITY_FAILURE,
+        ReaderAvailabilityStatus.API_UNAVAILABLE,
+    ):
+        zh = render_availability_explanation(_translator(Locale.ZH_CN), status)
+        en = render_availability_explanation(_translator(Locale.EN), status)
+        assert zh and en and zh != en
+        assert "未评估" in zh or "完整性" in zh or "API" in zh
+        assert "not evaluated" in en.lower() or "integrity" in en.lower() or "api" in en.lower()
 
 
 def test_owner_text_is_preserved_and_html_escaped_without_reparsing() -> None:
