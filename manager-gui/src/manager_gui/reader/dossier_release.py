@@ -57,7 +57,6 @@ class RuntimeSubmissionClient(Protocol):
         """A Runtime submission method must never be called by this module."""
 
 
-_BytePayload: TypeAlias = builtins.bytes
 PublicReadback: TypeAlias = bytes | bytearray | str | Mapping[str, object]
 
 
@@ -273,7 +272,7 @@ class DossierArtifactPublication:
     artifact_id: str
     record_type: str
     sha256: str
-    bytes: _BytePayload
+    bytes: object
     renderer_version: str
     published: bool = False
 
@@ -281,7 +280,10 @@ class DossierArtifactPublication:
         _valid_sha(self.artifact_id, "artifact_id")
         if self.record_type != DOSSIER_ARTIFACT_RECORD_TYPE:
             raise ValueError("unexpected dossier artifact record type")
-        if self.sha256 != _sha256(self.bytes) or self.artifact_id != self.sha256:
+        if not isinstance(self.bytes, builtins.bytes):
+            raise TypeError("artifact bytes must be bytes")
+        payload = cast(builtins.bytes, self.bytes)
+        if self.sha256 != _sha256(payload) or self.artifact_id != self.sha256:
             raise ValueError("artifact bytes hash mismatch")
         if self.renderer_version != DOSSIER_RENDERER_VERSION:
             raise ValueError("unsupported dossier renderer version")
@@ -294,13 +296,13 @@ class DossierArtifactPublication:
             "artifact_id": self.artifact_id,
             "record_type": self.record_type,
             "sha256": self.sha256,
-            "bytes": len(self.bytes),
+            "bytes": len(cast(builtins.bytes, self.bytes)),
             "renderer_version": self.renderer_version,
             "published": self.published,
         }
 
-    def readback(self) -> bytes:
-        return self.bytes
+    def readback(self) -> builtins.bytes:
+        return cast(builtins.bytes, self.bytes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,7 +374,7 @@ class DossierReleasePackage:
 
     @property
     def html_bytes(self) -> bytes:
-        return self.artifact.bytes
+        return self.artifact.readback()
 
     def manifest(self) -> dict[str, object]:
         """Return the external manifest; the archive itself never hashes itself."""
@@ -606,11 +608,11 @@ def _model_safety(
             errors.append("model holdout evidence does not prove locked/not_accessed/deferred state")
     holdout_ok = not any("holdout" in error.lower() for error in errors)
 
-    quarantine = next((section for section in report.sections if section.name == "quarantine"), None)
+    quarantine = next((section for section in _typed_sections(report) if section.name == "quarantine"), None)
     quarantine_ok = False
     if quarantine is not None and quarantine.status == "evaluated":
-        for evidence in quarantine.evidence:
-            for fact in evidence.facts:
+        for evidence in _typed_evidence(quarantine):
+            for fact in _typed_facts(evidence):
                 path = fact.path.lower()
                 value = str(fact.value).lower()
                 if fact.status == "evaluated" and (
