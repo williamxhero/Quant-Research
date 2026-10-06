@@ -15,7 +15,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from html import escape
-from typing import TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from ..models import Derivation, ManagerReadModel
 from ..provider import ManagerDataProvider
@@ -399,11 +399,19 @@ def render_search_reader(
         for key, value in (query_context or {}).items()
         if value is not None
     ) if isinstance(query_context, Mapping) else ()
-    context_mode = next((value for key, value in context_pairs if key == "mode"), None)
+    raw_context_mode = next((value for key, value in context_pairs if key == "mode"), None)
+    try:
+        context_mode = (
+            ProjectionMode(raw_context_mode)
+            if raw_context_mode is not None
+            else ProjectionMode.READER
+        )
+    except ValueError:
+        context_mode = ProjectionMode.READER
     url_state = (
         ReaderURLState.from_url(query_context)
         if isinstance(query_context, str)
-        else ReaderURLState(pairs=context_pairs, mode=context_mode or ProjectionMode.READER)
+        else ReaderURLState(pairs=context_pairs, mode=context_mode)
     )
     selected_mode = ProjectionMode(mode) if mode is not None else url_state.mode
     if selected_mode is ProjectionMode.RAW:
@@ -438,7 +446,7 @@ def search_reader_view(
     )
 
 
-def render_search_reader_view(source, **kwargs: object) -> str:
+def render_search_reader_view(source: Any, **kwargs: Any) -> str:
     return render_search_reader(source, **kwargs)
 
 

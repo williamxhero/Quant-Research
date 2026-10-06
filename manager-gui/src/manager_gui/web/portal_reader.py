@@ -15,7 +15,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from html import escape
-from typing import TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from ..models import Derivation, ManagerReadModel
 from ..provider import ManagerDataProvider
@@ -430,7 +430,13 @@ def render_portal_reader(
             if value is not None
         )
         raw_mode = next((value for key, value in pairs if key == "mode"), None)
-        url_state = ReaderURLState(pairs=pairs, mode=raw_mode or ProjectionMode.READER)
+        try:
+            selected_context_mode = (
+                ProjectionMode(raw_mode) if raw_mode is not None else ProjectionMode.READER
+            )
+        except ValueError:
+            selected_context_mode = ProjectionMode.READER
+        url_state = ReaderURLState(pairs=pairs, mode=selected_context_mode)
     selected_mode = ProjectionMode(mode) if mode is not None else url_state.mode
 
     if selected_mode is ProjectionMode.RAW:
@@ -479,7 +485,7 @@ def portal_reader_view(
     )
 
 
-def render_portal_reader_view(source, **kwargs: object) -> str:
+def render_portal_reader_view(source: Any, **kwargs: Any) -> str:
     return render_portal_reader(source, **kwargs)
 
 
