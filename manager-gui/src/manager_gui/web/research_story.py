@@ -739,6 +739,7 @@ class ResearchStoryViewModel:
         query: Mapping[str, object] | str | None = None,
         translator: Translator | None = None,
         reader_projection: ReaderProjection | None = None,
+        include_reader_surface: bool = True,
     ) -> str:
         """Render a mountable, accessible HTML fragment for the selected mode."""
 
@@ -770,6 +771,16 @@ class ResearchStoryViewModel:
                 translator=selected_translator, fixture=fixture, query_context=story_context
             ),
         }
+        reader_surface = (
+            render_reader_surface(
+                projection,
+                page=ReaderPage.STORY,
+                query_context=query if query is not None else base_path,
+                translator=selected_translator,
+            )
+            if include_reader_surface
+            else ""
+        )
         return (
             f'<section class="research-story" data-integration-hook="research-story-view" '
             f'data-story-mode="{self.mode.value}" '
@@ -781,7 +792,7 @@ class ResearchStoryViewModel:
             f'<nav class="story-mode-nav" '
             f'aria-label="{escape(selected_translator.t("story.mode.aria"), quote=True)}">'
             f'{mode_links}</nav></header>'
-            f'{render_reader_surface(projection, page=ReaderPage.STORY, query_context=query if query is not None else base_path, translator=selected_translator)}'
+            f"{reader_surface}"
             f"{render_status_block(_fixture_status_copy(self.model, selected_translator) if fixture else self.model, translator=selected_translator)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'
             f"</section>"
@@ -1137,6 +1148,7 @@ def render_research_story(
     query: Mapping[str, object] | str | None = None,
     translator: Translator | None = None,
     reader_projection: ReaderProjection | None = None,
+    include_reader_surface: bool = True,
 ) -> str:
     """Integration hook for ``app.py`` and future shells.
 
@@ -1151,6 +1163,7 @@ def render_research_story(
         query=query,
         translator=translator,
         reader_projection=reader_projection,
+        include_reader_surface=include_reader_surface,
     )
 
 

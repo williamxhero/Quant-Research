@@ -126,6 +126,15 @@ from .research_story import (
     render_research_story,
     render_research_story_view,
 )
+from .reader_shell import (
+    READER_ROUTE_BY_VIEW,
+    READER_ROUTES,
+    ReaderRoute,
+    annotate_reader_mount,
+    reader_route,
+    reader_route_context,
+    render_unavailable_reader,
+)
 from .s6_fixtures import S6_FIXTURE_STATES, S6_RESOURCES, build_s6_fixture
 from .search import (
     SEARCH_INTEGRATION_HOOK,
@@ -187,6 +196,9 @@ __all__ = [
     "PORTAL_INTEGRATION_HOOK",
     "PORTAL_RESOURCE",
     "REPORT_SOURCE_RESOURCE",
+    "READER_ROUTE_BY_VIEW",
+    "READER_ROUTES",
+    "ReaderRoute",
     "S6_FIXTURE_STATES",
     "S6_RESOURCES",
     "SEARCH_INTEGRATION_HOOK",
@@ -275,6 +287,10 @@ __all__ = [
     "render_source_documents_view",
     "render_status_block",
     "render_view_mode_controls",
+    "annotate_reader_mount",
+    "reader_route",
+    "reader_route_context",
+    "render_unavailable_reader",
     "resolve_locale",
     "run_server",
     "search_result_link",
