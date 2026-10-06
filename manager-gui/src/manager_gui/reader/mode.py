@@ -240,9 +240,16 @@ mode_url = reader_mode_url
 build_mode_url = reader_mode_url
 
 
-def _mode_label(mode: ProjectionMode, *, locale: str | None) -> str:
-    labels = _MODE_LABELS[mode.value]
-    return labels[1] if _locale_is_english(locale) else labels[0]
+def _mode_label(
+    mode: ProjectionMode,
+    *,
+    locale: str | None,
+    labels: Mapping[str, str] | None = None,
+) -> str:
+    if labels is not None and mode.value in labels:
+        return labels[mode.value]
+    values = _MODE_LABELS[mode.value]
+    return values[1] if _locale_is_english(locale) else values[0]
 
 
 def _mode_group_label(*, locale: str | None) -> str:
@@ -254,6 +261,8 @@ def render_mode_switch(
     *,
     locale: str | None = None,
     aria_label: str | None = None,
+    labels: Mapping[str, str] | None = None,
+    current_attribute: str = "page",
 ) -> str:
     """Render accessible GET links for Reader/Expert/Raw without JavaScript."""
 
@@ -265,8 +274,12 @@ def render_mode_switch(
     group_label = aria_label or _mode_group_label(locale=locale)
     links: list[str] = []
     for selected in ProjectionMode:
-        label = _mode_label(selected, locale=locale)
-        selected_attributes = ' aria-current="page"' if selected is state.mode else ""
+        label = _mode_label(selected, locale=locale, labels=labels)
+        selected_attributes = (
+            f' aria-current="{escape(current_attribute, quote=True)}"'
+            if selected is state.mode
+            else ""
+        )
         links.append(
             f'<a class="reader-mode-link" data-reader-mode="{selected.value}" '
             f'href="{escape(state.mode_url(selected), quote=True)}" '
@@ -355,6 +368,7 @@ def render_sample_banner(
     projection: object,
     *,
     locale: str | None = None,
+    text: str | None = None,
 ) -> str:
     """Render a fixture warning, or nothing for an owner/unsourced envelope.
 
@@ -368,10 +382,12 @@ def render_sample_banner(
             return ""
     elif not isinstance(projection, SampleData):
         return ""
-    text = sample_banner_text(locale=locale)
+    displayed = sample_banner_text(locale=locale) if text is None else text
+    if not isinstance(displayed, str) or not displayed:
+        return ""
     return (
         f'<aside class="reader-sample-banner" data-sample-banner="fixture" '
-        f'role="note" aria-label="{escape(text, quote=True)}">{escape(text)}</aside>'
+        f'role="note" aria-label="{escape(displayed, quote=True)}">{escape(displayed)}</aside>'
     )
 
 
