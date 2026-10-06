@@ -11,6 +11,7 @@ conclusion.  It does not scan storage, call an LLM, or mutate the Search index.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from html import escape
@@ -29,6 +30,7 @@ from ..reader import (
     SampleData,
     project_read_model,
 )
+from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
@@ -276,7 +278,7 @@ def _filter_markup(
         f'<dl><div><dt>{escape(translator.t("reader.search.filter_type"))}</dt><dd translate="no">{escape(record_type)}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.search.filter_source"))}</dt><dd translate="no">{escape(source)}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.search.filter_snapshot"))}</dt><dd translate="no">{escape(snapshot)}</dd></div>'
-        f'<div><dt>{escape(translator.t("reader.search.filter_snapshot"))}</dt><dd>{escape(scope)}</dd></div></dl>'
+        f'<div><dt>{escape(translator.t("reader.search.filter_scope"))}</dt><dd>{escape(scope)}</dd></div></dl>'
         f'<p class="search-reader-context-link"><a href="{escape(context_link(context, view=ViewId.SEARCH), quote=True)}">'
         f'{escape(translator.t("reader.search.title"))}</a></p></section>'
     )
@@ -293,6 +295,12 @@ def _raw_markup(projection: ReaderProjection, translator: Translator) -> str:
     )
 
 
+def _without_page_heading(markup: str) -> str:
+    """Keep the shell/Reader wrapper as the only document-level h1."""
+
+    return re.sub(r'<h1\b[^>]*>.*?</h1>', "", markup, count=1, flags=re.DOTALL)
+
+
 def _reader_markup(
     view: SearchViewModel,
     projection: ReaderProjection,
@@ -300,20 +308,13 @@ def _reader_markup(
     context: QueryContext,
     translator: Translator,
 ) -> str:
-    fixture = projection.sample_data is not None
-    fixture_banner = (
-        f'<p class="reader-sample-banner" data-sample-banner="fixture">'
-        f'{escape(translator.t("reader.search.sample_banner", fixture=projection.sample_data.fixture_state))}</p>'
-        if fixture
-        else ""
-    )
     surface = render_reader_surface(
         projection,
         page=ReaderPage.SEARCH,
         query_context=context,
         translator=translator,
     )
-    search_markup = view.render(query_context=context, translator=translator)
+    search_markup = _without_page_heading(view.render(query_context=context, translator=translator))
     return (
         f'<section class="search-reader-page" data-reader-hook="{SEARCH_READER_HOOK}" '
         f'data-integration-hook="{SEARCH_READER_INTEGRATION_HOOK}" data-reader-contract="v1" '
@@ -322,7 +323,7 @@ def _reader_markup(
         f'<p class="eyebrow">{escape(translator.t("reader.search.eyebrow"))}</p>'
         f'<h1 id="search-reader-title" data-page-title tabindex="-1">{escape(translator.t("reader.search.title"))}</h1>'
         f'<p class="reader-intro">{escape(translator.t("reader.search.confirmed_intro"))}</p>'
-        f'{fixture_banner}{surface}{_filter_markup(view, context=context, translator=translator)}'
+        f'{surface}{_filter_markup(view, context=context, translator=translator)}'
         f'<p class="search-reader-boundary" data-boundary="search-match">{escape(translator.t("reader.search.not_evidence"))}</p>'
         f'{search_markup}'
         f'<p class="search-reader-read-only">{escape(translator.t("reader.search.read_only"))}</p></section>'
@@ -340,7 +341,7 @@ def _expert_markup(
         f'data-integration-hook="{SEARCH_READER_INTEGRATION_HOOK}" data-reader-contract="v1" '
         f'data-reader-mode="expert" data-status="{escape(view.status.value, quote=True)}">'
         f'<h1>{escape(translator.t("reader.search.expert_heading"))}</h1>'
-        f'{render_search_view(view.read_model, query=view.query, record_type=view.record_type, source=view.source, query_context=context, translator=translator)}</section>'
+        f'{_without_page_heading(render_search_view(view.read_model, query=view.query, record_type=view.record_type, source_filter=view.source, query_context=context, translator=translator))}</section>'
     )
 
 
@@ -393,7 +394,18 @@ def render_search_reader(
         sample=sample,
         sample_state=sample_state,
     )
-    selected_mode = ProjectionMode(mode) if mode is not None else ProjectionMode.READER
+    context_pairs = tuple(
+        (str(key), str(value))
+        for key, value in (query_context or {}).items()
+        if value is not None
+    ) if isinstance(query_context, Mapping) else ()
+    context_mode = next((value for key, value in context_pairs if key == "mode"), None)
+    url_state = (
+        ReaderURLState.from_url(query_context)
+        if isinstance(query_context, str)
+        else ReaderURLState(pairs=context_pairs, mode=context_mode or ProjectionMode.READER)
+    )
+    selected_mode = ProjectionMode(mode) if mode is not None else url_state.mode
     if selected_mode is ProjectionMode.RAW:
         return _raw_markup(selected_projection, selected_translator)
     if selected_mode is ProjectionMode.EXPERT:

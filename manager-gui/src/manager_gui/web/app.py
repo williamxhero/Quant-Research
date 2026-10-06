@@ -109,7 +109,8 @@ from .navigation import (
     navigation_item,
     navigation_label,
 )
-from .portal import REPORT_SOURCE_RESOURCE, render_portal_view
+from .portal import REPORT_SOURCE_RESOURCE
+from .portal_reader import project_portal_reader, render_portal_reader
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
@@ -469,6 +470,22 @@ class ManagerGUIApp:
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
+        if state.view is ViewId.SEARCH:
+            context = dict(state.context)
+            return project_search_reader(
+                model,
+                query=state.query,
+                record_type=context.get("record_type") or context.get("type"),
+                source=context.get("source"),
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.PORTAL:
+            return project_portal_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -803,21 +820,23 @@ class ManagerGUIApp:
             )
         if state.view is ViewId.SEARCH:
             context = dict(state.context)
-            return render_search_view(
-                cached,
-                base_path=url,
-                query_context=url,
+            return render_search_reader(
+                model,
+                query=state.query,
                 record_type=context.get("record_type") or context.get("type"),
                 source_filter=context.get("source"),
-                snapshot_token=model.snapshot_token,
+                query_context=url,
+                projection=reader_projection,
+                mode=state.mode,
                 translator=translator,
             )
         if state.view is ViewId.PORTAL:
-            return render_portal_view(
-                cached,
+            return render_portal_reader(
+                model,
                 base_path=url,
                 query_context=url,
-                snapshot_token=model.snapshot_token,
+                projection=reader_projection,
+                mode=state.mode,
                 translator=translator,
             )
         return None
