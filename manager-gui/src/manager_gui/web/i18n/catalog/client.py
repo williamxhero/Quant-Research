@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..translator import M
 
-
 ENTRIES: dict[str, M] = {
     "client.copy_success": M("已复制不透明引用", "Copied opaque reference"),
     "client.copy_unavailable": M("无法复制引用", "Copy unavailable"),

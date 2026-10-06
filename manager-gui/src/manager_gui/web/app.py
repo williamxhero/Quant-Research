@@ -111,7 +111,7 @@ from .navigation import (
 )
 from .portal import REPORT_SOURCE_RESOURCE
 from .portal_reader import project_portal_reader, render_portal_reader
-from .reader_shell import annotate_reader_mount, reader_route, reader_route_context
+from .reader_shell import annotate_reader_mount, reader_route
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
@@ -1131,14 +1131,17 @@ class ManagerGUIApp:
         state: WebRequestState, raw_url: str, translator: Translator
     ) -> str:
         normalized_url = with_lang(raw_url, state.lang)
+        raw_pairs = parse_qsl(urlsplit(normalized_url).query, keep_blank_values=True)
+        context = [
+            (key, value)
+            for key, value in raw_pairs
+            if key not in {"view", "fixture"}
+        ]
         links = []
         for item in NAVIGATION:
             current = item.view_id is state.view
-            href = reader_route_context(
-                normalized_url,
-                view=item.view_id,
-                fixture=state.fixture.value,
-            )
+            href_values = [("view", item.view_id.value), ("fixture", state.fixture.value), *context]
+            href = "/?" + urlencode(href_values)
             label = navigation_label(item.view_id, translator)
             description = navigation_description(item.view_id, translator)
             links.append(
