@@ -22,6 +22,10 @@ src/quantresearch_acceptance/*
 !manager-gui/src/manager_gui/reader/*.py
 !manager-gui/src/manager_gui/web/
 !manager-gui/src/manager_gui/web/*.py
+!manager-gui/src/manager_gui/web/i18n/
+!manager-gui/src/manager_gui/web/i18n/*.py
+!manager-gui/src/manager_gui/web/i18n/catalog/
+!manager-gui/src/manager_gui/web/i18n/catalog/*.py
 
 # Local-only by default. AGENTS.md defines the narrow exceptions.
 /runtime/
