@@ -11,6 +11,8 @@ from collections.abc import Mapping
 
 from ..translator import M, Translator
 
+# Bilingual catalogue entries keep paired prose readable at the call site.
+# ruff: noqa: E501
 
 ENTRIES: Mapping[str, M] = {
     # Evidence Ledger page chrome and fields.
@@ -246,8 +248,8 @@ ENTRIES: Mapping[str, M] = {
 def page_translator(translator: Translator | None = None) -> Translator:
     """Return ``translator`` extended with this page's additive namespace."""
 
-    from . import CatalogError, REGISTRY
     from ..translator import validate_entry
+    from . import REGISTRY, CatalogError
 
     base = translator or Translator()
     catalog = dict(REGISTRY.entries)

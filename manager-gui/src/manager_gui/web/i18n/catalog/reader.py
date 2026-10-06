@@ -703,6 +703,15 @@ ENTRIES: Mapping[str, M] = {
     "reader.failure.state.incomparable": M("不可比较", "Incomparable"),
     "reader.failure.state.missing": M("未记录", "Missing"),
     "reader.failure.state.unknown": M("未知", "Unknown"),
+    "reader.global.unavailable": M(
+        "此路由尚未发布专用阅读器投影。",
+        "A dedicated Reader projection is not published for this route.",
+    ),
+    "reader.global.unavailable_detail": M(
+        "当前只显示已发布的读取范围；没有属主记录时无法得出结论。",
+        "Only the published read scope is shown; without an owner record, no conclusion can be drawn.",
+    ),
+    "reader.global.route_context": M("阅读器路由", "Reader route"),
 }
 
 

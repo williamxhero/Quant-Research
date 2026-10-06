@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..translator import M
 
-
 ENTRIES: dict[str, M] = {
     "interaction.copy_reference": M("复制引用", "Copy reference"),
     "interaction.export_current_view": M("导出当前视图", "Export current view"),

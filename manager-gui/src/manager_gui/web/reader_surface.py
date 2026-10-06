@@ -42,6 +42,8 @@ class ReaderPage(StrEnum):
     FAILURE_PATTERNS = "failure-patterns"
     EVIDENCE = "evidence"
     LINEAGE = "lineage"
+    EVIDENCE_COMPARISON = "evidence-comparison"
+    FAILURE_GROUPING = "failure-grouping"
     METHODOLOGY = "methodology"
     HISTORY = "history"
     DOCUMENTS = "documents"
@@ -135,6 +137,18 @@ _PAGE_COPY: Final[dict[ReaderPage, dict[str, str]]] = {
         "confirmed": "reader.lineage.confirmed",
         "unknown": "reader.lineage.unknown",
         "why": "reader.lineage.why",
+    },
+    ReaderPage.EVIDENCE_COMPARISON: {
+        "question": "reader.comparison.question",
+        "confirmed": "reader.comparison.confirmed",
+        "unknown": "reader.comparison.unknown",
+        "why": "reader.comparison.why",
+    },
+    ReaderPage.FAILURE_GROUPING: {
+        "question": "reader.failure.question",
+        "confirmed": "reader.failure.confirmed",
+        "unknown": "reader.failure.unknown",
+        "why": "reader.failure.why",
     },
     ReaderPage.METHODOLOGY: {
         "question": "reader.methodology.question",

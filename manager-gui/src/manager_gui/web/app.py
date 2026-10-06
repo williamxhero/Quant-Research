@@ -111,6 +111,7 @@ from .navigation import (
 )
 from .portal import REPORT_SOURCE_RESOURCE
 from .portal_reader import project_portal_reader, render_portal_reader
+from .reader_shell import annotate_reader_mount, reader_route
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
@@ -159,6 +160,27 @@ class WebRequestState:
         """Return the explicit locale, or the app's configured default."""
 
         return self.lang or self.default_locale
+
+    def context_value(self, key: str) -> str | None:
+        """Return the first value for an opaque context key."""
+
+        return next((value for context_key, value in self.context if context_key == key), None)
+
+    @property
+    def scope(self) -> str | None:
+        return self.context_value("scope")
+
+    @property
+    def root(self) -> str | None:
+        return self.context_value("root")
+
+    @property
+    def filters(self) -> tuple[str, ...]:
+        return tuple(value for key, value in self.context if key == "filter")
+
+    @property
+    def snapshot_token(self) -> str | None:
+        return self.context_value("snapshot_token") or self.context_value("snapshot")
 
     @classmethod
     def from_url(
@@ -410,7 +432,7 @@ class ManagerGUIApp:
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
         resource = self._resource_for_view(state.view)
-        return provider.read(resource, snapshot_token=dict(state.context).get("snapshot_token"))
+        return provider.read(resource, snapshot_token=state.snapshot_token)
 
     def reader_projection(self, url: str = "/") -> ReaderProjection:
         """Project the current public v0 read into the UI-only Reader contract."""
@@ -539,10 +561,18 @@ class ManagerGUIApp:
         model = self.read_model(state)
         projection = self._project_reader_model(state, model)
         item = navigation_item(state.view)
+        route = reader_route(state.view)
         translator = Translator(state.locale)
         page = self._render_page(
             state, model, normalized_url, translator=translator, reader_projection=projection
         )
+        if page is not None:
+            page = annotate_reader_mount(
+                page,
+                route=route,
+                mode=state.mode,
+                availability=projection.availability.status.value,
+            )
         page = self._localize_internal_links(page, state.lang)
         return self._render_document(
             state,
@@ -609,6 +639,7 @@ class ManagerGUIApp:
                 snapshot_token=model.snapshot_token,
                 translator=translator,
                 reader_projection=reader_projection,
+                include_reader_surface=state.mode is ProjectionMode.READER,
             )
         if state.view is ViewId.STORIES:
             return render_research_story(
@@ -618,6 +649,7 @@ class ManagerGUIApp:
                 query=url,
                 translator=translator,
                 reader_projection=reader_projection,
+                include_reader_surface=state.mode is ProjectionMode.READER,
             )
         if state.view is ViewId.STRATEGIES:
             if state.mode is ProjectionMode.READER:
@@ -789,6 +821,8 @@ class ManagerGUIApp:
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 translator=translator,
+                reader_projection=reader_projection,
+                include_reader_surface=state.mode is ProjectionMode.READER,
             )
         if state.view is ViewId.METHODOLOGY:
             return render_methodology_reader(

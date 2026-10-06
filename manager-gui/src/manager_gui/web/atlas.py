@@ -770,6 +770,7 @@ def render_atlas(
     query_context: QueryContext = None,
     translator: Translator | None = None,
     reader_projection: ReaderProjection | None = None,
+    include_reader_surface: bool = True,
 ) -> str:
     """Render an Atlas page fragment; the shared shell owns the document chrome."""
 
@@ -806,6 +807,16 @@ def render_atlas(
         start=selected_translator.t("label.atlas.lifecycle.campaign"),
         end=selected_translator.t("label.atlas.lifecycle.revalidation"),
     )
+    reader_surface = (
+        render_reader_surface(
+            projection,
+            page=ReaderPage.ATLAS,
+            query_context=query_context,
+            translator=selected_translator,
+        )
+        if include_reader_surface
+        else ""
+    )
     pieces = [
         '<div class="atlas-page" data-integration-hook="atlas-view">',
         f'<p class="eyebrow">{escape(selected_translator.t("atlas.eyebrow"))}</p>',
@@ -817,12 +828,7 @@ def render_atlas(
         f'<span><strong>{escape(selected_translator.t("atlas.snapshot"))}</strong> {snapshot}</span>'
         f'<span><strong>{escape(selected_translator.t("atlas.sources"))}</strong> '
         f'{source_text}</span></p>',
-        render_reader_surface(
-            projection,
-            page=ReaderPage.ATLAS,
-            query_context=query_context,
-            translator=selected_translator,
-        ),
+        reader_surface,
         render_status_block(
             _fixture_status_model(model, selected_translator) if fixture else model,
             translator=selected_translator,
@@ -935,6 +941,7 @@ def render_atlas_view(
     snapshot_token: str | None = None,
     translator: Translator | None = None,
     reader_projection: ReaderProjection | None = None,
+    include_reader_surface: bool = True,
 ) -> str:
     """T5 integration hook: read and render the Atlas view without shell logic."""
 
@@ -948,6 +955,7 @@ def render_atlas_view(
         query_context=query_context,
         translator=translator,
         reader_projection=reader_projection,
+        include_reader_surface=include_reader_surface,
     )
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from ..translator import M
 
-
 ENTRIES: dict[str, M] = {
     "label.status.known": M("{term:known}", "Known"),
     "label.status.derived": M("{term:derived}", "Derived"),

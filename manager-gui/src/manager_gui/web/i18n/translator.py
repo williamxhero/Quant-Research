@@ -56,11 +56,16 @@ class M:
         if isinstance(self.en, Mapping):
             # Copy so a plural table cannot change after registration validated it.
             plural = dict(self.en)
-            if any(not isinstance(key, str) or not isinstance(value, str) for key, value in plural.items()):
+            if any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in plural.items()
+            ):
                 raise TranslationError("M.en plural values must be string-to-string")
             object.__setattr__(self, "en", MappingProxyType(plural))
         elif not isinstance(self.en, str):
-            raise TranslationError(f"M.en must be a string or a mapping, got {type(self.en).__name__}")
+            raise TranslationError(
+                f"M.en must be a string or a mapping, got {type(self.en).__name__}"
+            )
         if self.note is not None and not isinstance(self.note, str):
             raise TranslationError("M.note must be a string or None")
 
@@ -155,9 +160,8 @@ def validate_entry(key: str, message: M) -> None:
     )
     if unknown:
         raise TranslationError(f"{key}: unknown glossary term(s) {unknown}")
-    if key.startswith(f"{LABEL_PREFIX}."):
-        if expected or message.is_plural:
-            raise TranslationError(f"{key}: label entries take no placeholders and no plural forms")
+    if key.startswith(f"{LABEL_PREFIX}.") and (expected or message.is_plural):
+        raise TranslationError(f"{key}: label entries take no placeholders and no plural forms")
 
 
 def source_text(value: str) -> str:

@@ -5,6 +5,10 @@ Manager GUI slice. It is a local, read-only contract package; it does not
 implement Apex Research, Quant Runtime, Strategy Workspace, or Strategy
 Reporting domain behavior.
 
+The dedicated [Reader Guide](READER_GUIDE.md) documents Reader modes, truth
+states, sample/owner boundaries, known limitations, and the manual accessibility
+checklist.
+
 ## Package and commands
 
 The package is a standalone Python 3.11 project with no production
