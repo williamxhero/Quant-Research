@@ -124,11 +124,20 @@ from . import l5_portal, l5_search  # noqa: E402
 REGISTRY.register(l5_search.ENTRIES)
 REGISTRY.register(l5_portal.ENTRIES)
 
+# Reader owns its bilingual templates, while this module owns the one validated
+# process-wide registry.  Registration here makes Reader copy available to the
+# default request Translator exactly once and keeps duplicate keys fail closed.
+from . import reader as reader_catalog  # noqa: E402
+
+READER_CATALOG = reader_catalog.ENTRIES
+REGISTRY.register(READER_CATALOG)
+
 
 __all__ = [
     "CATALOG",
     "NAVIGATION_CATALOG",
     "PAGINATION_CATALOG",
+    "READER_CATALOG",
     "REGISTRY",
     "SHELL_CATALOG",
     "CatalogError",
