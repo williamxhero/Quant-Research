@@ -171,7 +171,9 @@ def test_claim_and_projection_helpers_use_exact_reader_projection_api() -> None:
         ReaderAvailability(ReaderAvailabilityStatus.KNOWN, True),
         "owner source note",
     )
-    summary = ReaderSummary("reader.summary.source_note", (owner.claim_id,), {"text": owner.value})
+    summary = ReaderSummary(
+        "reader.summary.source_note", (owner.claim_id,), {"text": "owner source note"}
+    )
     with_summary = replace(projection, claims=(owner,), summary=summary)
     assert render_summary(_translator(Locale.EN), summary) == "Source note: owner source note"
     assert render_projection_summary(
