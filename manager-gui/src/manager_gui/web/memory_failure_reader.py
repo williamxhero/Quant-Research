@@ -1,0 +1,763 @@
+"""R4-T1 Reader projections for Research Memory and failure records.
+
+This module is a read-only presentation adapter over the existing public Memory
+and failure parsers.  It keeps Formal Research Memory, ordinary failure
+records, and GUI-derived patterns as separate layers.  Reader claims use the
+R1 typed envelope and fixed catalog templates; no prose is generated from a
+language model and no source value is translated or rewritten.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from enum import StrEnum
+from html import escape
+from typing import TypeAlias, cast
+
+from ..fixtures import FixtureState, build_fixture
+from ..models import (
+    Derivation,
+    JSONValue,
+    ManagerReadModel,
+    ReadModelStatus,
+    SourceReference,
+)
+from ..reader import (
+    ClaimKind,
+    FrozenJSON,
+    ReaderAvailability,
+    ReaderAvailabilityStatus,
+    ReaderClaim,
+    ReaderProjection,
+    ReaderSummary,
+    SampleData,
+    project_read_model,
+)
+from .failure_patterns import FailureExperience, FailurePattern, FailureViewModel
+from .i18n import Translator
+from .i18n.catalog.reader import render_claim_explanation, render_availability_explanation
+from .locators import public_locator
+from .memory import MemoryEntry, MemoryViewModel
+from .navigation import context_link
+from .reader_surface import ReaderPage, render_reader_surface
+
+# HTML fragments intentionally keep readable markup at the call site.
+# ruff: noqa: E501
+
+QueryContext: TypeAlias = str | Mapping[str, object] | None
+
+MEMORY_READER_RESOURCE = "memory"
+FAILURE_READER_RESOURCE = "failure_patterns"
+MEMORY_READER_HOOK = "memory-reader-view"
+FAILURE_READER_HOOK = "failure-reader-view"
+MEMORY_FAILURE_READER_RULE = "manager-gui.reader.memory-failure.v1"
+MEMORY_FAILURE_READER_VERSION = "v1"
+
+
+class ReaderRecordLayer(StrEnum):
+    FORMAL_MEMORY = "formal_research_memory"
+    FAILURE_RECORD = "failure_record"
+    GUI_DERIVED = "gui_derived"
+
+
+class FailureReaderState(StrEnum):
+    """Human-facing state; gaps never collapse into the FAILURE bucket."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    BLOCKED = "blocked"
+    NOT_EVALUATED = "not_evaluated"
+    STALE = "stale"
+    INCOMPARABLE = "incomparable"
+    MISSING = "missing"
+    UNKNOWN = "unknown"
+
+
+_STATUS_TOKENS = {
+    "blocked": FailureReaderState.BLOCKED,
+    "not_evaluated": FailureReaderState.NOT_EVALUATED,
+    "not-evaluated": FailureReaderState.NOT_EVALUATED,
+    "unevaluated": FailureReaderState.NOT_EVALUATED,
+    "stale": FailureReaderState.STALE,
+    "incomparable": FailureReaderState.INCOMPARABLE,
+    "missing": FailureReaderState.MISSING,
+}
+_SUCCESS_TOKENS = frozenset({"success", "succeeded", "passed", "pass", "accepted", "qualified", "completed"})
+_FAILURE_TOKENS = frozenset({"failure", "failed", "rejected", "error", "execution_error", "execution-error"})
+
+
+def _mapping(value: object) -> Mapping[str, object] | None:
+    return cast(Mapping[str, object], value) if isinstance(value, Mapping) else None
+
+
+def _sequence(value: object) -> tuple[object, ...]:
+    if value is None or isinstance(value, (str, bytes, bytearray)):
+        return ()
+    if isinstance(value, Mapping):
+        return (value,)
+    if isinstance(value, Sequence):
+        return tuple(value)
+    return ()
+
+
+def _text(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    return None
+
+
+def _first(item: Mapping[str, object], *keys: str) -> str | None:
+    for key in keys:
+        if (value := _text(item.get(key))) is not None:
+            return value
+    return None
+
+
+def _normalise(value: object) -> str:
+    return (_text(value) or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _json_value(value: object) -> JSONValue:
+    try:
+        json.dumps(value, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError):
+        return None
+    return cast(JSONValue, value)
+
+
+def _reader_availability(model: ManagerReadModel) -> ReaderAvailability:
+    if model.availability.status is ReadModelStatus.KNOWN and not model.availability.complete:
+        if any(error.code == "not_evaluated" for error in model.errors):
+            return ReaderAvailability(
+                ReaderAvailabilityStatus.NOT_EVALUATED,
+                False,
+                model.availability.reason,
+            )
+        return ReaderAvailability(
+            ReaderAvailabilityStatus.KNOWN,
+            False,
+            model.availability.reason,
+            model.availability.retryable,
+        )
+    return ReaderAvailability.from_v0(model.availability)
+
+
+def _gap_kind(status: ReaderAvailabilityStatus) -> ClaimKind:
+    if status in {ReaderAvailabilityStatus.BLOCKED, ReaderAvailabilityStatus.INTEGRITY_FAILURE}:
+        return ClaimKind.BLOCKED
+    if status is ReaderAvailabilityStatus.STALE:
+        return ClaimKind.STALE
+    if status is ReaderAvailabilityStatus.INCOMPARABLE:
+        return ClaimKind.INCOMPARABLE
+    return ClaimKind.MISSING
+
+
+def _source_ids(raw: Mapping[str, object]) -> tuple[str, ...]:
+    values: list[object] = []
+    for key in (
+        "source_id",
+        "source_ref",
+        "source_refs",
+        "source_ids",
+        "sources",
+        "references",
+        "lineage",
+    ):
+        if key not in raw:
+            continue
+        value = raw[key]
+        if isinstance(value, Mapping):
+            values.extend(value.values() if not any(name in value for name in ("source_id", "record_id", "id")) else (value,))
+        else:
+            values.extend(_sequence(value))
+    result: list[str] = []
+    for value in values:
+        item = _mapping(value)
+        source_id = _first(item, "source_id", "source_ref", "source", "record_id", "id") if item else _text(value)
+        if source_id is not None and source_id not in result:
+            result.append(source_id)
+    return tuple(result)
+
+
+def _state(raw: Mapping[str, object], model: ManagerReadModel) -> FailureReaderState:
+    status = _normalise(_first(raw, "reader_status", "record_status", "status", "state"))
+    if status in _STATUS_TOKENS:
+        return _STATUS_TOKENS[status]
+    outcome = _normalise(_first(raw, "outcome", "outcome_state", "result", "failure_outcome"))
+    if outcome in _SUCCESS_TOKENS:
+        return FailureReaderState.SUCCESS
+    if outcome in _FAILURE_TOKENS:
+        return FailureReaderState.FAILURE
+    source_status = model.availability.status
+    if source_status is ReadModelStatus.BLOCKED:
+        return FailureReaderState.BLOCKED
+    if source_status is ReadModelStatus.STALE:
+        return FailureReaderState.STALE
+    if source_status is ReadModelStatus.INCOMPARABLE:
+        return FailureReaderState.INCOMPARABLE
+    if source_status is ReadModelStatus.KNOWN and any(error.code == "not_evaluated" for error in model.errors):
+        return FailureReaderState.NOT_EVALUATED
+    return FailureReaderState.MISSING if not outcome else FailureReaderState.UNKNOWN
+
+
+def _status_for_state(state: FailureReaderState) -> ReaderAvailabilityStatus:
+    return {
+        FailureReaderState.BLOCKED: ReaderAvailabilityStatus.BLOCKED,
+        FailureReaderState.NOT_EVALUATED: ReaderAvailabilityStatus.NOT_EVALUATED,
+        FailureReaderState.STALE: ReaderAvailabilityStatus.STALE,
+        FailureReaderState.INCOMPARABLE: ReaderAvailabilityStatus.INCOMPARABLE,
+        FailureReaderState.MISSING: ReaderAvailabilityStatus.MISSING,
+        FailureReaderState.UNKNOWN: ReaderAvailabilityStatus.MISSING,
+    }.get(state, ReaderAvailabilityStatus.KNOWN)
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryFailureReaderRecord:
+    """A layer-labelled record used by both Memory and Failure Reader paths."""
+
+    record_id: str
+    title: str
+    summary: str | None
+    layer: ReaderRecordLayer
+    state: FailureReaderState
+    source_ids: tuple[str, ...]
+    source_refs: tuple[SourceReference, ...]
+    raw: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def memory_id(self) -> str | None:
+        return self.record_id if self.layer is ReaderRecordLayer.FORMAL_MEMORY else None
+
+    @property
+    def failure_id(self) -> str | None:
+        return self.record_id if self.layer is ReaderRecordLayer.FAILURE_RECORD else None
+
+    @property
+    def pattern_id(self) -> str | None:
+        return self.record_id if self.layer is ReaderRecordLayer.GUI_DERIVED else None
+
+    @property
+    def is_gap(self) -> bool:
+        return self.state not in {FailureReaderState.SUCCESS, FailureReaderState.FAILURE, FailureReaderState.UNKNOWN}
+
+    @property
+    def derived(self) -> bool:
+        return self.layer is ReaderRecordLayer.GUI_DERIVED
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id,
+            "title": self.title,
+            "summary": self.summary,
+            "layer": self.layer.value,
+            "state": self.state.value,
+            "source_ids": list(self.source_ids),
+            "source_refs": [ref.to_dict() for ref in self.source_refs],
+        }
+
+
+MemoryReaderRecord = MemoryFailureReaderRecord
+FailureReaderRecord = MemoryFailureReaderRecord
+
+
+def _record(
+    raw: Mapping[str, object],
+    model: ManagerReadModel,
+    *,
+    layer: ReaderRecordLayer,
+    record_id: str,
+    title: str,
+    summary: str | None,
+) -> MemoryFailureReaderRecord:
+    return MemoryFailureReaderRecord(
+        record_id=record_id,
+        title=title,
+        summary=summary,
+        layer=layer,
+        state=_state(raw, model),
+        source_ids=_source_ids(raw),
+        source_refs=tuple(model.source_refs),
+        raw=raw,
+    )
+
+
+def _memory_record(entry: MemoryEntry, model: ManagerReadModel) -> MemoryFailureReaderRecord:
+    return _record(
+        entry.raw,
+        model,
+        layer=ReaderRecordLayer.FORMAL_MEMORY,
+        record_id=entry.memory_id,
+        title=entry.title,
+        summary=entry.safe_summary,
+    )
+
+
+def _failure_record(entry: FailureExperience, model: ManagerReadModel) -> MemoryFailureReaderRecord:
+    return _record(
+        entry.raw,
+        model,
+        layer=ReaderRecordLayer.FAILURE_RECORD,
+        record_id=entry.failure_id,
+        title=entry.title,
+        summary=entry.summary,
+    )
+
+
+def _pattern_record(pattern: FailurePattern, model: ManagerReadModel) -> MemoryFailureReaderRecord:
+    return _record(
+        pattern.raw,
+        model,
+        layer=ReaderRecordLayer.GUI_DERIVED,
+        record_id=pattern.pattern_id,
+        title=pattern.title,
+        summary=None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryReaderViewModel:
+    """Combined typed view preserving all three Memory/Failure layers."""
+
+    read_model: ManagerReadModel
+    memory_view: MemoryViewModel
+    failure_view: FailureViewModel
+    records: tuple[MemoryFailureReaderRecord, ...]
+
+    @classmethod
+    def from_read_model(cls, model: ManagerReadModel) -> MemoryReaderViewModel:
+        memory_view = MemoryViewModel.from_read_model(model)
+        failure_view = FailureViewModel.from_read_model(model)
+        records = tuple(
+            _memory_record(entry, model) for entry in memory_view.entries
+        ) + tuple(_failure_record(entry, model) for entry in failure_view.failures) + tuple(
+            _pattern_record(pattern, model) for pattern in failure_view.patterns
+        )
+        return cls(model, memory_view, failure_view, records)
+
+    @property
+    def formal_memory(self) -> tuple[MemoryEntry, ...]:
+        return self.memory_view.entries
+
+    @property
+    def failure_records(self) -> tuple[FailureExperience, ...]:
+        return self.failure_view.failures
+
+    @property
+    def derived_patterns(self) -> tuple[FailurePattern, ...]:
+        return self.failure_view.patterns
+
+    @property
+    def source_refs(self) -> tuple[SourceReference, ...]:
+        return self.read_model.source_refs
+
+    @property
+    def empty(self) -> bool:
+        return not self.records
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "formal_memory": [entry.to_dict() for entry in self.formal_memory],
+            "failure_records": [entry.to_dict() for entry in self.failure_records],
+            "derived_patterns": [pattern.to_dict() for pattern in self.derived_patterns],
+            "records": [record.to_dict() for record in self.records],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FailureReaderViewModel:
+    """Failure-focused view with formal memory and Derived kept addressable."""
+
+    read_model: ManagerReadModel
+    failure_view: FailureViewModel
+    records: tuple[MemoryFailureReaderRecord, ...]
+
+    @classmethod
+    def from_read_model(cls, model: ManagerReadModel) -> FailureReaderViewModel:
+        failure_view = FailureViewModel.from_read_model(model)
+        records = tuple(_failure_record(entry, model) for entry in failure_view.failures)
+        return cls(model, failure_view, records)
+
+    @property
+    def formal_memory(self) -> tuple[FailureExperience, ...]:
+        return self.failure_view.memory_entries
+
+    @property
+    def derived_patterns(self) -> tuple[FailurePattern, ...]:
+        return self.failure_view.patterns
+
+    @property
+    def source_refs(self) -> tuple[SourceReference, ...]:
+        return self.read_model.source_refs
+
+    @property
+    def empty(self) -> bool:
+        return not self.records and not self.formal_memory and not self.derived_patterns
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "formal_memory": [entry.to_dict() for entry in self.formal_memory],
+            "failure_records": [record.to_dict() for record in self.records],
+            "derived_patterns": [pattern.to_dict() for pattern in self.derived_patterns],
+        }
+
+
+MemoryFailureReaderViewModel = MemoryReaderViewModel
+
+
+def _claim(
+    model: ManagerReadModel,
+    claim_id: str,
+    value: JSONValue,
+    *,
+    kind: ClaimKind,
+    status: ReaderAvailabilityStatus,
+    rule: str | None = None,
+    complete: bool = True,
+) -> ReaderClaim | None:
+    refs = tuple(model.source_refs)
+    if not refs:
+        return None
+    source_ids = tuple(ref.source_id for ref in refs)
+    derived = kind in {ClaimKind.DERIVED, ClaimKind.INTERPRETED}
+    derivation = Derivation(
+        "derived" if derived else "direct",
+        rule if derived else None,
+        source_ids,
+        MEMORY_FAILURE_READER_VERSION if derived else "v0",
+    )
+    return ReaderClaim(
+        claim_id,
+        kind,
+        refs,
+        derivation,
+        ReaderAvailability(status, complete, model.availability.reason, model.availability.retryable),
+        cast(FrozenJSON, value),
+    )
+
+
+def _scope_gap(model: ManagerReadModel, claim_id: str) -> ReaderClaim | None:
+    availability = _reader_availability(model)
+    status = availability.status
+    if status is ReaderAvailabilityStatus.KNOWN and availability.complete:
+        return None
+    if status is ReaderAvailabilityStatus.KNOWN:
+        status = ReaderAvailabilityStatus.MISSING
+    return _claim(
+        model,
+        claim_id,
+        "The requested Memory/Failure Reader scope is not complete.",
+        kind=_gap_kind(status),
+        status=status,
+        complete=False,
+    )
+
+
+def _projection(
+    model: ManagerReadModel,
+    records: Sequence[MemoryFailureReaderRecord],
+    *,
+    resource: str,
+    sample: bool,
+    sample_state: str | None,
+) -> ReaderProjection:
+    claims: list[ReaderClaim] = []
+    limitations: list[ReaderClaim] = []
+    unknowns: list[ReaderClaim] = []
+    scope_gap = _scope_gap(model, f"{resource}.read_scope")
+    if scope_gap is not None:
+        (unknowns if scope_gap.kind is ClaimKind.MISSING else limitations).append(scope_gap)
+    else:
+        for record in records:
+            state = record.state
+            status = _status_for_state(state)
+            if state in {FailureReaderState.BLOCKED, FailureReaderState.STALE, FailureReaderState.INCOMPARABLE, FailureReaderState.NOT_EVALUATED, FailureReaderState.MISSING}:
+                gap = _claim(
+                    model,
+                    f"{resource}.{record.layer.value}.{record.record_id}.status",
+                    record.record_id,
+                    kind=_gap_kind(status),
+                    status=status,
+                    complete=False,
+                )
+                if gap is not None:
+                    (unknowns if gap.kind is ClaimKind.MISSING else limitations).append(gap)
+                continue
+            kind = ClaimKind.DERIVED if record.derived else ClaimKind.KNOWN
+            fact = _claim(
+                model,
+                f"{resource}.{record.layer.value}.{record.record_id}",
+                _json_value(record.raw),
+                kind=kind,
+                status=ReaderAvailabilityStatus.DERIVED if record.derived else ReaderAvailabilityStatus.KNOWN,
+                rule=MEMORY_FAILURE_READER_RULE if record.derived else None,
+            )
+            if fact is not None:
+                claims.append(fact)
+            title = _claim(
+                model,
+                f"{resource}.{record.layer.value}.{record.record_id}.title",
+                record.title,
+                kind=ClaimKind.KNOWN,
+                status=ReaderAvailabilityStatus.KNOWN,
+            )
+            if title is not None:
+                claims.append(title)
+    if not claims and not limitations and not unknowns:
+        gap = _claim(
+            model,
+            f"{resource}.records",
+            "No record is published in this Reader scope.",
+            kind=ClaimKind.MISSING,
+            status=ReaderAvailabilityStatus.MISSING,
+            complete=False,
+        )
+        if gap is not None:
+            unknowns.append(gap)
+    ids = tuple(claim.claim_id for claim in (*claims, *limitations, *unknowns))
+    summary = ReaderSummary(f"reader.{resource}.summary", ids, {"n": len(ids)}) if ids else None
+    projection = project_read_model(
+        model,
+        summary=summary,
+        claims=tuple(claims),
+        limitations=tuple(limitations),
+        unknowns=tuple(unknowns),
+    )
+    if sample and projection.source_refs and all(ref.locator.startswith("fixture://") for ref in projection.source_refs):
+        projection = replace(projection, sample_data=SampleData(sample_state or "complete", resource))
+    return projection
+
+
+def project_memory_reader(
+    model: ManagerReadModel,
+    *,
+    sample: bool = False,
+    sample_state: str | None = None,
+) -> ReaderProjection:
+    view = MemoryReaderViewModel.from_read_model(model)
+    return _projection(model, view.records, resource=MEMORY_READER_RESOURCE, sample=sample, sample_state=sample_state)
+
+
+def project_failure_reader(
+    model: ManagerReadModel,
+    *,
+    sample: bool = False,
+    sample_state: str | None = None,
+) -> ReaderProjection:
+    view = FailureReaderViewModel.from_read_model(model)
+    records = tuple(view.records) + tuple(_pattern_record(pattern, model) for pattern in view.derived_patterns)
+    return _projection(model, records, resource=FAILURE_READER_RESOURCE, sample=sample, sample_state=sample_state)
+
+
+def build_memory_reader_fixture(state: FixtureState | str = FixtureState.COMPLETE) -> ManagerReadModel:
+    return build_fixture(state, resource=MEMORY_READER_RESOURCE)
+
+
+def build_failure_reader_fixture(state: FixtureState | str = FixtureState.COMPLETE) -> ManagerReadModel:
+    return build_fixture(state, resource=MEMORY_READER_RESOURCE)
+
+
+def _record_source_links(record: MemoryFailureReaderRecord, model: ManagerReadModel, *, translator: Translator) -> str:
+    if not record.source_ids:
+        return f'<span class="memory-reader-source-missing">{translator.t("reader.memory.missing_source")}</span>'
+    index = {ref.source_id: ref for ref in model.source_refs}
+    rendered: list[str] = []
+    for source_id in record.source_ids:
+        source = index.get(source_id)
+        if source is None:
+            rendered.append(f'<span class="memory-reader-source-unconfirmed" translate="no">{escape(source_id)}</span> · {translator.t("reader.memory.missing_source")}' )
+            continue
+        target = public_locator(source.locator)
+        label = f'<span translate="no">{escape(source.source_id)}</span>'
+        if target:
+            rendered.append(f'<a class="memory-reader-source-link" href="{escape(target, quote=True)}">{label}</a>')
+        else:
+            rendered.append(f'<span class="memory-reader-source-unconfirmed">{label} · {translator.t("reader.memory.missing_source")}</span>')
+    return " · ".join(rendered)
+
+
+def _record_link(record: MemoryFailureReaderRecord, context: QueryContext) -> str:
+    if record.layer is ReaderRecordLayer.FORMAL_MEMORY:
+        return context_link(context, view="memory", memory_id=record.record_id)
+    if record.layer is ReaderRecordLayer.GUI_DERIVED:
+        return context_link(context, view="failure-patterns", pattern_id=record.record_id)
+    return context_link(context, view="memory-failures", failure_id=record.record_id)
+
+
+def _render_record(record: MemoryFailureReaderRecord, model: ManagerReadModel, *, context: QueryContext, translator: Translator) -> str:
+    claim_kind = "derived" if record.derived else "known"
+    claim_copy = translator.html(
+        "reader.claim.derived" if record.derived else "reader.claim.known"
+    )
+    state_copy = translator.html(f"reader.failure.state.{record.state.value}")
+    layer_copy = translator.html(f"reader.memory.layer.{record.layer.value}")
+    title = f'<span data-owner-text="true" translate="no">{translator.source_text(record.title)}</span>'
+    summary = (
+        f'<p class="memory-reader-record-summary" data-owner-text="true" translate="no">{translator.source_text(record.summary)}</p>'
+        if record.summary is not None
+        else ""
+    )
+    return (
+        f'<article class="memory-reader-record" data-record-id="{escape(record.record_id, quote=True)}" data-record-layer="{record.layer.value}" data-record-state="{record.state.value}" data-claim-kind="{claim_kind}">'
+        f'<h3><a class="failure-reader-detail-link" href="{escape(_record_link(record, context), quote=True)}">{title}</a></h3>'
+        f'<p class="memory-reader-layer"><strong>{escape(translator.t("reader.memory.layer_label"))}</strong> {layer_copy}</p>'
+        f'<p class="memory-reader-state"><strong>{escape(translator.t("reader.failure.state_label"))}</strong> {state_copy}</p>'
+        f'{summary}<p class="memory-reader-claim-explanation">{claim_copy}</p>'
+        f'<p class="memory-reader-sources"><strong>{escape(translator.t("reader.source"))}</strong> {_record_source_links(record, model, translator=translator)}</p>'
+        f'<p class="memory-reader-record-link"><a href="{escape(_record_link(record, context), quote=True)}">{escape(translator.t("reader.memory.open_record"))}</a></p></article>'
+    )
+
+
+def _render_claims(projection: ReaderProjection, *, translator: Translator) -> str:
+    if not projection.claims:
+        return f'<p class="memory-reader-no-claims">{escape(translator.t("reader.no_conclusion"))}</p>'
+    return "".join(
+        f'<li data-claim-id="{escape(claim.claim_id, quote=True)}" data-claim-kind="{claim.kind.value}">{render_claim_explanation(translator, claim, as_html=True)}</li>'
+        for claim in projection.claims
+    )
+
+
+def _render_gaps(projection: ReaderProjection, *, translator: Translator) -> str:
+    gaps = (*projection.limitations, *projection.unknowns)
+    if not gaps:
+        return f'<p class="memory-reader-no-gaps">{escape(translator.t("reader.no_gaps"))}</p>'
+    return "".join(
+        f'<li data-gap-kind="{claim.kind.value}" data-availability="{claim.availability.status.value}">{render_claim_explanation(translator, claim, as_html=True)}</li>'
+        for claim in gaps
+    )
+
+
+def _render_page(
+    view: MemoryReaderViewModel | FailureReaderViewModel,
+    projection: ReaderProjection,
+    *,
+    context: QueryContext,
+    translator: Translator,
+    failure_only: bool,
+    page: ReaderPage,
+) -> str:
+    model = view.read_model
+    records = view.records
+    if failure_only and isinstance(view, FailureReaderViewModel):
+        records = tuple(view.records) + tuple(_pattern_record(pattern, model) for pattern in view.derived_patterns)
+    title_key = "reader.failure.title" if failure_only else "reader.memory.title"
+    banner = ""
+    if projection.sample_data is not None:
+        banner = f'<aside class="memory-reader-sample-banner" data-sample-banner="fixture" role="note">{escape(translator.t("reader.sample.banner.fixed"))}</aside>'
+    details = (
+        f'<section class="memory-reader-records" aria-labelledby="memory-reader-records-title">'
+        f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>'
+        f'{"".join(_render_record(record, model, context=context, translator=translator) for record in records)}'
+        f'</section>'
+        f'<details class="memory-reader-raw"><summary>{escape(translator.t("reader.raw_source"))}</summary>'
+        f'<pre translate="no">{translator.source_text(model.to_json())}</pre></details>'
+    )
+    surface = render_reader_surface(
+        projection,
+        page=page,
+        query_context=context,
+        translator=translator,
+    )
+    return (
+        f'<section class="memory-failure-reader-page" data-reader-hook="memory-failure-reader" '
+        f'data-integration-hook="{FAILURE_READER_HOOK if failure_only else MEMORY_READER_HOOK}" '
+        f'data-reader-resource="{"failure" if failure_only else "memory"}">'
+        f'<h1>{escape(translator.t(title_key))}</h1>{banner}{surface}{details}</section>'
+    )
+
+
+def render_memory_reader(
+    view_or_model: MemoryReaderViewModel | ManagerReadModel,
+    *,
+    query_context: QueryContext = None,
+    translator: Translator | None = None,
+    projection: ReaderProjection | None = None,
+) -> str:
+    selected = translator or Translator()
+    view = view_or_model if isinstance(view_or_model, MemoryReaderViewModel) else MemoryReaderViewModel.from_read_model(view_or_model)
+    return _render_page(
+        view,
+        projection or project_memory_reader(view.read_model),
+        context=query_context,
+        translator=selected,
+        failure_only=False,
+        page=ReaderPage.MEMORY,
+    )
+
+
+def render_failure_reader(
+    view_or_model: FailureReaderViewModel | ManagerReadModel,
+    *,
+    query_context: QueryContext = None,
+    translator: Translator | None = None,
+    projection: ReaderProjection | None = None,
+    page: ReaderPage = ReaderPage.FAILURE,
+) -> str:
+    selected = translator or Translator()
+    view = view_or_model if isinstance(view_or_model, FailureReaderViewModel) else FailureReaderViewModel.from_read_model(view_or_model)
+    return _render_page(
+        view,
+        projection or project_failure_reader(view.read_model),
+        context=query_context,
+        translator=selected,
+        failure_only=True,
+        page=page,
+    )
+
+
+def render_failure_patterns_reader(
+    view_or_model: FailureReaderViewModel | ManagerReadModel,
+    *,
+    query_context: QueryContext = None,
+    translator: Translator | None = None,
+    projection: ReaderProjection | None = None,
+) -> str:
+    return render_failure_reader(
+        view_or_model,
+        query_context=query_context,
+        translator=translator,
+        projection=projection,
+        page=ReaderPage.FAILURE_PATTERNS,
+    )
+
+
+# Discoverable aliases parallel the Strategy/Genome Reader seam.
+project_memory_failure_reader = project_memory_reader
+render_memory_failure_reader = render_failure_reader
+render_memory_failure_reader_view = render_failure_reader
+render_failure_reader_view = render_failure_reader
+MemoryFailureReaderView = MemoryReaderViewModel
+FailureReaderView = FailureReaderViewModel
+
+__all__ = [
+    "FAILURE_READER_HOOK",
+    "FAILURE_READER_RESOURCE",
+    "FailureReaderRecord",
+    "FailureReaderState",
+    "FailureReaderView",
+    "FailureReaderViewModel",
+    "MEMORY_FAILURE_READER_RULE",
+    "MEMORY_FAILURE_READER_VERSION",
+    "MEMORY_READER_HOOK",
+    "MEMORY_READER_RESOURCE",
+    "MemoryFailureReaderRecord",
+    "MemoryFailureReaderView",
+    "MemoryFailureReaderViewModel",
+    "MemoryReaderRecord",
+    "MemoryReaderViewModel",
+    "ReaderRecordLayer",
+    "build_failure_reader_fixture",
+    "build_memory_reader_fixture",
+    "project_failure_reader",
+    "project_memory_failure_reader",
+    "project_memory_reader",
+    "render_failure_patterns_reader",
+    "render_failure_reader",
+    "render_failure_reader_view",
+    "render_memory_failure_reader",
+    "render_memory_failure_reader_view",
+    "render_memory_reader",
+]

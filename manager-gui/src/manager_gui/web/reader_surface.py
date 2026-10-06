@@ -37,6 +37,9 @@ class ReaderPage(StrEnum):
     CONDITIONS = "conditions"
     REVISIONS = "revisions"
     COMPARISON = "comparison"
+    MEMORY = "memory"
+    FAILURE = "failure"
+    FAILURE_PATTERNS = "failure-patterns"
 
 
 ReaderQueryContext = str | Mapping[str, object] | None
@@ -95,6 +98,24 @@ _PAGE_COPY: Final[dict[ReaderPage, dict[str, str]]] = {
         "confirmed": "reader.comparison.confirmed",
         "unknown": "reader.comparison.unknown",
         "why": "reader.comparison.why",
+    },
+    ReaderPage.MEMORY: {
+        "question": "reader.memory.question",
+        "confirmed": "reader.memory.confirmed",
+        "unknown": "reader.memory.unknown",
+        "why": "reader.memory.why",
+    },
+    ReaderPage.FAILURE: {
+        "question": "reader.failure.question",
+        "confirmed": "reader.failure.confirmed",
+        "unknown": "reader.failure.unknown",
+        "why": "reader.failure.why",
+    },
+    ReaderPage.FAILURE_PATTERNS: {
+        "question": "reader.failure.question",
+        "confirmed": "reader.failure.confirmed",
+        "unknown": "reader.failure.unknown",
+        "why": "reader.failure.why",
     },
 }
 

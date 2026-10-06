@@ -468,6 +468,57 @@ ENTRIES: Mapping[str, M] = {
     "label.reader_mode.reader": M("阅读模式", "Reader"),
     "label.reader_mode.expert": M("专业模式", "Expert"),
     "label.reader_mode.raw": M("原始模式", "Raw"),
+    # R4 Memory/Failure Reader copy. Identifiers, reasons and owner text stay
+    # runtime values and are never placed in this catalogue.
+    "reader.memory.title": M("研究记忆阅读器", "Research Memory Reader"),
+    "reader.memory.question": M(
+        "当前范围明确记录了哪些研究记忆、关联和政策？",
+        "Which research memories, associations, and policies are explicitly recorded in this scope?",
+    ),
+    "reader.memory.confirmed": M(
+        "正式研究记忆、普通失败记录和 GUI 派生模式保持为不同层次。",
+        "Formal Research Memory, ordinary failure records, and GUI-derived patterns remain separate layers.",
+    ),
+    "reader.memory.unknown": M(
+        "未记录、未评估或无法追溯的内容不会被补成结论。",
+        "Unrecorded, unevaluated, or untraceable content is not filled in as a conclusion.",
+    ),
+    "reader.memory.why": M(
+        "每项内容只来自公开读取模型中明确命名的记录和来源。",
+        "Each item comes only from explicitly named records and sources in the public read model.",
+    ),
+    "reader.failure.title": M("失败追溯阅读器", "Failure Trace Reader"),
+    "reader.failure.question": M(
+        "哪些失败经验被明确记录，状态和来源能追溯到哪里？",
+        "Which failure experiences are explicitly recorded, and how far can their state and sources be traced?",
+    ),
+    "reader.failure.confirmed": M(
+        "成功、失败、阻塞、未评估、过时和不可比较保持各自语义。",
+        "Success, failure, blocked, not evaluated, stale, and incomparable remain distinct semantics.",
+    ),
+    "reader.failure.unknown": M(
+        "没有来源或没有明确谱系的记录不能被猜测关联。",
+        "Records without sources or explicit lineage are not linked by inference.",
+    ),
+    "reader.failure.why": M(
+        "失败记录、正式记忆和派生模式分别保留其属主边界与派生规则。",
+        "Failure records, Formal Memory, and Derived patterns retain their respective owner boundaries and rules.",
+    ),
+    "reader.memory.missing_source": M("未记录 / 未确认来源", "Missing / Unconfirmed source"),
+    "reader.memory.open_record": M("打开记录", "Open record"),
+    "reader.memory.layer_label": M("记录层", "Record layer"),
+    "reader.failure.state_label": M("记录状态", "Record state"),
+    "reader.memory.layer.formal_research_memory": M("正式研究记忆", "Formal Research Memory"),
+    "reader.memory.layer.failure_record": M("普通失败记录", "Ordinary failure record"),
+    "reader.memory.layer.gui_derived": M("GUI 派生模式", "GUI-derived pattern"),
+    "reader.failure.state.success": M("成功", "Success"),
+    "reader.failure.state.failure": M("失败", "Failure"),
+    "reader.failure.state.blocked": M("已阻塞", "Blocked"),
+    "reader.failure.state.not_evaluated": M("未评估", "Not evaluated"),
+    "reader.failure.state.stale": M("已过时", "Stale"),
+    "reader.failure.state.incomparable": M("不可比较", "Incomparable"),
+    "reader.failure.state.missing": M("未记录", "Missing"),
+    "reader.failure.state.unknown": M("未知", "Unknown"),
 }
 
 
