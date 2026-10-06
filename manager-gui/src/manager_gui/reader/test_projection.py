@@ -57,9 +57,12 @@ def test_owner_text_is_preserved_and_summary_references_typed_claim() -> None:
     model = build_fixture("complete")
     text = "  owner 原文 <b>& test</b>\n"
     claim = ReaderClaim(
-        "owner-note", ClaimKind.OWNER_TEXT, model.source_refs,
+        "owner-note",
+        ClaimKind.OWNER_TEXT,
+        model.source_refs,
         Derivation("direct", inputs=(model.source_refs[0].source_id,)),
-        ReaderAvailability(ReaderAvailabilityStatus.KNOWN, True), text,
+        ReaderAvailability(ReaderAvailabilityStatus.KNOWN, True),
+        text,
     )
     summary = ReaderSummary("reader.summary.source_note", (claim.claim_id,), {"count": 1})
     projection = project_read_model(model, claims=(claim,), summary=summary)
@@ -83,7 +86,9 @@ def test_missing_and_blocked_availability_never_infers_an_outcome(state: str) ->
 def test_real_owner_scope_rejects_inherited_sample_metadata() -> None:
     model = build_fixture("complete")
     source = SourceReference("real-record", "owner", "record", "https://owner.invalid/record/1")
-    real = replace(model, source_refs=(source,), derivation=Derivation("direct", inputs=("real-record",)))
+    real = replace(
+        model, source_refs=(source,), derivation=Derivation("direct", inputs=("real-record",))
+    )
     projection = project_read_model(real)
     with pytest.raises(ValueError, match="cannot inherit sample"):
         replace(projection, sample_data=SampleData("complete", "atlas"))

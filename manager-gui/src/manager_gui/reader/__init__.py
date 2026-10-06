@@ -26,9 +26,9 @@ from .models import (
     project_read_model,
 )
 from .provider import (
-    ReadOnlyReaderProjectionProvider,
     ReaderProjectionProvider,
     ReaderProvider,
+    ReadOnlyReaderProjectionProvider,
     V0ReaderProjectionProvider,
     project_v0,
 )
@@ -45,12 +45,12 @@ __all__ = [
     "ProjectionMode",
     "ProjectionReference",
     "RawSource",
-    "ReaderFixtureProvider",
-    "ReaderFixtureState",
     "ReadOnlyReaderProjectionProvider",
     "ReaderAvailability",
     "ReaderAvailabilityStatus",
     "ReaderClaim",
+    "ReaderFixtureProvider",
+    "ReaderFixtureState",
     "ReaderProjection",
     "ReaderProjectionProvider",
     "ReaderProvider",
@@ -60,6 +60,6 @@ __all__ = [
     "V0ReaderProjectionProvider",
     "build_reader_fixture",
     "project_read_model",
-    "reader_fixture_provider",
     "project_v0",
+    "reader_fixture_provider",
 ]

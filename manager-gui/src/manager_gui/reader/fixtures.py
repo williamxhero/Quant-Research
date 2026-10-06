@@ -10,9 +10,9 @@ from manager_gui.fixtures import FixtureState, build_fixture
 from manager_gui.models import Derivation, ManagerReadModel
 
 from .models import (
+    READER_PROJECTION_VERSION,
     ClaimKind,
     FrozenJSON,
-    READER_PROJECTION_VERSION,
     ReaderAvailability,
     ReaderAvailabilityStatus,
     ReaderClaim,
@@ -80,25 +80,39 @@ def _projection_claims(
 ) -> tuple[tuple[ReaderClaim, ...], tuple[ReaderClaim, ...], tuple[ReaderClaim, ...]]:
     if state in {ReaderFixtureState.COMPLETE, ReaderFixtureState.PARTIAL}:
         known = _claim(
-            model, "fixture-source-records", ClaimKind.KNOWN,
-            ReaderAvailabilityStatus.KNOWN, complete=model.availability.complete,
-            value={"resource": "fixture", "source_ids": [ref.source_id for ref in model.source_refs]},
+            model,
+            "fixture-source-records",
+            ClaimKind.KNOWN,
+            ReaderAvailabilityStatus.KNOWN,
+            complete=model.availability.complete,
+            value={
+                "resource": "fixture",
+                "source_ids": [ref.source_id for ref in model.source_refs],
+            },
         )
         records = model.data.get("records") if isinstance(model.data, dict) else None
         derived = _claim(
-            model, "fixture-record-count", ClaimKind.DERIVED,
-            ReaderAvailabilityStatus.DERIVED, complete=True,
+            model,
+            "fixture-record-count",
+            ClaimKind.DERIVED,
+            ReaderAvailabilityStatus.DERIVED,
+            complete=True,
             value=len(records) if isinstance(records, list) else 0,
             rule="reader.fixture.record-count",
         )
         interpreted = _claim(
-            model, "fixture-source-interpretation", ClaimKind.INTERPRETED,
-            ReaderAvailabilityStatus.INTERPRETED, complete=True,
+            model,
+            "fixture-source-interpretation",
+            ClaimKind.INTERPRETED,
+            ReaderAvailabilityStatus.INTERPRETED,
+            complete=True,
             value="fixture-source-published-interpretation",
             rule="reader.fixture.interpretation",
         )
         unknown = _claim(
-            model, "fixture-scope-unknown", ClaimKind.MISSING,
+            model,
+            "fixture-scope-unknown",
+            ClaimKind.MISSING,
             ReaderAvailabilityStatus.MISSING,
             value=None,
         )
@@ -106,12 +120,12 @@ def _projection_claims(
             item for item in (known, derived, interpreted) if item is not None
         )
         limitations: tuple[ReaderClaim, ...] = ()
-        unknowns: tuple[ReaderClaim, ...] = tuple(
-            item for item in (unknown,) if item is not None
-        )
+        unknowns: tuple[ReaderClaim, ...] = tuple(item for item in (unknown,) if item is not None)
         if state is ReaderFixtureState.PARTIAL:
             limitation = _claim(
-                model, "fixture-record-types-out-of-scope", ClaimKind.MISSING,
+                model,
+                "fixture-record-types-out-of-scope",
+                ClaimKind.MISSING,
                 ReaderAvailabilityStatus.MISSING,
             )
             limitations = tuple(item for item in (limitation,) if item is not None)
@@ -131,8 +145,11 @@ def _projection_claims(
     elif state is ReaderFixtureState.BLOCKED or state is ReaderFixtureState.INTEGRITY_FAILURE:
         kind = ClaimKind.BLOCKED
         target = "limitations"
-    elif state in {ReaderFixtureState.STALE, ReaderFixtureState.CURSOR_EXPIRED,
-                   ReaderFixtureState.SNAPSHOT_DRIFT}:
+    elif state in {
+        ReaderFixtureState.STALE,
+        ReaderFixtureState.CURSOR_EXPIRED,
+        ReaderFixtureState.SNAPSHOT_DRIFT,
+    }:
         kind = ClaimKind.STALE
         target = "limitations"
     else:
@@ -141,8 +158,10 @@ def _projection_claims(
     gap = _claim(model, f"fixture-{kind.value.lower()}-scope", kind, status)
     if gap is None:
         return (), (), ()
-    return ((gap,), (), ()) if target == "claims" else (
-        ((), (gap,), ()) if target == "limitations" else ((), (), (gap,))
+    return (
+        ((gap,), (), ())
+        if target == "claims"
+        else (((), (gap,), ()) if target == "limitations" else ((), (), (gap,)))
     )
 
 

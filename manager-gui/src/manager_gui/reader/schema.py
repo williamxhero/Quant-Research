@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Final
 
 from .models import (
-    ClaimKind,
     READER_PROJECTION_SCHEMA,
+    ClaimKind,
     ReaderAvailabilityStatus,
 )
 
@@ -51,7 +51,12 @@ _AVAILABILITY: Final[dict[str, object]] = {
 _CLAIM: Final[dict[str, object]] = {
     "type": "object",
     "required": [
-        "claim_id", "kind", "source_refs", "derivation", "availability", "value",
+        "claim_id",
+        "kind",
+        "source_refs",
+        "derivation",
+        "availability",
+        "value",
         "explanation_key",
     ],
     "properties": {
@@ -72,9 +77,18 @@ _SUMMARY: Final[dict[str, object]] = {
     "properties": {
         "template_key": {"type": "string", "minLength": 1},
         "claim_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
-        "params": {"type": "object", "additionalProperties": {"type": [
-            "boolean", "integer", "number", "string", "null",
-        ]}},
+        "params": {
+            "type": "object",
+            "additionalProperties": {
+                "type": [
+                    "boolean",
+                    "integer",
+                    "number",
+                    "string",
+                    "null",
+                ]
+            },
+        },
     },
     "additionalProperties": False,
 }
@@ -109,8 +123,19 @@ READER_PROJECTION_JSON_SCHEMA: Final[dict[str, object]] = {
     "title": "Manager GUI ReaderProjection v1",
     "type": "object",
     "required": [
-        "schema", "data", "summary", "claims", "limitations", "unknowns", "source_refs",
-        "as_of", "snapshot_token", "derivation", "availability", "raw_source", "sample_data",
+        "schema",
+        "data",
+        "summary",
+        "claims",
+        "limitations",
+        "unknowns",
+        "source_refs",
+        "as_of",
+        "snapshot_token",
+        "derivation",
+        "availability",
+        "raw_source",
+        "sample_data",
     ],
     "properties": {
         "schema": {"const": READER_PROJECTION_SCHEMA},
