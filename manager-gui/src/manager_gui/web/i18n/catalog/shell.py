@@ -59,4 +59,9 @@ ENTRIES: Mapping[str, M] = {
     "shell.language": M("语言", "Language"),
     "shell.language_zh": M("中文", "中文"),
     "shell.language_en": M("English", "English"),
+    "shell.reader_mode_aria": M("阅读模式切换", "Reader modes"),
+    "shell.reader_mode_reader": M("阅读模式", "Reader"),
+    "shell.reader_mode_expert": M("专业模式", "Expert"),
+    "shell.reader_mode_raw": M("原始模式", "Raw"),
+    "shell.sample_data_banner": M("样例数据，不代表真实研究结果", "Sample data; not a real research result."),
 }

@@ -18,6 +18,7 @@ from manager_gui import (
     fixture_provider,
     public_provider_methods,
 )
+from manager_gui.reader import ProjectionMode
 from manager_gui.testing.i18n import assert_shared_shell_i18n
 from manager_gui.web import (
     DisplayState,
@@ -123,6 +124,76 @@ def test_locale_request_state_normalizes_aliases_and_removes_invalid_context() -
     english_default = ManagerGUIApp(default_locale="en")
     assert english_default.request_state("/").locale is Locale.EN
     assert english_default.request_state("/?lang=fr").locale is Locale.EN
+
+
+def test_reader_mode_state_is_global_and_round_trips_repeated_context() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    url = (
+        "/?view=atlas&mode=expert&lang=en&fixture=complete&scope=A0&root=record-1"
+        "&filter=state%3Dknown&filter=owner%3Dfixture&snapshot=snap-1"
+    )
+
+    state = app.request_state(url)
+
+    assert state.mode is ProjectionMode.EXPERT
+    assert state.lang is Locale.EN
+    assert state.context.count(("filter", "state=known")) == 1
+    assert state.context.count(("filter", "owner=fixture")) == 1
+    assert state.query_pairs().count(("filter", "state=known")) == 1
+    assert state.query_pairs().count(("filter", "owner=fixture")) == 1
+    assert ("mode", "expert") in state.query_pairs()
+
+    default = app.request_state("/?view=atlas&fixture=complete")
+    assert default.mode is ProjectionMode.READER
+    assert ("mode", "reader") in default.query_pairs()
+
+
+def test_reader_mode_switch_and_fixture_banner_are_in_shell_without_javascript() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    url = (
+        "/?view=atlas&mode=expert&lang=en&fixture=complete&scope=A0&root=record-1"
+        "&filter=state%3Dknown&filter=owner%3Dfixture&snapshot=snap-1"
+    )
+    document = app.render(url)
+
+    assert 'class="reader-mode-switch"' in document
+    assert document.count('class="reader-mode-link"') == 3
+    assert 'data-reader-mode="expert"' in document
+    assert 'aria-current="true"' in document
+    assert "Sample data; not a real research result." in document
+    assert 'data-sample-banner="fixture"' in document
+    assert "onclick" not in document
+
+    links = re.findall(r'class="reader-mode-link"[^>]+href="([^"]+)"', document)
+    assert len(links) == 3
+    for link in links:
+        decoded = unescape(link)
+        assert decoded.count("filter=") == 2
+        assert "lang=en" in decoded
+        assert "fixture=complete" in decoded
+        assert "scope=A0" in decoded
+        assert "root=record-1" in decoded
+        assert "snapshot=snap-1" in decoded
+
+
+def test_reader_modes_leave_raw_api_and_export_payloads_unchanged() -> None:
+    app = ManagerGUIApp(default_fixture=FixtureState.COMPLETE)
+    base = "/?view=atlas&fixture=complete&scope=A0&filter=state%3Dknown"
+
+    assert app.render_json(base) == app.render_json(base + "&mode=raw")
+    plain = json.loads(app.render_export(base))
+    raw = json.loads(app.render_export(base + "&mode=raw"))
+    assert raw == plain
+    assert "mode" not in raw["query_params"]
+
+
+def test_owner_provider_does_not_receive_fixture_banner() -> None:
+    class OwnerProvider:
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            return fixture_provider("complete").read(resource, snapshot_token=snapshot_token)
+
+    document = ManagerGUIApp(OwnerProvider()).render("/?view=atlas&mode=reader")
+    assert 'data-sample-banner="fixture"' not in document
 
 
 def test_shell_language_switcher_and_explicit_search_state() -> None:
