@@ -18,6 +18,8 @@ src/quantresearch_acceptance/*
 !manager-gui/src/
 !manager-gui/src/manager_gui/
 !manager-gui/src/manager_gui/*.py
+!manager-gui/src/manager_gui/reader/
+!manager-gui/src/manager_gui/reader/*.py
 !manager-gui/src/manager_gui/web/
 !manager-gui/src/manager_gui/web/*.py
 
