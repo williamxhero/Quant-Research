@@ -114,7 +114,8 @@ from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
-from .search import SEARCH_RESOURCE, render_search_view
+from .search import SEARCH_RESOURCE
+from .search_reader import project_search_reader, render_search_reader
 from .status import render_status_block
 from .strategy_reader import project_strategy_reader, render_strategy_reader
 
