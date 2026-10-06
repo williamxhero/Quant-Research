@@ -78,10 +78,12 @@ class ReaderTemplateParams:
     value: TemplateValue = None
 
     def __post_init__(self) -> None:
-        for name in ("fixture", "scope", "source_id", "text"):
+        for name in ("fixture", "scope", "source_id"):
             item = getattr(self, name)
             if item is not None and (not isinstance(item, str) or not item.strip()):
                 raise TypeError(f"{name} must be a non-empty string or None")
+        if self.text is not None and not isinstance(self.text, str):
+            raise TypeError("text must be source text or None")
         if self.n is not None and (not isinstance(self.n, int) or isinstance(self.n, bool)):
             raise TypeError("n must be an integer or None")
         if not isinstance(self.value, (bool, int, float, str, type(None))):
@@ -133,11 +135,11 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.derivation.detail": ReaderTemplateSpec(
             "reader.derivation.detail", ("source_id", "value"), source_refs=True
         ),
-        "reader.limitation.detail": ReaderTemplateSpec(
-            "reader.limitation.detail", ("value",), source_refs=True
+            "reader.limitation.detail": ReaderTemplateSpec(
+            "reader.limitation.detail", ("source_id", "value"), source_refs=True
         ),
         "reader.gap.detail": ReaderTemplateSpec(
-            "reader.gap.detail", ("value",), source_refs=True
+            "reader.gap.detail", ("source_id", "value"), source_refs=True
         ),
         "reader.summary.source_note": ReaderTemplateSpec(
             "reader.summary.source_note", ("text",)
@@ -183,8 +185,14 @@ ENTRIES: Mapping[str, M] = {
         "这项内容由已命名来源按规则 {value} 派生：{source_id}",
         "This item is derived from the named source by rule {value}: {source_id}",
     ),
-    "reader.limitation.detail": M("限制：{value}", "Limitation: {value}"),
-    "reader.gap.detail": M("知识缺口：{value}", "Knowledge gap: {value}"),
+    "reader.limitation.detail": M(
+        "限制（来源：{source_id}）：{value}",
+        "Limitation (source: {source_id}): {value}",
+    ),
+    "reader.gap.detail": M(
+        "知识缺口（来源：{source_id}）：{value}",
+        "Knowledge gap (source: {source_id}): {value}",
+    ),
     "reader.summary.source_note": M("来源说明：{text}", "Source note: {text}"),
     # Every key below is referenced by ReaderClaim.explanation_key.  None of
     # these messages turns an absence or interpretation into a success/failure.
