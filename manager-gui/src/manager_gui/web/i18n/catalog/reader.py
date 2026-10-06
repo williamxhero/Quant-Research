@@ -158,7 +158,8 @@ ENTRIES: Mapping[str, M] = {
     "reader.source.count": M(
         "当前范围有 {n} 条来源引用。数量不表示证据强度。",
         {
-            "one": "There is {n} source reference in this scope. The count is not evidence strength.",
+            "one": "There is {n} source reference in this scope. "
+            "The count is not evidence strength.",
             "other": "There are {n} source references in this scope. "
             "The count is not evidence strength.",
         },

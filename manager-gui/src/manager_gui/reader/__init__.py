@@ -33,6 +33,20 @@ from .provider import (
     project_v0,
 )
 from .schema import READER_PROJECTION_JSON_SCHEMA
+from .templates import (
+    ReaderSection,
+    ReaderTemplates,
+    preserve_claim_value,
+    preserve_owner_text,
+    render_claim_explanation,
+    render_derivation,
+    render_mode_label,
+    render_sample_banner,
+    render_section,
+    render_source_reference,
+    render_summary,
+    templates,
+)
 
 __all__ = [
     "READER_FIXTURE_STATES",
@@ -54,10 +68,22 @@ __all__ = [
     "ReaderProjection",
     "ReaderProjectionProvider",
     "ReaderProvider",
+    "ReaderSection",
     "ReaderSummary",
+    "ReaderTemplates",
     "SampleData",
     "TemplateValue",
     "V0ReaderProjectionProvider",
+    "preserve_claim_value",
+    "preserve_owner_text",
+    "render_claim_explanation",
+    "render_derivation",
+    "render_mode_label",
+    "render_sample_banner",
+    "render_section",
+    "render_source_reference",
+    "render_summary",
+    "templates",
     "build_reader_fixture",
     "project_read_model",
     "project_v0",
