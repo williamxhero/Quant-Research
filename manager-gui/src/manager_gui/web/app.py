@@ -111,11 +111,7 @@ from .navigation import (
 )
 from .portal import REPORT_SOURCE_RESOURCE
 from .portal_reader import project_portal_reader, render_portal_reader
-from .reader_shell import (
-    annotate_reader_mount,
-    reader_route,
-    render_unavailable_reader,
-)
+from .reader_shell import annotate_reader_mount, reader_route, reader_route_context
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
@@ -820,18 +816,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.FAILURE_GROUPING:
-            if state.mode is ProjectionMode.READER:
-                return render_unavailable_reader(
-                    reader_projection,
-                    route=reader_route(state.view),
-                    query_context=url,
-                    translator=translator,
-                )
             return render_failure_grouping_view(
                 cached,
                 query_context=url,
                 snapshot_token=model.snapshot_token,
                 translator=translator,
+                reader_projection=reader_projection,
+                include_reader_surface=state.mode is ProjectionMode.READER,
             )
         if state.view is ViewId.METHODOLOGY:
             return render_methodology_reader(
@@ -1140,17 +1131,14 @@ class ManagerGUIApp:
         state: WebRequestState, raw_url: str, translator: Translator
     ) -> str:
         normalized_url = with_lang(raw_url, state.lang)
-        raw_pairs = parse_qsl(urlsplit(normalized_url).query, keep_blank_values=True)
-        context = [
-            (key, value)
-            for key, value in raw_pairs
-            if key not in {"view", "fixture"}
-        ]
         links = []
         for item in NAVIGATION:
             current = item.view_id is state.view
-            href_values = [("view", item.view_id.value), ("fixture", state.fixture.value), *context]
-            href = "/?" + urlencode(href_values)
+            href = reader_route_context(
+                normalized_url,
+                view=item.view_id,
+                fixture=state.fixture.value,
+            )
             label = navigation_label(item.view_id, translator)
             description = navigation_description(item.view_id, translator)
             links.append(

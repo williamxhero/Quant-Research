@@ -29,9 +29,11 @@ from ..models import (
     SourceReference,
 )
 from ..provider import ManagerDataProvider
+from ..reader import ReaderProjection
 from .i18n import Translator
 from .locators import public_locator
 from .memory import memory_source_link, render_memory_text, render_memory_value
+from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_operational_state, render_status_block
 
 FAILURE_GROUPING_RESOURCE = "failure_grouping"
@@ -636,6 +638,8 @@ def render_failure_grouping(
     query_context: QueryContext = None,
     include_raw_json: bool = True,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
+    include_reader_surface: bool = False,
 ) -> str:
     """Render explicitly named Derived success/failure groups."""
 
@@ -646,6 +650,16 @@ def render_failure_grouping(
         else FailureGroupingViewModel.from_read_model(view_or_model)
     )
     model = view.read_model
+    reader_surface = (
+        render_reader_surface(
+            reader_projection,
+            page=ReaderPage.FAILURE_GROUPING,
+            query_context=query_context,
+            translator=selected_translator,
+        )
+        if include_reader_surface and reader_projection is not None
+        else ""
+    )
     pieces = [
         f'<section class="failure-grouping-page" data-integration-hook="{FAILURE_GROUPING_INTEGRATION_HOOK}" '
         f'data-grouping-status="{model.availability.status.value}" data-grouping-empty="{"true" if view.empty else "false"}">',
@@ -655,6 +669,7 @@ def render_failure_grouping(
         f'<p class="context-line grouping-context"><span><strong>{selected_translator.html("l4_memory.observed")}</strong> {render_memory_value(model.as_of, selected_translator, missing="l4_memory.unavailable")}</span>'
         f'<span><strong>{selected_translator.html("l4_memory.snapshot")}</strong> {render_memory_value(model.snapshot_token, selected_translator, missing="l4_memory.unavailable")}</span></p>',
         render_status_block(model, translator=selected_translator),
+        reader_surface,
     ]
     if view.empty:
         state = "empty" if model.availability.status is ReadModelStatus.MISSING else "error"
@@ -696,6 +711,8 @@ def render_failure_grouping_view(
     snapshot_token: str | None = None,
     query_context: QueryContext = None,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
+    include_reader_surface: bool = False,
 ) -> str:
     """S4-T3 integration hook accepting a provider or cached envelope."""
 
@@ -705,7 +722,11 @@ def render_failure_grouping_view(
         else failure_grouping_view(provider_or_model, snapshot_token=snapshot_token)
     )
     return render_failure_grouping(
-        view, query_context=query_context, translator=translator
+        view,
+        query_context=query_context,
+        translator=translator,
+        reader_projection=reader_projection,
+        include_reader_surface=include_reader_surface,
     )
 
 
