@@ -7,6 +7,7 @@ back to the unchanged ManagerReadModel v0 bytes.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from html import escape
@@ -31,6 +32,7 @@ READER_CONTEXT_KEYS = (
 READER_MODE_VALUES = tuple(mode.value for mode in ProjectionMode)
 SAMPLE_BANNER_TEXT = "样例数据，不代表真实研究结果"
 SAMPLE_BANNER_TEXT_EN = "Sample data; not a real research result."
+READER_SHELL_CONTRACT_SCHEMA = "manager-gui.reader-shell.v1"
 
 _QueryPair = tuple[str, str]
 _QueryContext = str | Mapping[str, object] | Sequence[tuple[str, object]]
@@ -240,9 +242,16 @@ mode_url = reader_mode_url
 build_mode_url = reader_mode_url
 
 
-def _mode_label(mode: ProjectionMode, *, locale: str | None) -> str:
-    labels = _MODE_LABELS[mode.value]
-    return labels[1] if _locale_is_english(locale) else labels[0]
+def _mode_label(
+    mode: ProjectionMode,
+    *,
+    locale: str | None,
+    labels: Mapping[str, str] | None = None,
+) -> str:
+    if labels is not None and mode.value in labels:
+        return labels[mode.value]
+    values = _MODE_LABELS[mode.value]
+    return values[1] if _locale_is_english(locale) else values[0]
 
 
 def _mode_group_label(*, locale: str | None) -> str:
@@ -254,6 +263,8 @@ def render_mode_switch(
     *,
     locale: str | None = None,
     aria_label: str | None = None,
+    labels: Mapping[str, str] | None = None,
+    current_attribute: str = "page",
 ) -> str:
     """Render accessible GET links for Reader/Expert/Raw without JavaScript."""
 
@@ -265,8 +276,12 @@ def render_mode_switch(
     group_label = aria_label or _mode_group_label(locale=locale)
     links: list[str] = []
     for selected in ProjectionMode:
-        label = _mode_label(selected, locale=locale)
-        selected_attributes = ' aria-current="page"' if selected is state.mode else ""
+        label = _mode_label(selected, locale=locale, labels=labels)
+        selected_attributes = (
+            f' aria-current="{escape(current_attribute, quote=True)}"'
+            if selected is state.mode
+            else ""
+        )
         links.append(
             f'<a class="reader-mode-link" data-reader-mode="{selected.value}" '
             f'href="{escape(state.mode_url(selected), quote=True)}" '
@@ -355,6 +370,7 @@ def render_sample_banner(
     projection: object,
     *,
     locale: str | None = None,
+    text: str | None = None,
 ) -> str:
     """Render a fixture warning, or nothing for an owner/unsourced envelope.
 
@@ -368,15 +384,63 @@ def render_sample_banner(
             return ""
     elif not isinstance(projection, SampleData):
         return ""
-    text = sample_banner_text(locale=locale)
+    displayed = sample_banner_text(locale=locale) if text is None else text
+    if not isinstance(displayed, str) or not displayed:
+        return ""
     return (
         f'<aside class="reader-sample-banner" data-sample-banner="fixture" '
-        f'role="note" aria-label="{escape(text, quote=True)}">{escape(text)}</aside>'
+        f'role="note" aria-label="{escape(displayed, quote=True)}">{escape(displayed)}</aside>'
     )
 
 
 fixture_sample_banner = render_sample_banner
 sample_banner = render_sample_banner
+
+
+def reader_contract_payload(
+    projection: ReaderProjection,
+    mode: ProjectionMode | str,
+) -> dict[str, object]:
+    """Return the shell-only Reader payload without changing the v0 response."""
+
+    if not isinstance(projection, ReaderProjection):
+        raise TypeError("projection must be a ReaderProjection")
+    selected = ProjectionMode(mode)
+    return {
+        "schema": READER_SHELL_CONTRACT_SCHEMA,
+        "mode": selected.value,
+        "projection": projection.to_dict(),
+    }
+
+
+def render_reader_contract(
+    projection: ReaderProjection,
+    mode: ProjectionMode | str,
+) -> str:
+    """Expose Reader v1 fields to future page consumers through HTML only.
+
+    The payload is deliberately not an API/read-model response.  ``<`` is escaped
+    at JSON serialization time so owner text cannot terminate the JSON script tag;
+    no client-side behavior or generated prose is introduced by this seam.
+    """
+
+    payload = reader_contract_payload(projection, mode)
+    selected = ProjectionMode(mode)
+    encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True)
+    encoded = encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    gaps = len(projection.limitations) + len(projection.unknowns)
+    sample = "true" if projection.sample_data is not None else "false"
+    return (
+        f'<section class="reader-contract-seam" data-reader-contract="v1" '
+        f'data-reader-mode="{escape(selected.value, quote=True)}" '
+        f'data-reader-availability="{escape(projection.availability.status.value, quote=True)}" '
+        f'data-reader-complete="{str(projection.availability.complete).lower()}" '
+        f'data-reader-claims="{len(projection.claims)}" data-reader-gaps="{gaps}" '
+        f'data-reader-source-refs="{len(projection.source_refs)}" '
+        f'data-reader-sample="{sample}" hidden>'
+        f'<script id="reader-contract" type="application/json">{encoded}</script>'
+        "</section>"
+    )
 
 
 def compatibility_reference(
@@ -415,6 +479,7 @@ __all__ = [
     "READER_CONTEXT_KEYS",
     "READER_MODE_QUERY_KEY",
     "READER_MODE_VALUES",
+    "READER_SHELL_CONTRACT_SCHEMA",
     "SAMPLE_BANNER_TEXT",
     "SAMPLE_BANNER_TEXT_EN",
     "ReaderURLState",
@@ -427,13 +492,15 @@ __all__ = [
     "mode_switch_form",
     "mode_url",
     "parse_reader_url",
+    "raw_reference",
+    "reader_contract_payload",
     "reader_mode_reference",
     "reader_mode_url",
     "render_mode_switch",
     "render_mode_switch_form",
+    "render_reader_contract",
     "render_reader_mode_switch",
     "render_sample_banner",
-    "raw_reference",
     "sample_banner",
     "sample_banner_text",
     "v0_compatibility_reference",

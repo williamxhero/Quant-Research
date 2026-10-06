@@ -33,6 +33,13 @@ _DERIVATION: Final[dict[str, object]] = {
         "inputs": {"type": "array", "items": {"type": "string"}},
         "version": {"type": ["string", "null"]},
     },
+    "if": {"properties": {"kind": {"enum": ["derived", "interpreted"]}}},
+    "then": {
+        "properties": {
+            "rule": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1},
+        }
+    },
     "additionalProperties": False,
 }
 
@@ -45,6 +52,33 @@ _AVAILABILITY: Final[dict[str, object]] = {
         "reason": {"type": ["string", "null"]},
         "retryable": {"type": "boolean"},
     },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "status": {
+                        "enum": [
+                            "missing",
+                            "blocked",
+                            "incomparable",
+                            "not_evaluated",
+                            "integrity_failure",
+                            "api_unavailable",
+                        ]
+                    }
+                }
+            },
+            "then": {"properties": {"complete": {"const": False}}},
+        },
+        {
+            "if": {"properties": {"complete": {"const": True}}},
+            "then": {
+                "properties": {
+                    "status": {"enum": ["known", "derived", "interpreted", "stale"]}
+                }
+            },
+        },
+    ],
     "additionalProperties": False,
 }
 
@@ -62,12 +96,95 @@ _CLAIM: Final[dict[str, object]] = {
     "properties": {
         "claim_id": {"type": "string", "minLength": 1},
         "kind": {"type": "string", "enum": [kind.value for kind in ClaimKind]},
-        "source_refs": {"type": "array", "items": _SOURCE_REF},
+        "source_refs": {"type": "array", "minItems": 1, "items": _SOURCE_REF},
         "derivation": _DERIVATION,
         "availability": _AVAILABILITY,
         "value": {},
-        "explanation_key": {"type": "string", "minLength": 1},
+        "explanation_key": {
+            "type": "string",
+            "enum": [
+                "reader.claim.known",
+                "reader.claim.derived",
+                "reader.claim.interpreted",
+                "reader.claim.missing",
+                "reader.claim.blocked",
+                "reader.claim.stale",
+                "reader.claim.incomparable",
+                "reader.claim.owner_text",
+            ],
+        },
     },
+    "allOf": [
+        {
+            "if": {
+                "properties": {"kind": {"enum": ["Known", "OwnerText"]}}
+            },
+            "then": {
+                "properties": {
+                    "derivation": {"properties": {"kind": {"const": "direct"}}},
+                    "availability": {"properties": {"status": {"const": "known"}}},
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Derived"}}},
+            "then": {
+                "properties": {
+                    "derivation": {"properties": {"kind": {"const": "derived"}}},
+                    "availability": {"properties": {"status": {"const": "derived"}}},
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Interpreted"}}},
+            "then": {
+                "properties": {
+                    "derivation": {"properties": {"kind": {"const": "interpreted"}}},
+                    "availability": {"properties": {"status": {"const": "interpreted"}}},
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Missing"}}},
+            "then": {
+                "properties": {
+                    "availability": {
+                        "properties": {
+                            "status": {
+                                "enum": ["missing", "not_evaluated", "api_unavailable"]
+                            }
+                        }
+                    }
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Blocked"}}},
+            "then": {
+                "properties": {
+                    "availability": {
+                        "properties": {"status": {"enum": ["blocked", "integrity_failure"]}}
+                    }
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Stale"}}},
+            "then": {
+                "properties": {
+                    "availability": {"properties": {"status": {"const": "stale"}}}
+                }
+            },
+        },
+        {
+            "if": {"properties": {"kind": {"const": "Incomparable"}}},
+            "then": {
+                "properties": {
+                    "availability": {"properties": {"status": {"const": "incomparable"}}}
+                }
+            },
+        },
+    ],
     "additionalProperties": False,
 }
 
@@ -76,7 +193,12 @@ _SUMMARY: Final[dict[str, object]] = {
     "required": ["template_key", "claim_ids", "params"],
     "properties": {
         "template_key": {"type": "string", "minLength": 1},
-        "claim_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "claim_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": True,
+            "items": {"type": "string", "minLength": 1},
+        },
         "params": {
             "type": "object",
             "additionalProperties": {

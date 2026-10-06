@@ -165,6 +165,69 @@ def _projection_claims(
     )
 
 
+def _state_for_model(model: ManagerReadModel) -> ReaderFixtureState:
+    """Map a v0 availability envelope to Reader's neutral gap vocabulary."""
+
+    status = model.availability.status.value
+    if status in {"known", "derived", "interpreted"}:
+        if model.availability.complete:
+            return ReaderFixtureState.COMPLETE
+        if any(error.code == "not_evaluated" for error in model.errors):
+            return ReaderFixtureState.NOT_EVALUATED
+        return ReaderFixtureState.PARTIAL
+    if status == "missing":
+        return ReaderFixtureState.EMPTY
+    if status == "blocked":
+        return ReaderFixtureState.BLOCKED
+    if status == "stale":
+        return ReaderFixtureState.STALE
+    if status == "incomparable":
+        return ReaderFixtureState.INCOMPARABLE
+    if status == "integrity_failure":
+        return ReaderFixtureState.INTEGRITY_FAILURE
+    if status == "api_unavailable":
+        return ReaderFixtureState.API_UNAVAILABLE
+    raise ValueError(f"unsupported ManagerReadModel availability: {status!r}")
+
+
+def project_reader_model(
+    model: ManagerReadModel,
+    *,
+    state: ReaderFixtureState | FixtureState | str | None = None,
+    resource: str = "atlas",
+    sample: bool = False,
+    sample_state: ReaderFixtureState | FixtureState | str | None = None,
+) -> ReaderProjection:
+    """Project one already-read v0 envelope through the Reader shell seam.
+
+    ``sample`` is an explicit caller decision.  It is never inferred from source
+    values, URL text, or a locator, so an owner provider cannot acquire a fixture
+    banner accidentally.  The v0 envelope remains the source of ``data`` and
+    provenance bytes in every case.
+    """
+
+    if not isinstance(model, ManagerReadModel):
+        raise TypeError("model must be a ManagerReadModel")
+    selected = _state_for_model(model) if state is None else ReaderFixtureState(state)
+    if sample:
+        claims, limitations, unknowns = _projection_claims(model, selected)
+    else:
+        # Owner envelopes provide facts, not fixture interpretations.  Claims and
+        # gap explanations must be supplied by an owner-aware projector instead
+        # of being inferred from a data shape or an availability label.
+        claims, limitations, unknowns = (), (), ()
+    projection = project_read_model(
+        model,
+        claims=claims,
+        limitations=limitations,
+        unknowns=unknowns,
+    )
+    if not sample:
+        return projection
+    banner_state = selected if sample_state is None else ReaderFixtureState(sample_state)
+    return replace(projection, sample_data=SampleData(banner_state.value, resource))
+
+
 def build_reader_fixture(
     state: ReaderFixtureState | FixtureState | str,
     *,
@@ -174,17 +237,7 @@ def build_reader_fixture(
 
     selected = ReaderFixtureState(state)
     model = build_fixture(FixtureState(selected), resource=resource)
-    claims, limitations, unknowns = _projection_claims(model, selected)
-    projection = project_read_model(
-        model,
-        claims=claims,
-        limitations=limitations,
-        unknowns=unknowns,
-    )
-    return replace(
-        projection,
-        sample_data=SampleData(selected.value, resource),
-    )
+    return project_reader_model(model, state=selected, resource=resource, sample=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,5 +273,6 @@ __all__ = [
     "ReaderFixtureProvider",
     "ReaderFixtureState",
     "build_reader_fixture",
+    "project_reader_model",
     "reader_fixture_provider",
 ]

@@ -9,11 +9,19 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from html import escape, unescape
-from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..fixtures import FixtureState, build_fixture
 from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
+from ..reader import (
+    ProjectionMode,
+    ReaderProjection,
+    project_reader_model,
+    render_mode_switch,
+    render_reader_contract,
+    render_sample_banner,
+)
 from .assets import CSS, render_js
 from .atlas import render_atlas_view
 from .comparison import (
@@ -86,15 +94,33 @@ from .status import render_status_block
 _INTERNAL_HREF = re.compile(r'''(?P<prefix>href=["'])(?P<url>/\?[^"']*)(?P<suffix>["'])''')
 
 
+def _without_query_keys(url: str, keys: set[str]) -> str:
+    """Remove UI-only query keys while retaining every other pair and order."""
+
+    parts = urlsplit(url)
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key not in keys
+    ]
+    return urlunsplit(parts._replace(query=urlencode(pairs)))
+
+
 @dataclass(frozen=True, slots=True)
 class WebRequestState:
-    """The URL state shared by server rendering and future page modules."""
+    """The URL state shared by server rendering and future page modules.
+
+    ``mode`` is the global Reader mode.  Research Story's historical
+    ``narrative|evidence|timeline`` selector remains available as ``story_mode``
+    so old v0 links continue to render without taking over the Reader URL key.
+    """
 
     view: ViewId
     fixture: FixtureState
     query: str
     panel: str | None
-    mode: StoryMode = StoryMode.NARRATIVE
+    mode: ProjectionMode = ProjectionMode.READER
+    story_mode: StoryMode = StoryMode.NARRATIVE
     context: tuple[tuple[str, str], ...] = ()
     lang: Locale | None = None
     default_locale: Locale = DEFAULT_LOCALE
@@ -117,12 +143,17 @@ class WebRequestState:
         if resolved_default_locale is None:
             raise ValueError(f"unsupported default locale: {default_locale!r}")
         parsed = urlsplit(url)
-        values = parse_qs(parsed.query, keep_blank_values=True)
-        raw_view = values.get("view", [ViewId.ATLAS.value])[0]
-        raw_fixture = values.get("fixture", [default_fixture.value])[0]
-        raw_panel = values.get("panel", [""])[0]
-        raw_mode = values.get("mode", [StoryMode.NARRATIVE.value])[0]
-        lang = resolve_locale(values.get("lang", [None])[0])
+        pairs = parse_qsl(parsed.query, keep_blank_values=True)
+
+        def first(key: str, default: str = "") -> str:
+            return next((value for pair_key, value in pairs if pair_key == key), default)
+
+        raw_view = first("view", ViewId.ATLAS.value)
+        raw_fixture = first("fixture", default_fixture.value)
+        raw_panel = first("panel")
+        raw_mode = first("mode", ProjectionMode.READER.value)
+        raw_story_mode = first("story_mode", raw_mode)
+        lang = resolve_locale(first("lang") or None)
         try:
             view = ViewId(raw_view)
         except ValueError:
@@ -133,19 +164,25 @@ class WebRequestState:
             fixture = default_fixture
         panel = raw_panel if raw_panel in {"inspector", "events"} else None
         try:
-            mode = StoryMode(raw_mode)
+            mode = ProjectionMode(raw_mode)
         except ValueError:
-            mode = StoryMode.NARRATIVE
+            mode = ProjectionMode.READER
+        try:
+            story_mode = StoryMode(raw_story_mode)
+        except ValueError:
+            story_mode = StoryMode.NARRATIVE
         return cls(
             view=view,
             fixture=fixture,
-            query=values.get("q", [""])[0].strip(),
+            query=first("q").strip(),
             panel=panel,
             mode=mode,
-            context=tuple(sorted(
-                (key, entries[0]) for key, entries in values.items()
+            story_mode=story_mode,
+            context=tuple(
+                (key, value)
+                for key, value in pairs
                 if key not in {"view", "fixture", "panel", "q", "mode", "lang"}
-            )),
+            ),
             lang=lang,
             default_locale=resolved_default_locale,
         )
@@ -153,18 +190,16 @@ class WebRequestState:
     def query_pairs(self, *, view: ViewId | None = None) -> tuple[tuple[str, str], ...]:
         """Canonical shared links/forms retain page-local opaque context."""
 
-        values = {key: value for key, value in self.context if key != "lang"}
-        values.update(view=(view or self.view).value, fixture=self.fixture.value)
+        pairs = list(self.context)
+        pairs.extend((("view", (view or self.view).value), ("fixture", self.fixture.value)))
         if self.query:
-            values["q"] = self.query
+            pairs.append(("q", self.query))
         if self.panel:
-            values["panel"] = self.panel
+            pairs.append(("panel", self.panel))
         if self.lang is not None:
-            values["lang"] = self.lang.value
-        destination = view or self.view
-        if destination is ViewId.STORIES:
-            values["mode"] = self.mode.value
-        return tuple(sorted(values.items()))
+            pairs.append(("lang", self.lang.value))
+        pairs.append(("mode", self.mode.value))
+        return tuple(sorted(pairs))
 
     def url(self, *, view: ViewId | None = None) -> str:
         return "/?" + urlencode(self.query_pairs(view=view))
@@ -323,6 +358,22 @@ class ManagerGUIApp:
         resource = self._resource_for_view(state.view)
         return provider.read(resource, snapshot_token=dict(state.context).get("snapshot_token"))
 
+    def reader_projection(self, url: str = "/") -> ReaderProjection:
+        """Project the current public v0 read into the UI-only Reader contract."""
+
+        state = self.request_state(url)
+        return self._project_reader_model(state, self.read_model(state))
+
+    def _project_reader_model(
+        self, state: WebRequestState, model: ManagerReadModel
+    ) -> ReaderProjection:
+        return project_reader_model(
+            model,
+            resource=self._resource_for_view(state.view),
+            sample=self._provider is None,
+            sample_state=state.fixture.value,
+        )
+
     @staticmethod
     def _resource_for_view(view: ViewId) -> str:
         if view is ViewId.STRATEGIES:
@@ -367,6 +418,7 @@ class ManagerGUIApp:
         state = self.request_state(url)
         normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
+        projection = self._project_reader_model(state, model)
         item = navigation_item(state.view)
         translator = Translator(state.locale)
         page = self._render_page(
@@ -374,7 +426,13 @@ class ManagerGUIApp:
         )
         page = self._localize_internal_links(page, state.lang)
         return self._render_document(
-            state, model, item, page, translator=translator, raw_url=url
+            state,
+            model,
+            item,
+            page,
+            translator=translator,
+            raw_url=normalized_url,
+            reader_projection=projection,
         )
 
     def render_json(self, url: str = "/") -> str:
@@ -388,8 +446,8 @@ class ManagerGUIApp:
 
         state = self.request_state(url)
         model = self.read_model(state)
-        # Export data stays language-neutral but keeps every non-language query pair.
-        export_context = with_lang(url, None)
+        # Export data stays language-neutral and excludes presentation-only mode.
+        export_context = _without_query_keys(with_lang(url, None), {"mode"})
         return render_current_view_export_json(
             model,
             view=state.view.value,
@@ -434,7 +492,7 @@ class ManagerGUIApp:
         if state.view is ViewId.STORIES:
             return render_research_story(
                 model,
-                mode=state.mode,
+                mode=state.story_mode,
                 base_path=url,
                 query=url,
                 translator=translator,
@@ -605,12 +663,20 @@ class ManagerGUIApp:
         *,
         translator: Translator,
         raw_url: str,
+        reader_projection: ReaderProjection,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
         label = navigation_label(item.view_id, translator)
         description = navigation_description(item.view_id, translator)
-        inspector_hidden = " hidden" if state.panel == "events" else ""
-        drawer_hidden = "" if state.panel == "events" else " hidden"
+        raw_mode = next(
+            (value for key, value in parse_qsl(urlsplit(raw_url).query, keep_blank_values=True) if key == "mode"),
+            None,
+        )
+        legacy_story_modes = {story_mode.value for story_mode in StoryMode}
+        search_mode = raw_mode if raw_mode in legacy_story_modes else state.mode.value
+        raw_view_selected = state.mode is ProjectionMode.RAW
+        inspector_hidden = " hidden" if state.panel == "events" or raw_view_selected else ""
+        drawer_hidden = "" if state.panel == "events" or raw_view_selected else " hidden"
         snapshot = model.snapshot_token or translator.t("shell.snapshot_missing")
         as_of = model.as_of or translator.t("shell.unavailable")
         query_value = escape(state.query, quote=True)
@@ -634,9 +700,7 @@ class ManagerGUIApp:
             else ""
         )
         mode_hidden = (
-            f'<input type="hidden" name="mode" value="{escape(state.mode.value, quote=True)}">'
-            if state.view is ViewId.STORIES
-            else ""
+            f'<input type="hidden" name="mode" value="{escape(search_mode, quote=True)}">'
         )
         if page is None:
             page_markup = f"""
@@ -654,7 +718,7 @@ class ManagerGUIApp:
       </section>"""
         else:
             page_markup = page
-        export_context = with_lang(raw_url, None)
+        export_context = _without_query_keys(with_lang(raw_url, None), {"mode"})
         export_control = render_export_control(
             export_context,
             translator=translator,
@@ -663,6 +727,23 @@ class ManagerGUIApp:
             model=model,
         )
         language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
+        mode_context_url = ManagerGUIApp._reader_mode_context_url(state, raw_url)
+        reader_mode_switch = render_mode_switch(
+            mode_context_url,
+            locale=state.locale.value,
+            aria_label=translator.t("shell.reader_mode_aria"),
+            labels={
+                mode.value: translator.t(f"reader.mode.{mode.value}")
+                for mode in ProjectionMode
+            },
+            current_attribute="true",
+        )
+        reader_contract = render_reader_contract(reader_projection, state.mode)
+        sample_banner = render_sample_banner(
+            reader_projection,
+            locale=state.locale.value,
+            text=translator.t("reader.sample.banner.fixed"),
+        )
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
             f"{opaque_copy_button(model.snapshot_token, translator=translator)}"
@@ -689,6 +770,7 @@ class ManagerGUIApp:
       <span class="workspace-note">{escape(translator.t("shell.workspace_snapshot", snapshot=snapshot))}</span>
       <span class="read-only-badge" aria-label="{escape(translator.t("shell.read_only_aria"), quote=True)}">{escape(translator.t("shell.read_only"))}</span>
       {language_switcher}
+      {reader_mode_switch}
     </div>
     <form class="search-form" role="search" action="/" method="get" aria-label="{escape(translator.t("shell.global_search"), quote=True)}">
       <label class="sr-only" for="global-search">{escape(translator.t("shell.global_search"))}</label>
@@ -701,6 +783,7 @@ class ManagerGUIApp:
   <nav class="nav-strip" aria-label="{escape(translator.t("nav.aria"), quote=True)}">{ManagerGUIApp._render_navigation_static(state, raw_url, translator)}</nav>
   <div class="workspace">
     <main id="main-content" class="main-column" tabindex="-1">
+      {sample_banner}
       {page_markup}
       <div class="panel-actions" aria-label="{escape(translator.t("shell.shared_panels"), quote=True)}">
         <button class="panel-button" type="button" data-panel-target="inspector" aria-controls="inspector" aria-expanded="{str(state.panel != 'events').lower()}">{escape(translator.t("shell.open_inspector"))}</button>
@@ -728,8 +811,23 @@ class ManagerGUIApp:
   </aside>
 </div>
 {render_js(translator=translator)}
+{reader_contract}
 </body>
 </html>"""
+
+    @staticmethod
+    def _reader_mode_context_url(state: WebRequestState, raw_url: str) -> str:
+        """Keep the legacy Story selector while adding a Reader mode link."""
+
+        if state.view is not ViewId.STORIES:
+            return raw_url
+        pairs = parse_qsl(urlsplit(raw_url).query, keep_blank_values=True)
+        if not any(key == "mode" and value in {item.value for item in StoryMode} for key, value in pairs):
+            return raw_url
+        retained = [(key, value) for key, value in pairs if key != "mode"]
+        if not any(key == "story_mode" for key, _ in retained):
+            retained.append(("story_mode", state.story_mode.value))
+        return urlunsplit(urlsplit(raw_url)._replace(query=urlencode(retained)))
 
     @staticmethod
     def _render_language_switcher(
