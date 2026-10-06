@@ -186,7 +186,7 @@ def _snapshot(
 ) -> _ReadbackSnapshot:
     if provider is None:
         return _ReadbackSnapshot((), (f"{name} public readback provider is required",))
-    digests: list[tuple[str, str]] = []
+    payloads: list[tuple[str, bytes]] = []
     errors: list[str] = []
     for publication_id in ids:
         try:
@@ -194,13 +194,15 @@ def _snapshot(
         except DossierReleaseError as exc:
             errors.append(str(exc))
         else:
-            digests.append((publication_id, _sha256(payload)))
-    return _ReadbackSnapshot(tuple(digests), tuple(errors))
+            # Keep the exact bytes, not only their digest: this gate proves the
+            # caller's old public records were byte-identical across both reads.
+            payloads.append((publication_id, payload))
+    return _ReadbackSnapshot(tuple(payloads), tuple(errors))
 
 
 @dataclass(frozen=True, slots=True)
 class _ReadbackSnapshot:
-    values: tuple[tuple[str, str], ...]
+    values: tuple[tuple[str, bytes], ...]
     errors: tuple[str, ...] = ()
 
     @property

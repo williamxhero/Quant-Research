@@ -321,6 +321,11 @@ def _render_html(report: DossierReport) -> str:
         )
     source_records = cast(tuple[DossierRecordRef, ...], report.source_records)
     source_ids = "、".join(record.record_id for record in source_records)
+    boundary_detail = (
+        ""
+        if report.banner == DOSSIER_BANNER_TEXT
+        else f'<span class="boundary-detail">模型声明：{_esc(report.banner)}</span>'
+    )
     return f'''<!doctype html>
 <html lang="zh-CN" data-dossier-schema="{DOSSIER_RENDERER_SCHEMA}" data-model-sha256="{model_hash}">
 <head>
@@ -346,7 +351,7 @@ main {{ width:min(1440px,100% - 32px); margin:0 auto; padding:24px 0 64px; }} h1
 <body data-palette-validation="validated-light-dark">
 <main id="dossier" data-renderer-version="{DOSSIER_RENDERER_VERSION}">
 <div class="utility-bar"><span class="eyebrow">离线证据账本 · {DOSSIER_RENDERER_VERSION}</span><button type="button" id="theme-toggle" aria-pressed="false">切换深色主题</button></div>
-<div class="boundary-banner" role="note" aria-label="结论边界"><span>{_esc(report.banner or DOSSIER_BANNER_TEXT)}</span><small>本页面只使用已发布的公共 Workspace 与 Strategy Reporting 证据；不读取前向 Holdout，不代表实盘或生产资格。</small></div>
+<div class="boundary-banner" role="note" aria-label="结论边界"><span>{_esc(DOSSIER_BANNER_TEXT)}</span>{boundary_detail}<small>本页面只使用已发布的公共 Workspace 与 Strategy Reporting 证据；不读取前向 Holdout，不代表实盘或生产资格。</small></div>
 <header><p class="eyebrow">Quant Research Dossier v2</p><h1>{_esc(report.title)}</h1><p class="section-narrative">这是一份可离线检查的开发与验证证据说明。数值只在公共属主证据存在时展示；缺少证据会明确标记为 not_evaluated。</p></header>
 <dl class="report-meta"><div><dt>证据上限</dt><dd>{_esc(report.evidence_ceiling)}</dd></div><div><dt>Holdout 结果</dt><dd>not_evaluated（锁定或延期）</dd></div><div><dt>资格、因果、生产推断</dt><dd>forbidden</dd></div><div><dt>模型 SHA-256</dt><dd><code>{model_hash}</code></dd></div><div><dt>公共记录数</dt><dd>{len(report.source_records)}</dd></div><div><dt>公共制品数</dt><dd>{len(report.source_artifacts)}</dd></div><div><dt>来源闭包</dt><dd><code>{_esc(source_ids)}</code></dd></div></dl>
 <div class="filter-bar" role="search"><label for="fact-filter">筛选事实 <input id="fact-filter" type="search" placeholder="按 JSON 指针、节或值筛选" autocomplete="off"></label><label for="status-filter">状态 <select id="status-filter"><option value="all">全部状态</option><option value="evaluated">已评估</option><option value="not_evaluated">not_evaluated</option></select></label><span id="filter-count" class="muted" aria-live="polite">共 {len(rows)} 条事实</span></div>

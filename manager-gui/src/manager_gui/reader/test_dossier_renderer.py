@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 from manager_gui.reader.dossier import DossierReportBuilder
 from manager_gui.reader.dossier_renderer import (
@@ -49,6 +50,15 @@ def test_report_model_is_the_only_source_and_hostile_text_is_escaped() -> None:
     assert '<img src=x' not in output
     assert "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;" in output
     assert "workspace-artifact://" not in output or "data-tooltip" in output
+
+
+def test_boundary_banner_remains_persistent_when_model_banner_is_custom() -> None:
+    model = replace(_model(), banner="owner supplied boundary text")
+
+    output = DossierHTMLRenderer().render(model)
+
+    assert f'<span>{DOSSIER_BANNER_TEXT}</span>' in output
+    assert 'class="boundary-detail">模型声明：owner supplied boundary text</span>' in output
 
 
 def test_chart_geometry_stays_inside_viewbox_and_theme_uses_selected_palette() -> None:
