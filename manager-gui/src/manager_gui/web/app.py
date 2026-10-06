@@ -152,6 +152,7 @@ class WebRequestState:
         raw_fixture = first("fixture", default_fixture.value)
         raw_panel = first("panel")
         raw_mode = first("mode", ProjectionMode.READER.value)
+        raw_story_mode = first("story_mode", raw_mode)
         lang = resolve_locale(first("lang") or None)
         try:
             view = ViewId(raw_view)
@@ -167,7 +168,7 @@ class WebRequestState:
         except ValueError:
             mode = ProjectionMode.READER
         try:
-            story_mode = StoryMode(raw_mode)
+            story_mode = StoryMode(raw_story_mode)
         except ValueError:
             story_mode = StoryMode.NARRATIVE
         return cls(
@@ -726,12 +727,13 @@ class ManagerGUIApp:
             model=model,
         )
         language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
+        mode_context_url = ManagerGUIApp._reader_mode_context_url(state, raw_url)
         reader_mode_switch = render_mode_switch(
-            raw_url,
+            mode_context_url,
             locale=state.locale.value,
             aria_label=translator.t("shell.reader_mode_aria"),
             labels={
-                mode.value: translator.t(f"shell.reader_mode_{mode.value}")
+                mode.value: translator.t(f"reader.mode.{mode.value}")
                 for mode in ProjectionMode
             },
             current_attribute="true",
@@ -740,7 +742,7 @@ class ManagerGUIApp:
         sample_banner = render_sample_banner(
             reader_projection,
             locale=state.locale.value,
-            text=translator.t("shell.sample_data_banner"),
+            text=translator.t("reader.sample.banner.fixed"),
         )
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
@@ -812,6 +814,20 @@ class ManagerGUIApp:
 {reader_contract}
 </body>
 </html>"""
+
+    @staticmethod
+    def _reader_mode_context_url(state: WebRequestState, raw_url: str) -> str:
+        """Keep the legacy Story selector while adding a Reader mode link."""
+
+        if state.view is not ViewId.STORIES:
+            return raw_url
+        pairs = parse_qsl(urlsplit(raw_url).query, keep_blank_values=True)
+        if not any(key == "mode" and value in {item.value for item in StoryMode} for key, value in pairs):
+            return raw_url
+        retained = [(key, value) for key, value in pairs if key != "mode"]
+        if not any(key == "story_mode" for key, _ in retained):
+            retained.append(("story_mode", state.story_mode.value))
+        return urlunsplit(urlsplit(raw_url)._replace(query=urlencode(retained)))
 
     @staticmethod
     def _render_language_switcher(

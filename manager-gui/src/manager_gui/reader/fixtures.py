@@ -209,7 +209,13 @@ def project_reader_model(
     if not isinstance(model, ManagerReadModel):
         raise TypeError("model must be a ManagerReadModel")
     selected = _state_for_model(model) if state is None else ReaderFixtureState(state)
-    claims, limitations, unknowns = _projection_claims(model, selected)
+    if sample:
+        claims, limitations, unknowns = _projection_claims(model, selected)
+    else:
+        # Owner envelopes provide facts, not fixture interpretations.  Claims and
+        # gap explanations must be supplied by an owner-aware projector instead
+        # of being inferred from a data shape or an availability label.
+        claims, limitations, unknowns = (), (), ()
     projection = project_read_model(
         model,
         claims=claims,

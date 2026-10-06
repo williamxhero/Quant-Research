@@ -191,6 +191,9 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.availability.api_unavailable": ReaderTemplateSpec(
             "reader.availability.api_unavailable"
         ),
+        "reader.availability.reason": ReaderTemplateSpec(
+            "reader.availability.reason", ("text",)
+        ),
     }
 )
 
@@ -218,6 +221,10 @@ ENTRIES: Mapping[str, M] = {
     "reader.sample.banner": M(
         "当前显示的是样例数据，不代表真实研究结果：{fixture}",
         "The current view uses sample data and does not represent real research results: {fixture}",
+    ),
+    "reader.sample.banner.fixed": M(
+        "样例数据，不代表真实研究结果",
+        "Sample data; not a real research result.",
     ),
     "reader.source.reference": M("来源引用：{source_id}", "Source reference: {source_id}"),
     "reader.derivation.detail": M(
@@ -266,6 +273,9 @@ ENTRIES: Mapping[str, M] = {
         "The approved public read API is unavailable; an unreadable source is not an empty record.",
     ),
     "reader.summary.source_note": M("来源说明：{text}", "Source note: {text}"),
+    "reader.availability.reason": M(
+        "来源可用性说明：{text}", "Availability note from the source: {text}"
+    ),
     # Every key below is referenced by ReaderClaim.explanation_key.  None of
     # these messages turns an absence or interpretation into a success/failure.
     "reader.claim.known": M(
@@ -481,17 +491,55 @@ def render_reader_template(
     return translator.t(key, **dict(values))
 
 
+def _claim_source_detail(
+    translator: Translator,
+    claim: ReaderClaim,
+    *,
+    as_html: bool,
+) -> str:
+    """Render the typed source/derivation detail that explains one claim."""
+
+    if claim.kind is ClaimKind.DERIVED:
+        rule = claim.derivation.rule
+        if rule is None:  # guarded by ReaderClaim, kept explicit for type checkers
+            raise ValueError("derived claims require a derivation rule")
+        return render_reader_template(
+            translator,
+            "reader.derivation.detail",
+            params=ReaderTemplateParams(value=rule),
+            source_refs=claim.source_refs,
+            as_html=as_html,
+        )
+    if claim.is_gap:
+        key = "reader.gap.detail" if claim.kind is ClaimKind.MISSING else "reader.limitation.detail"
+        return render_reader_template(
+            translator,
+            key,
+            params=ReaderTemplateParams(
+                value=claim.availability.reason or claim.kind.value,
+            ),
+            source_refs=claim.source_refs,
+            as_html=as_html,
+        )
+    return render_reader_template(
+        translator,
+        "reader.source.reference",
+        source_refs=claim.source_refs,
+        as_html=as_html,
+    )
+
+
 def render_claim_explanation(
     translator: Translator,
     claim: ReaderClaim,
     *,
     as_html: bool = False,
 ) -> str:
-    """Render the stable explanation for one typed Reader claim.
+    """Render a fixed claim sentence plus its typed source detail.
 
-    ``OwnerText`` is passed as source text and is never translated.  Every
-    other claim kind has a fixed catalog sentence, so a missing/blocked/stale
-    claim cannot be rewritten as a guessed outcome.
+    ``OwnerText`` is passed as source text and is never translated.  The
+    additional detail is selected by claim kind and can only receive the
+    claim's source references, derivation rule, and availability reason.
     """
 
     if not isinstance(claim, ReaderClaim):
@@ -505,7 +553,9 @@ def render_claim_explanation(
         params = ReaderTemplateParams(text=claim.value)
     else:
         params = ReaderTemplateParams()
-    return render_reader_template(translator, key, params=params, as_html=as_html)
+    base = render_reader_template(translator, key, params=params, as_html=as_html)
+    detail = _claim_source_detail(translator, claim, as_html=as_html)
+    return f"{base} {detail}"
 
 
 def render_availability_explanation(
@@ -514,19 +564,30 @@ def render_availability_explanation(
     *,
     as_html: bool = False,
 ) -> str:
-    """Render one fixed explanation for a typed availability status."""
+    """Render a fixed status explanation and the typed availability reason."""
 
+    reason: str | None = None
     if isinstance(availability, ReaderAvailability):
         status = availability.status
+        reason = availability.reason
     else:
         try:
             status = ReaderAvailabilityStatus(availability)
         except (TypeError, ValueError) as exc:
             raise TypeError("availability must be ReaderAvailability or ReaderAvailabilityStatus") from exc
     key = AVAILABILITY_EXPLANATION_KEYS[status]
-    return render_reader_template(
+    base = render_reader_template(
         translator, key, params=ReaderTemplateParams(), as_html=as_html
     )
+    if reason is None:
+        return base
+    detail = render_reader_template(
+        translator,
+        "reader.availability.reason",
+        params=ReaderTemplateParams(text=reason),
+        as_html=as_html,
+    )
+    return f"{base} {detail}"
 
 
 def render_summary(
