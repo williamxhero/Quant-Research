@@ -87,6 +87,18 @@ a { color: inherit; }
 }
 .read-only-badge::before { width: 6px; height: 6px; content: ""; background: #18343a; border-radius: 50%; }
 :lang(zh-CN) .read-only-badge { letter-spacing: normal; text-transform: none; }
+.reader-mode-switch { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.reader-mode-link {
+  padding: 5px 7px; color: #c8d9d7; font-size: 11px; text-decoration: none;
+  border: 1px solid transparent; border-radius: 4px;
+}
+.reader-mode-link:hover, .reader-mode-link[aria-current="page"], .reader-mode-link[aria-current="true"] {
+  color: #18343a; background: #f2a65a; border-color: #f2a65a;
+}
+.reader-sample-banner {
+  margin: 0 0 18px; padding: 11px 14px; color: #6b4a0b; font-size: 13px;
+  background: var(--warning-soft); border: 1px solid #e7c979; border-radius: 4px;
+}
 .search-form { display: flex; flex: 0 1 280px; min-width: 150px; }
 .search-input {
   width: 100%; padding: 9px 12px; color: white; background: #24474d;
