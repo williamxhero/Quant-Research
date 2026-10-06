@@ -19,8 +19,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..fixtures import FixtureState, build_fixture
 from ..models import ManagerReadModel, ReadModelStatus, SourceReference
+from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
+from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
 
@@ -685,20 +687,36 @@ class ResearchStoryViewModel:
 
         selected = StoryMode(mode)
         parsed = urlsplit(base_path)
-        values: dict[str, str] = {
-            key: value for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        }
+        base_pairs = list(parse_qsl(parsed.query, keep_blank_values=True))
         if isinstance(query, str):
             query_string = (
                 urlsplit(query).query if "?" in query or "://" in query else query.lstrip("?")
             )
-            values.update({key: value for key, value in parse_qsl(query_string, keep_blank_values=True)})
+            query_pairs = list(parse_qsl(query_string, keep_blank_values=True))
         elif query is not None:
+            query_pairs = []
             for key, value in query.items():
-                if value is not None:
-                    values[str(key)] = str(value)
-        values["view"] = values.get("view", "stories")
-        values["mode"] = selected.value
+                if isinstance(value, (list, tuple)):
+                    query_pairs.extend((str(key), str(item)) for item in value if item is not None)
+                elif value is not None:
+                    query_pairs.append((str(key), str(value)))
+        else:
+            query_pairs = []
+        query_keys = {key for key, _ in query_pairs}
+        pairs = [(key, value) for key, value in base_pairs if key not in query_keys]
+        pairs.extend(query_pairs)
+
+        mode_values = {"reader", "expert", "raw"}
+        has_global_mode = any(
+            key == "mode" and value in mode_values for key, value in pairs
+        )
+        pairs = [(key, value) for key, value in pairs if key not in {"view", "mode", "story_mode"}]
+        pairs.append(("view", "stories"))
+        if has_global_mode:
+            pairs.append(("mode", next(value for key, value in query_pairs + base_pairs if key == "mode" and value in mode_values)))
+            pairs.append(("story_mode", selected.value))
+        else:
+            pairs.append(("mode", selected.value))
         root_values = {
             "campaign": self.root.campaign_id,
             "study": self.root.study_id,
@@ -706,8 +724,9 @@ class ResearchStoryViewModel:
         }
         for key, value in root_values.items():
             if value:
-                values[key] = value
-        query_string = urlencode(sorted(values.items()))
+                pairs = [(pair_key, pair_value) for pair_key, pair_value in pairs if pair_key != key]
+                pairs.append((key, value))
+        query_string = urlencode(sorted(pairs))
         return urlunsplit(
             (parsed.scheme, parsed.netloc, parsed.path or "/", query_string, parsed.fragment)
         )
@@ -718,11 +737,13 @@ class ResearchStoryViewModel:
         base_path: str = "/?view=stories",
         query: Mapping[str, object] | str | None = None,
         translator: Translator | None = None,
+        reader_projection: ReaderProjection | None = None,
     ) -> str:
         """Render a mountable, accessible HTML fragment for the selected mode."""
 
         selected_translator = translator or Translator()
         fixture = _is_fixture(self.model, "stories")
+        projection = reader_projection or project_read_model(self.model)
         root_label = _root_label(self.root)
         heading = _display_text(
             root_label, "story.root_unavailable", translator=selected_translator, fixture=fixture
@@ -752,6 +773,7 @@ class ResearchStoryViewModel:
             f'<nav class="story-mode-nav" '
             f'aria-label="{escape(selected_translator.t("story.mode.aria"), quote=True)}">'
             f'{mode_links}</nav></header>'
+            f'{render_reader_surface(projection, page=ReaderPage.STORY, query_context=query if query is not None else base_path, translator=selected_translator)}'
             f"{render_status_block(_fixture_status_copy(self.model, selected_translator) if fixture else self.model, translator=selected_translator)}"
             f'<div class="research-story-content">{sections[self.mode]}</div>'
             f"</section>"
@@ -1038,6 +1060,7 @@ def render_research_story(
     base_path: str = "/?view=stories",
     query: Mapping[str, object] | str | None = None,
     translator: Translator | None = None,
+    reader_projection: ReaderProjection | None = None,
 ) -> str:
     """Integration hook for ``app.py`` and future shells.
 
@@ -1048,7 +1071,10 @@ def render_research_story(
     """
 
     return ResearchStoryViewModel.from_read_model(model, mode=mode).render(
-        base_path=base_path, query=query, translator=translator
+        base_path=base_path,
+        query=query,
+        translator=translator,
+        reader_projection=reader_projection,
     )
 
 

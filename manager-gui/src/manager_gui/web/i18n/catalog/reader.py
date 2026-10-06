@@ -207,6 +207,52 @@ ENTRIES: Mapping[str, M] = {
     ),
     "reader.not_yet_known": M("还不知道什么？", "What is not known yet?"),
     "reader.why_this_is_said": M("为什么这样说？", "Why is this stated?"),
+    "reader.atlas.question": M(
+        "研究过什么、现在走到哪里、还能沿着哪些前沿继续查看？",
+        "What was researched, where has it reached, and which frontiers can be followed next?",
+    ),
+    "reader.atlas.confirmed": M(
+        "此页只列出已命名来源支持的总览声明。",
+        "This page lists only overview claims supported by named sources.",
+    ),
+    "reader.atlas.unknown": M(
+        "总览中哪些内容仍未记录、受阻或无法比较？",
+        "Which overview items remain unrecorded, blocked, or incomparable?",
+    ),
+    "reader.atlas.why": M(
+        "按来源范围、读取可用性和可复现派生规则解释总览。",
+        "Explain the overview through source scope, read availability, and reproducible rules.",
+    ),
+    "reader.story.question": M(
+        "为什么研究、怎样尝试、发生了什么，以及下一步能否追溯？",
+        "Why was this researched, what was tried, what happened, and what can be traced next?",
+    ),
+    "reader.story.confirmed": M(
+        "故事链只列出有来源范围的研究声明。",
+        "The story chain lists only research claims with a named source scope.",
+    ),
+    "reader.story.unknown": M(
+        "故事链中的哪些阶段尚未记录、尚未评估或不能判断？",
+        "Which story stages are unrecorded, unevaluated, or undetermined?",
+    ),
+    "reader.story.why": M(
+        "按故事来源、读取可用性和派生边界解释每个节点。",
+        "Explain each story node through its sources, read availability, and derivation boundary.",
+    ),
+    "reader.no_conclusion": M(
+        "当前没有属主记录支持结论；无法得出结论。",
+        "No owner record currently supports a conclusion; no conclusion can be drawn.",
+    ),
+    "reader.no_gaps": M(
+        "当前范围没有额外记录的知识缺口。",
+        "No additional knowledge gap is recorded in this scope.",
+    ),
+    "reader.no_sources": M(
+        "来源引用未记录；无法得出结论。",
+        "Source references are not recorded; no conclusion can be drawn.",
+    ),
+    "reader.derivation.unrecorded": M("未记录", "Not recorded"),
+    "reader.next_step": M("继续查看下一步", "Continue to the next step"),
     "reader.evidence_entry": M("证据入口", "Evidence entry point"),
     "reader.raw_source": M("原始来源", "Raw source"),
     "reader.as_of": M("截至时间", "As of"),
