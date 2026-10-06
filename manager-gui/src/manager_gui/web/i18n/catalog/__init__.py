@@ -111,11 +111,17 @@ REGISTRY.register(l3_method_history.ENTRIES)
 # L4 page namespaces are registered exactly once at the integration boundary.
 # Their page-local translators remain compatible with this process-wide registry,
 # while duplicate keys fail closed through CatalogRegistry.register().
-from . import l4_evidence, l4_lineage, l4_memory  # noqa: E402
+from . import (  # noqa: E402
+    l4_evidence,
+    l4_evidence_lineage_reader,
+    l4_lineage,
+    l4_memory,
+)
 
 REGISTRY.register(l4_memory.ENTRIES)
 REGISTRY.register(l4_evidence.ENTRIES)
 REGISTRY.register(l4_lineage.ENTRIES)
+REGISTRY.register(l4_evidence_lineage_reader.ENTRIES)
 
 # L5 Search and Portal namespaces are registered exactly once at the integration
 # boundary, preserving the append-only collision checks used by every slice.

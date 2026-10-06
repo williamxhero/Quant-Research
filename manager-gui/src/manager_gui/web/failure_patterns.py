@@ -467,9 +467,9 @@ def _pattern(
         sources,
     )
     failure_ids = tuple(
-        identifier
+        failure_id
         for raw in _sequence(_field(item, "failure_ids", "sample_ids", "members", "failures"))
-        if (identifier := _ref_id(raw)) is not None
+        if (failure_id := _ref_id(raw)) is not None
     )
     return FailurePattern(
         pattern_id=identifier,

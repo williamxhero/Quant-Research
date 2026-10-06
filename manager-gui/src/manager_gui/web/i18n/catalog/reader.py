@@ -72,6 +72,26 @@ AVAILABILITY_EXPLANATION_KEYS: Mapping[ReaderAvailabilityStatus, str] = MappingP
 )
 SAMPLE_BANNER_KEY: Final[str] = "reader.sample.banner"
 
+# Generated Reader boundary reasons are opaque tokens in the projection.  They
+# are rendered here so page adapters never store or display generated prose.
+READER_REASON_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "reader.reason.conclusion_missing": "reader.reason.conclusion_missing",
+        "reader.reason.source_reference_missing": "reader.reason.source_reference_missing",
+        "reader.reason.source_missing": "reader.reason.source_missing",
+        "reader.reason.artifact_missing": "reader.reason.artifact_missing",
+        "reader.reason.lineage_relation_missing": "reader.reason.lineage_relation_missing",
+        "reader.reason.relation_reason_missing": "reader.reason.relation_reason_missing",
+        "reader.reason.scope_incomplete": "reader.reason.scope_incomplete",
+        "reader.reason.record_missing": "reader.reason.record_missing",
+        "reader.reason.no_comparison": "reader.reason.no_comparison",
+        "reader.reason.comparison_equal": "reader.reason.comparison_equal",
+        "reader.reason.comparison_different": "reader.reason.comparison_different",
+        "reader.reason.comparison_missing": "reader.reason.comparison_missing",
+        "reader.reason.comparison_not_comparable": "reader.reason.comparison_not_comparable",
+    }
+)
+
 # These are the only named values a Reader template may receive.  They are
 # deliberately a subset of the shared glossary's audited placeholder names.
 READER_PLACEHOLDER_NAMES: Final[frozenset[str]] = frozenset(
@@ -194,6 +214,10 @@ READER_TEMPLATES: Mapping[str, ReaderTemplateSpec] = MappingProxyType(
         "reader.availability.reason": ReaderTemplateSpec(
             "reader.availability.reason", ("text",)
         ),
+        **{
+            key: ReaderTemplateSpec(key)
+            for key in READER_REASON_KEYS.values()
+        },
     }
 )
 
@@ -287,21 +311,120 @@ ENTRIES: Mapping[str, M] = {
         "每个节点保留身份和来源，并链接到基因组、条件、证据和比较。",
         "Each node retains identity and sources and links to Genome, conditions, Evidence, and comparison.",
     ),
+    "reader.comparison.title": M("比较阅读器", "Comparison Reader"),
     "reader.comparison.question": M(
-        "两个策略版本是否具备可比较的身份和资格条件？",
-        "Do the two strategy revisions have compatible identity and eligibility conditions for comparison?",
+        "两个对象在哪些明确口径上相同、不同、缺失或无法比较？",
+        "On which explicit axes are the two objects equal, different, missing, or not comparable?",
     ),
     "reader.comparison.confirmed": M(
-        "只呈现明确比较轴支持的相等、不同或不可比较结果。",
-        "Only equal, different, or incomparable outcomes supported by explicit axes are shown.",
+        "这里只显示有来源和派生边界支持的逐轴比较；无法比较不会被改写成不同。",
+        "Only axis comparisons with named sources and derivation boundaries are shown; not comparable is never rewritten as different.",
     ),
     "reader.comparison.unknown": M(
-        "身份、数据版本或资格轴缺失时，不能声称相等或不同。",
-        "When identity, data version, or eligibility axes are missing, equality or difference cannot be claimed.",
+        "身份、资格、来源生成或快照缺失时，不能声称对象相同或不同。",
+        "When identity, eligibility, source generation, or snapshot is missing, equality or difference cannot be claimed.",
     ),
     "reader.comparison.why": M(
-        "比较结果保留明确轴、来源、快照和不可比较原因，不使用看起来相同的默认值。",
-        "Comparison retains explicit axes, sources, snapshots, and incomparability reasons without filling defaults that merely look equal.",
+        "每个轴保留属主值、来源、可用性和派生规则；没有共同口径时不计算排名或成功率。",
+        "Each axis retains owner values, sources, availability, and derivation; no ranking or success rate is calculated without a common basis.",
+    ),
+    "reader.comparison.axis": M("比较轴", "Comparison axis"),
+    "reader.comparison.axis.identity": M("身份", "Identity"),
+    "reader.comparison.axis.eligibility": M("资格", "Eligibility"),
+    "reader.comparison.axis.source_generation": M("来源生成", "Source generation"),
+    "reader.comparison.axis.snapshot": M("快照", "Snapshot"),
+    "reader.comparison.axis.data_version": M("数据版本", "Data version"),
+    "reader.comparison.axis.universe": M("标的集合", "Universe"),
+    "reader.comparison.axis.time_range": M("时间范围", "Time range"),
+    "reader.comparison.axis.protocol": M("协议", "Protocol"),
+    "reader.comparison.axis.randomness": M("随机性", "Randomness"),
+    "reader.comparison.axis.costs": M("成本", "Costs"),
+    "reader.comparison.axis.fills": M("成交", "Fills"),
+    "reader.comparison.axis.metric_definition": M("指标定义", "Metric definition"),
+    "reader.comparison.axis.evidence_sections": M("证据章节", "Evidence sections"),
+    "reader.comparison.axis.currency": M("货币", "Currency"),
+    "reader.comparison.state": M("状态", "State"),
+    "reader.comparison.availability": M("可用性", "Availability"),
+    "reader.comparison.left": M("左侧对象", "Left object"),
+    "reader.comparison.right": M("右侧对象", "Right object"),
+    "reader.comparison.reason": M("这意味着什么", "What this means"),
+    "reader.comparison.sources": M("来源与派生", "Source and derivation"),
+    "reader.comparison.equal": M("相同", "Equal"),
+    "reader.comparison.different": M("不同", "Different"),
+    "reader.comparison.missing": M("缺失", "Missing"),
+    "reader.comparison.not_comparable": M("无法比较", "Not comparable"),
+    "reader.comparison.reason.equal": M(
+        "两侧已发布值相同；这不是有效性结论。",
+        "The published values match; this is not a validity conclusion.",
+    ),
+    "reader.comparison.reason.different": M(
+        "两侧已发布值不同；差异本身不表示哪一侧更好。",
+        "The published values differ; the difference alone does not say which side is better.",
+    ),
+    "reader.comparison.reason.missing": M(
+        "该轴没有两侧都具备的明确记录；没有默认值被补入。",
+        "Both sides do not have an explicit record for this axis; no default was filled in.",
+    ),
+    "reader.comparison.reason.not_comparable": M(
+        "该轴的身份、资格、来源生成、快照或协议不一致或缺失，因此拒绝比较。",
+        "Identity, eligibility, source generation, snapshot, or protocol is inconsistent or missing, so comparison is refused.",
+    ),
+    "reader.comparison.no_comparison": M(
+        "当前范围没有明确的对象比较记录。",
+        "No explicit object comparison is recorded in this scope.",
+    ),
+    "reader.comparison.no_statistics": M(
+        "没有共同分母、时间口径或协议支持；不生成成功率、排名或有效性结论。",
+        "Without a common denominator, time basis, or protocol, no success rate, ranking, or validity conclusion is generated.",
+    ),
+    "reader.comparison.refused": M(
+        "比较已拒绝；请先补齐共同身份和口径。",
+        "Comparison was refused; establish a shared identity and basis before comparing.",
+    ),
+    "reader.comparison.expert_heading": M("专业比较字段", "Expert comparison fields"),
+    "reader.comparison.raw_heading": M("原始 ManagerReadModel v0", "Raw ManagerReadModel v0"),
+    "reader.comparison.related": M("比较相关入口", "Related comparison entry points"),
+    "reader.comparison.object_reader": M("对象阅读器", "Object Reader"),
+    "reader.comparison.evidence": M("证据阅读器", "Evidence Reader"),
+    "reader.comparison.lineage": M("谱系阅读器", "Lineage Reader"),
+    "reader.comparison.not_recorded": M("未记录", "Not recorded"),
+    "reader.evidence.question": M(
+        "当前结论能沿明确记录的证据、来源和制品追溯到哪里？",
+        "How far can the current conclusion be traced through explicitly recorded evidence, sources, and artifacts?",
+    ),
+    "reader.evidence.confirmed": M(
+        "候选证据、符合协议的证据和来源只按属主记录的类别呈现。",
+        "Candidate evidence, protocol-conforming evidence, and sources are shown only under their owner-recorded classes.",
+    ),
+    "reader.evidence.unknown": M(
+        "未记录的证据、来源、制品或评估状态不能被补成成功或失败。",
+        "Unrecorded evidence, sources, artifacts, or evaluation states are not filled in as success or failure.",
+    ),
+    "reader.evidence.why": M(
+        "追溯链保留原始来源、派生方式和可用性；缺口保持为缺口。",
+        "The trace keeps original sources, derivation, and availability; gaps remain gaps.",
+    ),
+    "reader.lineage.title": M("谱系阅读器", "Lineage Reader"),
+    "reader.lineage.eyebrow": M("只读谱系追溯", "Read-only lineage trace"),
+    "reader.lineage.intro": M(
+        "这里保留属主发布的节点、边、来源和快照；相邻记录不会被推断为谱系。",
+        "Published nodes, edges, sources, and snapshots are retained here; adjacent records are never inferred as lineage.",
+    ),
+    "reader.lineage.question": M(
+        "当前证据和结论之间有哪些明确发布的谱系关系？",
+        "Which lineage relations between the current evidence and conclusion are explicitly published?",
+    ),
+    "reader.lineage.confirmed": M(
+        "只呈现已发布的节点、边和关系类型，不从相邻记录推断关联。",
+        "Only published nodes, edges, and relation types are shown; adjacency never infers an association.",
+    ),
+    "reader.lineage.unknown": M(
+        "没有明确边或关联原因时，无法得出谱系结论。",
+        "Without an explicit edge or association reason, no lineage conclusion can be drawn.",
+    ),
+    "reader.lineage.why": M(
+        "谱系表逐项标明关系、原因、来源和可用性，并显示缺失边界。",
+        "The lineage table separates relation, reason, source, and availability and shows missing boundaries.",
     ),
     "reader.no_conclusion": M(
         "当前没有属主记录支持结论；无法得出结论。",
@@ -386,6 +509,55 @@ ENTRIES: Mapping[str, M] = {
     "reader.availability.reason": M(
         "来源可用性说明：{text}", "Availability note from the source: {text}"
     ),
+    "reader.reason.conclusion_missing": M(
+        "当前没有属主记录支持结论；无法得出结论。",
+        "No owner record currently supports a conclusion; no conclusion can be drawn.",
+    ),
+    "reader.reason.source_reference_missing": M(
+        "来源引用未能在当前来源范围内解析。",
+        "A source reference cannot be resolved within the current source scope.",
+    ),
+    "reader.reason.source_missing": M(
+        "来源未发布或当前不可用。", "The source is not published or is unavailable here."
+    ),
+    "reader.reason.artifact_missing": M(
+        "制品未发布或当前不可用。", "The artifact is not published or is unavailable here."
+    ),
+    "reader.reason.lineage_relation_missing": M(
+        "谱系关系未在当前范围内发布。",
+        "The lineage relation is not published in the current scope.",
+    ),
+    "reader.reason.relation_reason_missing": M(
+        "关联原因未明确记录；无法得出关联原因。",
+        "The association reason is not explicitly recorded; no reason can be concluded.",
+    ),
+    "reader.reason.scope_incomplete": M(
+        "证据与谱系范围不完整；无法得出完整结论。",
+        "The evidence and lineage scope is incomplete; no complete conclusion can be drawn.",
+    ),
+    "reader.reason.record_missing": M(
+        "当前范围没有已发布记录。", "No record is published in the current scope."
+    ),
+    "reader.reason.no_comparison": M(
+        "当前没有明确记录支持比较；无法得出比较结论。",
+        "No explicit comparison is recorded; no comparison conclusion can be drawn.",
+    ),
+    "reader.reason.comparison_equal": M(
+        "该轴两侧已发布值相同；这不是有效性结论。",
+        "The published values on this axis match; this is not a validity conclusion.",
+    ),
+    "reader.reason.comparison_different": M(
+        "该轴两侧已发布值不同；差异本身不表示哪一侧更好。",
+        "The published values on this axis differ; the difference alone does not say which side is better.",
+    ),
+    "reader.reason.comparison_missing": M(
+        "该轴没有两侧都具备的明确记录；没有默认值被补入。",
+        "Both sides do not have an explicit record for this axis; no default was filled in.",
+    ),
+    "reader.reason.comparison_not_comparable": M(
+        "该轴身份、资格、来源生成、快照或协议不一致或缺失，因此拒绝比较。",
+        "Identity, eligibility, source generation, snapshot, or protocol is inconsistent or missing, so comparison is refused.",
+    ),
     # Every key below is referenced by ReaderClaim.explanation_key.  None of
     # these messages turns an absence or interpretation into a success/failure.
     "reader.claim.known": M(
@@ -468,6 +640,69 @@ ENTRIES: Mapping[str, M] = {
     "label.reader_mode.reader": M("阅读模式", "Reader"),
     "label.reader_mode.expert": M("专业模式", "Expert"),
     "label.reader_mode.raw": M("原始模式", "Raw"),
+    # R4 Memory/Failure Reader copy. Identifiers, reasons and owner text stay
+    # runtime values and are never placed in this catalogue.
+    "reader.memory.title": M("研究记忆阅读器", "Research Memory Reader"),
+    "reader.memory.question": M(
+        "当前范围明确记录了哪些研究记忆、关联和政策？",
+        "Which research memories, associations, and policies are explicitly recorded in this scope?",
+    ),
+    "reader.memory.confirmed": M(
+        "正式研究记忆、普通失败记录和 GUI 派生模式保持为不同层次。",
+        "Formal Research Memory, ordinary failure records, and GUI-derived patterns remain separate layers.",
+    ),
+    "reader.memory.unknown": M(
+        "未记录、未评估或无法追溯的内容不会被补成结论。",
+        "Unrecorded, unevaluated, or untraceable content is not filled in as a conclusion.",
+    ),
+    "reader.memory.why": M(
+        "每项内容只来自公开读取模型中明确命名的记录和来源。",
+        "Each item comes only from explicitly named records and sources in the public read model.",
+    ),
+    "reader.failure.title": M("失败追溯阅读器", "Failure Trace Reader"),
+    "reader.failure.question": M(
+        "哪些失败经验被明确记录，状态和来源能追溯到哪里？",
+        "Which failure experiences are explicitly recorded, and how far can their state and sources be traced?",
+    ),
+    "reader.failure.confirmed": M(
+        "成功、失败、阻塞、未评估、过时和不可比较保持各自语义。",
+        "Success, failure, blocked, not evaluated, stale, and incomparable remain distinct semantics.",
+    ),
+    "reader.failure.unknown": M(
+        "没有来源或没有明确谱系的记录不能被猜测关联。",
+        "Records without sources or explicit lineage are not linked by inference.",
+    ),
+    "reader.failure.why": M(
+        "失败记录、正式记忆和派生模式分别保留其属主边界与派生规则。",
+        "Failure records, Formal Memory, and Derived patterns retain their respective owner boundaries and rules.",
+    ),
+    "reader.memory.empty": M(
+        "当前范围没有记录正式研究记忆条目。",
+        "No formal Research Memory entries are recorded in this scope.",
+    ),
+    "reader.failure.empty": M(
+        "当前范围没有记录失败记录或派生模式。",
+        "No failure records or derived patterns are recorded in this scope.",
+    ),
+    "reader.memory.missing_source": M("未记录或未确认来源", "Missing or unconfirmed source"),
+    "reader.memory.open_record": M("打开记录", "Open record"),
+    "reader.memory.layer_label": M("记录层", "Record layer"),
+    "reader.failure.state_label": M("记录状态", "Record state"),
+    "reader.memory.layer.formal_research_memory": M("正式研究记忆", "Formal Research Memory"),
+    "reader.memory.layer.failure_record": M("普通失败记录", "Ordinary failure record"),
+    "reader.memory.layer.gui_derived": M("GUI 派生模式", "GUI-derived pattern"),
+    "reader.memory.where_produced": M("产生位置与谱系", "Where produced and lineage"),
+    "reader.memory.limitations": M("限制与边界", "Limitations and boundaries"),
+    "reader.memory.counterexample": M("反例与冲突", "Counterexample and conflict"),
+    "reader.memory.not_recorded": M("未明确记录", "Not explicitly recorded"),
+    "reader.failure.state.success": M("成功", "Success"),
+    "reader.failure.state.failure": M("失败", "Failure"),
+    "reader.failure.state.blocked": M("已阻塞", "Blocked"),
+    "reader.failure.state.not_evaluated": M("未评估", "Not evaluated"),
+    "reader.failure.state.stale": M("已过时", "Stale"),
+    "reader.failure.state.incomparable": M("不可比较", "Incomparable"),
+    "reader.failure.state.missing": M("未记录", "Missing"),
+    "reader.failure.state.unknown": M("未知", "Unknown"),
 }
 
 
@@ -601,6 +836,20 @@ def render_reader_template(
     return translator.t(key, **dict(values))
 
 
+def render_reader_reason(
+    translator: Translator,
+    reason: str,
+    *,
+    as_html: bool = False,
+) -> str | None:
+    """Render a generated boundary token, or return ``None`` for owner text."""
+
+    key = READER_REASON_KEYS.get(reason)
+    if key is None:
+        return None
+    return translator.html(key) if as_html else translator.t(key)
+
+
 def _claim_source_detail(
     translator: Translator,
     claim: ReaderClaim,
@@ -621,12 +870,22 @@ def _claim_source_detail(
             as_html=as_html,
         )
     if claim.is_gap:
+        reason = claim.availability.reason
+        generated = render_reader_reason(translator, reason, as_html=as_html) if reason else None
+        if generated is not None:
+            source = render_reader_template(
+                translator,
+                "reader.source.reference",
+                source_refs=claim.source_refs,
+                as_html=as_html,
+            )
+            return f"{generated} {source}"
         key = "reader.gap.detail" if claim.kind is ClaimKind.MISSING else "reader.limitation.detail"
         return render_reader_template(
             translator,
             key,
             params=ReaderTemplateParams(
-                value=claim.availability.reason or claim.kind.value,
+                value=reason or claim.kind.value,
             ),
             source_refs=claim.source_refs,
             as_html=as_html,
@@ -691,6 +950,9 @@ def render_availability_explanation(
     )
     if reason is None:
         return base
+    generated = render_reader_reason(translator, reason, as_html=as_html)
+    if generated is not None:
+        return f"{base} {generated}"
     detail = render_reader_template(
         translator,
         "reader.availability.reason",
@@ -756,6 +1018,7 @@ __all__ = [
     "ENTRIES",
     "EXPLANATION_KEYS",
     "READER_PLACEHOLDER_NAMES",
+    "READER_REASON_KEYS",
     "READER_TEMPLATES",
     "SAMPLE_BANNER_KEY",
     "ReaderTemplateParams",
@@ -764,6 +1027,7 @@ __all__ = [
     "render_availability_explanation",
     "render_claim_explanation",
     "render_projection_summary",
+    "render_reader_reason",
     "render_reader_template",
     "render_summary",
 ]

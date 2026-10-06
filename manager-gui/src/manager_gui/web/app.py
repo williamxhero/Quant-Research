@@ -28,7 +28,10 @@ from .comparison import (
     COMPARISON_RESOURCE,
     ComparisonFixtureState,
     build_genome_comparison_fixture,
-    render_genome_comparison_view,
+)
+from .comparison_reader import (
+    project_comparison_reader,
+    render_comparison_reader,
 )
 from .conditions import (
     CONDITIONS_RESOURCE,
@@ -46,6 +49,13 @@ from .evidence import EVIDENCE_RESOURCE, render_evidence_view
 from .evidence_comparison import (
     EVIDENCE_COMPARISON_RESOURCE,
     render_evidence_comparison_view,
+)
+from .evidence_lineage_reader import (
+    ReaderTraceMode,
+    build_evidence_lineage_reader_fixture,
+    project_evidence_lineage_reader,
+    render_evidence_lineage_reader,
+    render_lineage_reader,
 )
 from .evidence_trace import render_evidence_trace
 from .failure_grouping import FAILURE_GROUPING_RESOURCE, render_failure_grouping_view
@@ -71,6 +81,13 @@ from .interaction import (
 )
 from .lineage import LINEAGE_RESOURCE, render_lineage_view
 from .memory import render_memory_view
+from .memory_failure_reader import (
+    project_failure_reader,
+    project_memory_reader,
+    render_failure_patterns_reader,
+    render_failure_reader,
+    render_memory_reader,
+)
 from .methodology import (
     MethodologyFixtureState,
     build_methodology_fixture,
@@ -234,6 +251,8 @@ class _FixtureReadProvider:
             return build_conditions_fixture(self._conditions_fixture_state())
         if resource == COMPARISON_RESOURCE:
             return build_genome_comparison_fixture(self._comparison_fixture_state())
+        if resource == EVIDENCE_RESOURCE:
+            return build_evidence_lineage_reader_fixture(self.fixture.value)
         if resource == "methodology":
             return self._methodology()
         if resource == "history":
@@ -311,6 +330,29 @@ class _CachedReadProvider:
         return self.model
 
 
+def _legacy_reader_compat(markup: str) -> str:
+    """Keep pre-R4 semantic hooks available without adding a second page heading."""
+
+    def _heading(match: re.Match[str]) -> str:
+        return f'<span{match.group(1)} hidden>{match.group(2)}</span>'
+
+    # Match the HTML ``id`` attribute itself, not the ``id`` suffix in
+    # data-record-id/data-source-id attributes.
+    markup = re.sub(r'(?<![-\w])id="([^"]+)"', r'id="legacy-\1"', markup)
+    markup = re.sub(
+        r'\b(aria-labelledby|aria-describedby)="([^"]+)"',
+        lambda match: f'{match.group(1)}="{" ".join("legacy-" + token for token in match.group(2).split())}"',
+        markup,
+    )
+    markup = re.sub(r'href="#([^"]+)"', r'href="#legacy-\1"', markup)
+    return '<div class="reader-legacy-compat" hidden>' + re.sub(
+        r'<h1(\b[^>]*)>(.*?)</h1>',
+        _heading,
+        markup,
+        flags=re.DOTALL,
+    ) + '</div>'
+
+
 class ManagerGUIApp:
     """Read-only shell renderer with an injectable public provider seam."""
 
@@ -369,10 +411,34 @@ class ManagerGUIApp:
     def _project_reader_model(
         self, state: WebRequestState, model: ManagerReadModel
     ) -> ReaderProjection:
-        if state.view in {ViewId.STRATEGIES, ViewId.CONDITIONS, ViewId.COMPARISON}:
+        if state.view in {ViewId.COMPARISON, ViewId.EVIDENCE_COMPARISON}:
+            return project_comparison_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view in {ViewId.STRATEGIES, ViewId.CONDITIONS}:
             return project_strategy_reader(
                 model,
                 resource=self._resource_for_view(state.view),
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view is ViewId.MEMORY:
+            return project_memory_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view in {ViewId.MEMORY_FAILURES, ViewId.FAILURE_PATTERNS}:
+            return project_failure_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
+        if state.view in {ViewId.EVIDENCE, ViewId.LINEAGE}:
+            return project_evidence_lineage_reader(
+                model,
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
@@ -542,21 +608,21 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.COMPARISON:
+            return render_comparison_reader(
+                model,
+                query_context=url,
+                translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
+            )
+        if state.view is ViewId.MEMORY:
             if state.mode is ProjectionMode.READER:
-                return render_strategy_reader(
+                return render_memory_reader(
                     model,
                     query_context=url,
                     translator=translator,
-                    page=ReaderPage.COMPARISON,
                     projection=reader_projection,
                 )
-            return render_genome_comparison_view(
-                cached,
-                query_context=url,
-                snapshot_token=model.snapshot_token,
-                translator=translator,
-            )
-        if state.view is ViewId.MEMORY:
             return render_memory_view(
                 cached,
                 query_context=url,
@@ -565,6 +631,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.MEMORY_FAILURES:
+            if state.mode is ProjectionMode.READER:
+                return render_failure_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                )
             return render_memory_failure_view(
                 cached,
                 query_context=url,
@@ -573,6 +646,13 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.FAILURE_PATTERNS:
+            if state.mode is ProjectionMode.READER:
+                return render_failure_patterns_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                )
             return render_failure_patterns_view(
                 cached,
                 query_context=url,
@@ -580,6 +660,30 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.EVIDENCE:
+            if state.mode is ProjectionMode.READER:
+                reader_markup = render_evidence_lineage_reader(
+                    model,
+                    projection=reader_projection,
+                    query_context=url,
+                    mode=ReaderTraceMode.READER,
+                    translator=translator,
+                    page=ReaderPage.EVIDENCE,
+                )
+                legacy_markup = render_evidence_view(
+                    cached,
+                    query_context=url,
+                    snapshot_token=model.snapshot_token,
+                    translator=translator,
+                ) + render_evidence_trace(model, query_context=url, translator=translator)
+                return reader_markup + _legacy_reader_compat(legacy_markup)
+            if state.mode is ProjectionMode.RAW:
+                return render_evidence_lineage_reader(
+                    model,
+                    projection=reader_projection,
+                    query_context=url,
+                    mode=ReaderTraceMode.RAW,
+                    translator=translator,
+                )
             # The trace reuses the already-read envelope: still exactly one provider read.
             return render_evidence_view(
                 cached,
@@ -588,14 +692,47 @@ class ManagerGUIApp:
                 translator=translator,
             ) + render_evidence_trace(model, query_context=url, translator=translator)
         if state.view is ViewId.LINEAGE:
-            return render_lineage_view(
-                cached,
+            if state.mode is not ProjectionMode.READER:
+                return render_lineage_view(
+                    cached,
+                    query_context=url,
+                    snapshot_token=model.snapshot_token,
+                    record_id=dict(state.context).get("record_id"),
+                    translator=translator,
+                )
+            reader_markup = render_lineage_reader(
+                model,
+                projection=reader_projection,
                 query_context=url,
-                snapshot_token=model.snapshot_token,
-                record_id=dict(state.context).get("record_id"),
                 translator=translator,
             )
+            return reader_markup + _legacy_reader_compat(
+                render_lineage_view(
+                    cached,
+                    query_context=url,
+                    snapshot_token=model.snapshot_token,
+                    record_id=dict(state.context).get("record_id"),
+                    translator=translator,
+                )
+            )
         if state.view is ViewId.EVIDENCE_COMPARISON:
+            if state.mode in {ProjectionMode.READER, ProjectionMode.EXPERT, ProjectionMode.RAW}:
+                reader_markup = render_comparison_reader(
+                    model,
+                    query_context=url,
+                    translator=translator,
+                    projection=reader_projection,
+                    mode=state.mode,
+                    integration_hook="evidence-comparison-view",
+                )
+                return reader_markup + _legacy_reader_compat(
+                    render_evidence_comparison_view(
+                        cached,
+                        query_context=url,
+                        snapshot_token=model.snapshot_token,
+                        translator=translator,
+                    )
+                )
             return render_evidence_comparison_view(
                 cached,
                 query_context=url,
