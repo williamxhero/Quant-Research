@@ -42,6 +42,11 @@ class ReaderPage(StrEnum):
     FAILURE_PATTERNS = "failure-patterns"
     EVIDENCE = "evidence"
     LINEAGE = "lineage"
+    METHODOLOGY = "methodology"
+    HISTORY = "history"
+    DOCUMENTS = "documents"
+    SEARCH = "search"
+    PORTAL = "portal"
 
 
 ReaderQueryContext = str | Mapping[str, object] | None
@@ -130,6 +135,36 @@ _PAGE_COPY: Final[dict[ReaderPage, dict[str, str]]] = {
         "confirmed": "reader.lineage.confirmed",
         "unknown": "reader.lineage.unknown",
         "why": "reader.lineage.why",
+    },
+    ReaderPage.METHODOLOGY: {
+        "question": "reader.methodology.question",
+        "confirmed": "reader.methodology.confirmed_intro",
+        "unknown": "reader.methodology.unknown_intro",
+        "why": "reader.methodology.why_intro",
+    },
+    ReaderPage.HISTORY: {
+        "question": "reader.history.question",
+        "confirmed": "reader.history.confirmed_intro",
+        "unknown": "reader.history.unknown_intro",
+        "why": "reader.history.why_intro",
+    },
+    ReaderPage.DOCUMENTS: {
+        "question": "reader.documents.question",
+        "confirmed": "reader.documents.confirmed_intro",
+        "unknown": "reader.documents.unknown_intro",
+        "why": "reader.documents.why_intro",
+    },
+    ReaderPage.SEARCH: {
+        "question": "reader.search.question",
+        "confirmed": "reader.search.confirmed_intro",
+        "unknown": "reader.search.unknown_intro",
+        "why": "reader.search.why_intro",
+    },
+    ReaderPage.PORTAL: {
+        "question": "reader.portal.question",
+        "confirmed": "reader.portal.confirmed_intro",
+        "unknown": "reader.portal.unknown_intro",
+        "why": "reader.portal.why_intro",
     },
 }
 

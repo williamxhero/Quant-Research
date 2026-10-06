@@ -91,7 +91,10 @@ from .memory_failure_reader import (
 from .methodology import (
     MethodologyFixtureState,
     build_methodology_fixture,
-    render_methodology_view,
+)
+from .methodology_reader import (
+    project_methodology_reader,
+    render_methodology_reader,
 )
 from .navigation import (
     NAVIGATION,
@@ -442,6 +445,12 @@ class ManagerGUIApp:
                 sample=self._provider is None,
                 sample_state=state.fixture.value,
             )
+        if state.view is ViewId.METHODOLOGY:
+            return project_methodology_reader(
+                model,
+                sample=self._provider is None,
+                sample_state=state.fixture.value,
+            )
         return project_reader_model(
             model,
             resource=self._resource_for_view(state.view),
@@ -747,11 +756,12 @@ class ManagerGUIApp:
                 translator=translator,
             )
         if state.view is ViewId.METHODOLOGY:
-            return render_methodology_view(
-                cached,
-                snapshot_token=model.snapshot_token,
+            return render_methodology_reader(
+                model,
                 query_context=url,
                 translator=translator,
+                projection=reader_projection,
+                mode=state.mode,
             )
         if state.view is ViewId.HISTORY:
             return render_history_view(
