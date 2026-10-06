@@ -115,7 +115,7 @@ READER_PROJECTION_JSON_SCHEMA: Final[dict[str, object]] = {
     "properties": {
         "schema": {"const": READER_PROJECTION_SCHEMA},
         "data": {},
-        "summary": {"type": ["object", "null"], "allOf": [{"$ref": "#/$defs/summary"}]},
+        "summary": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/summary"}]},
         "claims": {"type": "array", "items": {"$ref": "#/$defs/claim"}},
         "limitations": {"type": "array", "items": {"$ref": "#/$defs/claim"}},
         "unknowns": {"type": "array", "items": {"$ref": "#/$defs/claim"}},
@@ -125,7 +125,7 @@ READER_PROJECTION_JSON_SCHEMA: Final[dict[str, object]] = {
         "derivation": {"$ref": "#/$defs/derivation"},
         "availability": {"$ref": "#/$defs/availability"},
         "raw_source": {"$ref": "#/$defs/raw_source"},
-        "sample_data": {"type": ["object", "null"], "allOf": [{"$ref": "#/$defs/sample_data"}]},
+        "sample_data": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sample_data"}]},
     },
     "$defs": {
         "source_ref": _SOURCE_REF,
