@@ -25,7 +25,7 @@ from ..provider import ManagerDataProvider
 from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
-from .navigation import clear_filters_link, context_link
+from .navigation import clear_filters_link, context_link, query_values
 from .reader_surface import ReaderPage, render_reader_surface
 from .source_support import source_support_computation, source_support_entry, source_support_impact
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
@@ -961,7 +961,9 @@ def render_atlas_reading(
             f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>'
         )
         story_url = _story_link(record, query_context)
-        if model.snapshot_token is not None:
+        requested = query_values(query_context)
+        selected_snapshot = requested.get("snapshot_token") or requested.get("snapshot")
+        if model.snapshot_token is not None and not selected_snapshot:
             story_url = context_link(story_url, view="stories", snapshot_token=model.snapshot_token)
         cards.append(
             f'<article data-research-object="{escape(record.record_id, quote=True)}">{card_sample}'
