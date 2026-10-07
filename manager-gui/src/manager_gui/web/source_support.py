@@ -17,6 +17,7 @@ from html import escape
 from ..models import ManagerReadModel, ReadModelStatus
 from .i18n import Translator
 from .locators import public_locator
+from .material_reading import render_material_details
 from .navigation import query_values
 
 # These are existing public payload containers, not an owner schema or a search
@@ -156,6 +157,7 @@ class SourceSupport:
     computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool]] = field(
         default_factory=dict
     )
+    matched_fields: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
 
     def computation(
         self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool
@@ -212,6 +214,7 @@ class SourceSupport:
         record: Mapping[str, object] | None = None,
         *,
         record_id: str | None = None,
+        fields: tuple[tuple[str, str], ...] = (),
     ) -> str:
         if record is None and record_id:
             matches = [
@@ -229,6 +232,7 @@ class SourceSupport:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, record))
+        self.matched_fields[index] = fields
         title = _text(record.get("title")) if record else None
         has_content = record is not None and _has_content(record)
         if title is None:
@@ -271,7 +275,14 @@ class SourceSupport:
             issues.append("version_change")
         availability = original.get("availability")
         status = availability.get("status") if isinstance(availability, Mapping) else availability
-        statuses = (status, original.get("read_status"), original.get("verification_status"))
+        statuses = tuple(
+            value.get("status", value.get("state", value.get("result")))
+            if isinstance(value, Mapping) else value
+            for value in (
+                status, original.get("read_status"), original.get("verification_status"),
+                original.get("verify_status"), original.get("verify"), original.get("verification"),
+            )
+        )
         failures = {
             "blocked",
             "stale",
@@ -279,6 +290,9 @@ class SourceSupport:
             "api_unavailable",
             "missing",
             "hash_mismatch",
+            "digest_mismatch",
+            "invalid",
+            "incomparable",
             "fail",
             "failed",
             "failure",
@@ -315,6 +329,13 @@ class SourceSupport:
                 if title
                 else f"<h3>{self._t('title_missing')}</h3>"
             )
+            if issues:
+                parts.append(
+                    f'{title_markup}<p>{self._t("unverified_content")}</p>'
+                    f'{self._sample(record) or self._sample(original)}'
+                    f'<pre data-owner-text="true" translate="no">{escape(text)}</pre>'
+                )
+                continue
             excerpt = _text(record.get("excerpt"))
             matching = (
                 not conflict
@@ -424,9 +445,35 @@ class SourceSupport:
             )
             body = self._sample(record) + self.impact(record)
             has_record = record is not None and _has_content(record)
-            key = "record_original" if record and self._originals(record) else "structured"
+            key = (
+                "record_original" if record and self._originals(record)
+                else "record_content" if record and any(
+                    _text(record.get(name)) for name in ("content", "text", "original_text")
+                )
+                else "structured"
+            )
             body += f"<p>{self._t(key if has_record else 'pointer')}</p>"
             if record is not None:
+                located = tuple(
+                    (name, label) for name, label in self.matched_fields.get(index, ())
+                    if name in record
+                )
+                if located:
+                    body += f"<h3>{escape(self.translator.t('reader.search.content_heading'))}</h3>"
+                    for name, label in located:
+                        content = json.dumps(record[name], ensure_ascii=False)
+                        body += (
+                            f"<h4>{escape(label)}</h4>"
+                            f'<pre data-owner-text="true" translate="no">{escape(content)}</pre>'
+                        )
+                if "document_type" in record or record.get("record_type") in {
+                    "test_report",
+                    "report",
+                    "plan",
+                    "strategy_rules",
+                    "comparison_table",
+                }:
+                    body += render_material_details(record, self.translator)
                 body += self._original_markup(record, panel_id)
                 body += (
                     f'<h3>{self._t("fields")}</h3><pre data-owner-text="true" translate="no">'
@@ -472,11 +519,19 @@ def suspend_source_support() -> Iterator[None]:
 
 
 def source_support_entry(
-    source_id: str, *, record: Mapping[str, object] | None = None, record_id: str | None = None
+    source_id: str,
+    *,
+    record: Mapping[str, object] | None = None,
+    record_id: str | None = None,
+    fields: tuple[tuple[str, str], ...] = (),
 ) -> str | None:
     """Register a native entry in the current page; no source is fetched."""
     support = _CURRENT.get()
-    return None if support is None else support.reference(source_id, record, record_id=record_id)
+    return (
+        None
+        if support is None
+        else support.reference(source_id, record, record_id=record_id, fields=fields)
+    )
 
 
 def source_support_computation(

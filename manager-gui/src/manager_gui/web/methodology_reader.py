@@ -34,19 +34,25 @@ from ..reader import (
 from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
+from .material_reading import render_material_details
 from .methodology import (
     METHODOLOGY_RESOURCE,
+    MethodologyDocumentRef,
     MethodologyFixtureProvider,
     MethodologyFixtureState,
     MethodologyIndexState,
     MethodologyMethod,
+    MethodologyRecordRef,
     MethodologyViewModel,
     build_methodology_fixture,
     render_methodology,
 )
+from .methodology import (
+    _sequence as _methodology_sequence,
+)
 from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_entry
+from .source_support import source_support_entry, source_support_impact, source_support_usable
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -320,46 +326,166 @@ def _source_markup(view: MethodologyReaderViewModel, context: QueryContext, tran
     return f'<ul class="methodology-reader-sources">{"".join(items)}</ul>'
 
 
-def _method_detail(method: MethodologyMethod, translator: Translator, context: QueryContext) -> str:
+def _child_records(record: Mapping[str, object], key: str, alias: str = "") -> tuple[object, ...]:
+    # Match the existing typed archive parser, including public record containers.
+    return _methodology_sequence(record.get(key, record.get(alias)))
+
+
+def _record_support(record: Mapping[str, object], identifier: str) -> str:
+    # Supply the exact visible record, never a generic envelope source list.
+    source = record.get("source_ref", record.get("source_id"))
+    if source is None:
+        refs = record.get("source_refs", record.get("source_ids"))
+        if isinstance(refs, (list, tuple)) and refs:
+            source = refs[0]
+    if isinstance(source, Mapping):
+        source = source.get("source_id", source.get("id"))
+    return source_support_entry(_text(source) or identifier, record=record) or ""
+
+
+def _record_fields(record: Mapping[str, object], translator: Translator) -> str:
+    fields = (
+        ("check_scope", record.get("scope", record.get("study"))),
+        ("period", record.get("period")),
+        ("result", record.get("result", record.get("outcome"))),
+    )
+    return "".join(
+        f'<div><dt>{escape(translator.t("reader.methodology." + key))}</dt>'
+        f'<dd>{_owner(value, translator)}</dd></div>'
+        for key, value in fields
+    )
+
+
+def _record_usable(record: Mapping[str, object], model: ManagerReadModel) -> bool:
+    return model.availability.status is ReadModelStatus.KNOWN and not model.errors and source_support_usable(record)
+
+
+def _reference_links(
+    refs: tuple[MethodologyDocumentRef, ...] | tuple[MethodologyRecordRef, ...],
+    translator: Translator,
+    context: QueryContext,
+) -> str:
+    links: list[str] = []
+    for ref in refs:
+        document = isinstance(ref, MethodologyDocumentRef)
+        kind = "document" if document else "record"
+        title = ref.title if document else ref.label
+        href = context_link(
+            context,
+            view=ViewId.SOURCE_DOCUMENTS if document else ViewId.HISTORY,
+            **({"document_id": ref.document_id} if document else {"record_id": ref.record_id}),
+        )
+        label = (
+            escape(translator.t("reader.methodology.read_" + kind)) + " " + _owner(title, translator)
+            if title else escape(translator.t("reader.methodology.read_" + kind + "_unnamed"))
+        )
+        links.append(f'<a data-link-kind="{kind}" href="{escape(href, quote=True)}">{label}</a>')
+    return " · ".join(links) or escape(translator.t("reader.methodology.related_missing"))
+
+
+def _usage_markup(method: MethodologyMethod, translator: Translator, model: ManagerReadModel, context: QueryContext) -> str:
+    if not method.usage_records:
+        return f'<p data-reader-state="missing">{escape(translator.t("reader.methodology.usage_missing"))}</p>'
+    records = _child_records(method.raw, "usage_records", "usages")
+    items: list[str] = []
+    for index, usage in enumerate(method.usage_records):
+        record = _mapping(records[index]) or {}
+        status = _text(record.get("execution_status", record.get("status", record.get("state"))))
+        normalized = status.strip().lower().replace("-", "_").replace(" ", "_") if status else ""
+        key = {
+            "executed": "executed",
+            "completed": "executed",
+            "not_executed": "not_executed",
+            "not_run": "not_executed",
+            "skipped": "not_executed",
+            "stopped": "stopped",
+            "aborted": "stopped",
+        }.get(normalized, "execution_missing")
+        if not _record_usable(method.raw, model) or not _record_usable(record, model):
+            key = "execution_unconfirmed"
+        used_at = record.get("used_at", record.get("usedAt", record.get("date")))
+        items.append(
+            f'<li><p>{_owner(usage.summary, translator)}</p>'
+            f'<p>{escape(translator.t("reader.methodology." + key))}</p><dl>'
+            f'<div><dt>{escape(translator.t("reader.methodology.used_at"))}</dt><dd>{_owner(used_at, translator)}</dd></div>'
+            f'{_record_fields(record, translator)}</dl>{source_support_impact(record)}{_record_support(record, usage.usage_id)}{_reference_links(usage.record_refs, translator, context)}</li>'
+        )
+    return f'<ul class="methodology-reader-usages">{"".join(items)}</ul>'
+
+
+def _results_markup(method: MethodologyMethod, translator: Translator, context: QueryContext) -> str:
+    if not method.associated_results:
+        return f'<p>{escape(translator.t("reader.methodology.results_missing"))}</p>'
+    records = _child_records(method.raw, "associated_results", "results")
+    items: list[str] = []
+    for index, result in enumerate(method.associated_results):
+        record = _mapping(records[index]) or {}
+        items.append(
+            f'<li><h4>{_owner(result.title, translator)}</h4><p>{_owner(result.summary, translator)}</p>'
+            f'<p>{escape(translator.t("reader.methodology.record_status"))}: {_owner(result.status, translator)}</p>'
+            f'{render_material_details(record, translator)}{source_support_impact(record)}'
+            f'{_record_support(record, result.result_id)}{_reference_links(result.record_refs, translator, context)}</li>'
+        )
+    return f'<ul class="methodology-reader-results">{"".join(items)}</ul>'
+
+
+def _validity_markup(method: MethodologyMethod, translator: Translator, context: QueryContext) -> str:
+    if not method.validity_evidence:
+        return f'<p>{escape(translator.t("reader.methodology.validity_missing"))}</p>'
+    records = _child_records(method.raw, "validity_evidence")
+    items: list[str] = []
+    for index, evidence in enumerate(method.validity_evidence):
+        record = _mapping(records[index]) or {}
+        items.append(
+            f'<li><h4>{_owner(evidence.label, translator)}</h4><p>{_owner(evidence.summary, translator)}</p>'
+            f'<p>{escape(translator.t("reader.methodology.record_status"))}: {_owner(evidence.status, translator)}</p>'
+            f'{render_material_details(record, translator)}{source_support_impact(record)}'
+            f'{_record_support(record, evidence.evidence_id)}'
+            f'{_reference_links(evidence.document_refs, translator, context)}'
+            f'{_reference_links(evidence.record_refs, translator, context)}</li>'
+        )
+    return f'<ul class="methodology-reader-validity">{"".join(items)}</ul>'
+
+
+def _method_detail(method: MethodologyMethod, translator: Translator, context: QueryContext, model: ManagerReadModel) -> str:
     limitations = (*method.limitations, *method.failure_cases)
     limit_markup = (
         "<ul>" + "".join(f"<li>{_owner(value, translator)}</li>" for value in limitations) + "</ul>"
         if limitations
         else f'<span class="methodology-reader-missing">{escape(translator.t("reader.methodology.not_recorded"))}</span>'
     )
-    usage = (
-        f'<span data-reader-state="known">{escape(translator.t("reader.methodology.usage_recorded"))}</span>'
-        if method.usage_records or method.usage_count is not None
-        else f'<span data-reader-state="missing">{escape(translator.t("reader.methodology.usage_missing"))}</span>'
+    usage = _usage_markup(method, translator, model, context)
+    validity = _validity_markup(method, translator, context)
+    lifecycle_key = (
+        "reader.methodology.superseded" if method.superseded is True
+        else "reader.methodology.current" if method.superseded is False
+        else "reader.methodology.lifecycle_missing"
     )
-    validity = (
-        f'<span data-reader-state="known">{escape(translator.t("reader.methodology.validity_recorded"))}</span>'
-        if method.validity_evidence
-        else f'<span data-reader-state="missing">{escape(translator.t("reader.methodology.validity_missing"))}</span>'
-    )
-    lifecycle_key = "reader.methodology.superseded" if method.superseded is True else "reader.methodology.current"
-    document_links = " · ".join(
-        f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=ref.document_id), quote=True)}" translate="no">{escape(ref.document_id)}</a>'
-        for ref in method.document_refs
-    ) or escape(translator.t("reader.methodology.no_source"))
-    record_links = " · ".join(
-        f'<a data-link-kind="record" href="{escape(context_link(context, view=ViewId.HISTORY, record_id=ref.record_id), quote=True)}" translate="no">{escape(ref.record_id)}</a>'
-        for ref in method.record_refs
-    ) or escape(translator.t("reader.methodology.no_source"))
+    title = next((_text(method.raw.get(key)) for key in ("title", "name", "label") if _text(method.raw.get(key))), None)
+    title_markup = _owner(title, translator) if title else escape(translator.t("reader.methodology.title_missing"))
+    definition = _owner(method.definition, translator) if method.definition else escape(translator.t("reader.methodology.definition_missing"))
+    checks = _child_records(method.raw, "checks", "check_steps")
+    check_markup = "<ul>" + "".join(f"<li>{_owner(value, translator)}</li>" for value in checks) + "</ul>" if checks else escape(translator.t("reader.methodology.checks_missing"))
+    document_links = _reference_links(method.document_refs, translator, context)
+    record_links = _reference_links(method.record_refs, translator, context)
     return (
         f'<article class="methodology-reader-method" data-method-id="{escape(method.method_id, quote=True)}" '
         f'data-methodology-category="{escape(method.category.value, quote=True)}" '
         f'data-method-state="{"superseded" if method.superseded is True else "current" if method.superseded is False else "unknown"}">'
-        f'<h3>{_owner(method.title, translator)}</h3>'
+        + (f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>' if method.raw.get("fabricated_example") is True else "")
+        + f'<h3>{title_markup}</h3>'
         f'<dl class="methodology-reader-details">'
-        f'<div><dt>{escape(translator.t("reader.methodology.definition"))}</dt><dd>{_owner(method.definition, translator)}</dd></div>'
+        f'<div><dt>{escape(translator.t("reader.methodology.definition"))}</dt><dd>{definition}</dd></div>'
+        f'<div><dt>{escape(translator.t("reader.methodology.checks"))}</dt><dd>{check_markup}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.when"))}</dt><dd>{usage}</dd></div>'
+        f'<div><dt>{escape(translator.t("reader.methodology.results"))}</dt><dd>{_results_markup(method, translator, context)}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.limits"))}</dt><dd>{limit_markup}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.validity"))}</dt><dd>{validity}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.source"))}</dt><dd>{document_links}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.source"))}</dt><dd>{record_links}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.methodology.status"))}</dt><dd>{escape(translator.t(lifecycle_key))} · {_machine(method.version, translator)}</dd></div>'
-        f'</dl></article>'
+        f'</dl><p>{escape(translator.t("reader.methodology.validity_boundary"))}</p>'
+        f'{source_support_impact(method.raw)}{_record_support(method.raw, method.method_id)}</article>'
     )
 
 
@@ -377,14 +503,14 @@ def _methods_markup(view: MethodologyReaderViewModel, translator: Translator, co
             key = "methodology.error_scope"
         else:
             key = "methodology.empty_scope"
-        return f'<p class="methodology-reader-no-entries">{escape(translator.t(key))}</p>'
+        return f'<p class="methodology-reader-no-entries">{escape(translator.t(key))}</p>{_source_markup(view, context, translator)}'
     sections: list[str] = []
     for group in view.groups:
         label = translator.t(f"reader.methodology.category.{group.category.value}")
         body = (
             f'<p class="methodology-reader-category-empty">{escape(translator.t("reader.methodology.not_recorded"))}</p>'
             if not group.methods
-            else "".join(_method_detail(method, translator, context) for method in group.methods)
+            else "".join(_method_detail(method, translator, context, view.read_model) for method in group.methods)
         )
         sections.append(
             f'<section class="methodology-reader-category" data-methodology-category="{escape(group.category.value, quote=True)}" '
@@ -434,12 +560,16 @@ def render_methodology_reader(
         body = f'<section class="methodology-reader-expert"><h2>{escape(selected.t("reader.methodology.expert_heading"))}</h2>{render_methodology(view.methodology, query_context=query_context, translator=selected)}</section>'
     else:
         body = (
-            render_reader_surface(reader_projection, page=ReaderPage.METHODOLOGY, query_context=query_context, translator=selected)
+            f'<details class="methodology-reader-technical"><summary>{escape(selected.t("reader.methodology.technical"))}</summary>'
+            + render_reader_surface(reader_projection, page=ReaderPage.METHODOLOGY, query_context=query_context, translator=selected)
+            + '</details>'
             + f'<section class="methodology-reader-scope" aria-labelledby="methodology-reader-scope-title"><h2 id="methodology-reader-scope-title">{escape(selected.t("reader.methodology.scope"))}</h2>'
             f'<p>{escape(selected.t("reader.methodology.scope_intro"))}</p>{_scope_links(query_context, selected)}</section>'
             f'<section class="methodology-reader-methods" aria-labelledby="methodology-reader-methods-title"><h2 id="methodology-reader-methods-title">{escape(selected.t("reader.methodology.categories"))}</h2>{_methods_markup(view, selected, query_context)}{PageWindow.from_query(query_context, total=len(view.methods)).render(query_context, view=ViewId.METHODOLOGY, translator=selected)}</section>'
             f'<p class="methodology-reader-boundary" data-boundary="canonical-fact">{escape(selected.t("reader.methodology.read_only"))}</p>'
         )
+    # The unchanged Expert child owns its status heading; do not duplicate its ID.
+    status = "" if selected_mode is ProjectionMode.EXPERT else render_status_block(view.read_model, translator=selected)
     scope = view.scope or ""
     context = (
         f'<p class="methodology-reader-context"><span><strong>{escape(selected.t("reader.methodology.as_of"))}</strong> '
@@ -447,6 +577,13 @@ def render_methodology_reader(
         f'{_machine(view.read_model.snapshot_token, selected)}</span><span data-scope="{escape(scope, quote=True)}"><strong>{escape(selected.t("reader.methodology.scope"))}</strong> '
         f'{_machine(scope, selected)}</span></p>'
     )
+    if selected_mode is ProjectionMode.READER:
+        context = (
+            source_support_impact()
+            + f'<details><summary>{escape(selected.t("reader.methodology.technical"))}</summary>'
+            + status + context + '</details>'
+        )
+        status = ""
     return (
         f'<section class="methodology-reader-page" data-reader-hook="{METHODOLOGY_READER_HOOK}" '
         f'data-integration-hook="{METHODOLOGY_READER_INTEGRATION_HOOK}" data-reader-mode="{selected_mode.value}" '
@@ -454,7 +591,7 @@ def render_methodology_reader(
         f'<p class="eyebrow">{escape(selected.t("reader.methodology.eyebrow"))}</p>'
         f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.methodology.title"))}</h1>'
         f'<p class="page-intro">{escape(selected.t("reader.methodology.confirmed_intro"))}</p>'
-        f'{render_status_block(view.read_model, translator=selected)}{context}{body}{_related_links(query_context, selected)}</section>'
+        f'{status}{context}{body}{_related_links(query_context, selected)}</section>'
     )
 
 

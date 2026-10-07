@@ -41,6 +41,7 @@ from .documents import (
     SourceDocumentsFixtureProvider,
     SourceDocumentsViewModel,
     _document_fixture_text,
+    _iter_document_items,
     build_source_documents_fixture,
     render_source_documents,
 )
@@ -55,9 +56,10 @@ from .history import (
 )
 from .i18n import Translator
 from .locators import public_locator
-from .navigation import PageWindow, ViewId, context_link
+from .material_reading import render_material_details
+from .navigation import PageWindow, ViewId, context_link, query_values
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_entry
+from .source_support import source_support_entry, source_support_impact, source_support_usable
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -463,7 +465,7 @@ def _source_links(view: HistoryReaderViewModel | SourceDocumentsReaderViewModel,
         if support := source_support_entry(source.source_id):
             items.append(f"<li>{support}</li>")
             continue
-        locator = public_locator(source.locator)
+        locator = public_locator(source.locator) if query_values(context).get("mode") in {"expert", "raw"} else None
         source_id = f'<span translate="no">{escape(source.source_id)}</span>'
         if locator:
             source_id = f'<a href="{escape(locator, quote=True)}" translate="no">{escape(source.source_id)}</a>'
@@ -476,7 +478,11 @@ def _history_fixture_text(translator: Translator, event: HistoryEvent, field: st
     if fixture:
         event_type = translator.label("history.event_type", event.event_type.value)
         return translator.t("reader.history.fixture.title" if field == "title" else "reader.history.fixture.detail", scope=scope or "", event_type=event_type)
-    return event.title if field == "title" else (event.detail or translator.t("reader.history.missing"))
+    keys = ("title", "name", "label", "heading") if field == "title" else ("summary", "description", "detail", "message", "text", "value")
+    for key in keys:
+        if value := _text((event.raw or {}).get(key)):
+            return value
+    return translator.t("reader.history.title_missing" if field == "title" else "reader.history.missing")
 
 
 def _fixture_markup(value: str, scope: str | None) -> str:
@@ -487,38 +493,44 @@ def _fixture_markup(value: str, scope: str | None) -> str:
     return rendered
 
 
-def _event_markup(view: HistoryReaderViewModel, context: QueryContext, translator: Translator) -> str:
+def _event_markup(view: HistoryReaderViewModel, context: QueryContext, translator: Translator, *, selected_events: tuple[HistoryEvent, ...] | None = None) -> str:
     fixture = _is_history_fixture(view.read_model)
     rows: list[str] = []
     window = PageWindow.from_query(context, total=len(view.events))
-    for event in view.events[window.start : window.stop]:
+    for event in selected_events if selected_events is not None else view.events[window.start : window.stop]:
         title = _history_fixture_text(translator, event, "title", fixture=fixture, scope=view.scope)
         detail = _history_fixture_text(translator, event, "detail", fixture=fixture, scope=view.scope)
         if fixture:
             title_markup, detail_markup = _fixture_markup(title, view.scope), _fixture_markup(detail, view.scope)
         else:
-            title_markup, detail_markup = _owner(title, translator), _owner(detail, translator)
+            raw = event.raw or {}
+            title_markup = _owner(title, translator) if any(_text(raw.get(key)) for key in ("title", "name", "label", "heading")) else escape(title)
+            detail_markup = _owner(detail, translator) if any(_text(raw.get(key)) for key in ("summary", "description", "detail", "message", "text", "value")) else escape(detail)
         record = (
-            f'<a href="{escape(context_link(context, view=ViewId.HISTORY, record_id=event.record_id), quote=True)}" translate="no">{escape(event.record_id)}</a>'
+            f'<a href="{escape(context_link(context, view=ViewId.HISTORY, record_id=event.record_id), quote=True)}">{escape(translator.t("reader.history.open_record"))} <span translate="no">{escape(event.record_id)}</span></a>'
             if event.record_id else escape(translator.t("reader.history.missing"))
         )
         documents = " · ".join(
-            f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=document_id), quote=True)}" translate="no">{escape(document_id)}</a>'
+            f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=document_id), quote=True)}">{escape(translator.t("reader.documents.open_material"))} <span translate="no">{escape(document_id)}</span></a>'
             for document_id in event.document_ids
         ) or escape(translator.t("reader.history.missing"))
-        source = escape(translator.t("reader.history.no_source"))
-        if event.source_id:
-            evidence = context_link(context, view=ViewId.EVIDENCE, source_id=event.source_id)
-            source = f'<a href="{escape(evidence, quote=True)}" translate="no">{escape(event.source_id)}</a>'
-        locator = public_locator(event.source_locator)
-        if locator:
-            source += f' · <a data-link-kind="source-artifact" href="{escape(locator, quote=True)}" translate="no">{escape(event.source_locator or "")}</a>'
+        raw = event.raw or {}
+        support = source_support_entry(event.source_id or event.record_id or event.event_id, record=raw)
+        if support and public_locator(event.source_locator):
+            support = support.replace(' data-source-support=', ' data-link-kind="source-artifact" data-source-support=', 1)
+        reason = _text(raw.get("change_reason")) or _text(raw.get("reason"))
+        reason_markup = _owner(reason, translator) if reason else escape(translator.t("reader.history.reason_missing"))
+        impact = source_support_impact(raw)
+        if not source_support_usable(raw):
+            impact += f'<p>{escape(translator.t("reader.history.unusable"))}</p>'
         rows.append(
             f'<li class="history-reader-event" data-event-id="{escape(event.event_id, quote=True)}" data-event-type="{escape(event.event_type.value, quote=True)}" data-reader-state="{view.read_model.availability.status.value}">'
-            f'<time datetime="{escape(event.source_event_time, quote=True)}" translate="no">{escape(event.source_event_time)}</time>'
+            f'<p>{escape(translator.t("reader.history.event_time"))}: <time datetime="{escape(event.source_event_time, quote=True)}" translate="no">{escape(event.source_event_time)}</time> · {escape(translator.t("reader.history.known_at"))}: {_machine(event.known_at, translator)}</p>'
             f'<span class="history-reader-event-type">{escape(translator.label("history.event_type", event.event_type.value))}</span>'
             f'<strong>{title_markup}</strong><p>{detail_markup}</p>'
-            f'<p class="history-reader-event-meta">{escape(translator.t("reader.history.record"))}: {record} · {escape(translator.t("reader.history.source"))}: {source} · {escape(translator.t("reader.history.document"))}: {documents}</p></li>'
+            f'<p>{escape(translator.t("reader.history.reason"))}: {reason_markup}</p>{impact}'
+            f'<p class="history-reader-support">{support or escape(translator.t("reader.history.no_source"))}</p>'
+            f'<p class="history-reader-event-meta">{escape(translator.t("reader.history.record"))}: {record} · {escape(translator.t("reader.history.document"))}: {documents}</p></li>'
         )
     return (
         f'<ol class="history-reader-events" aria-label="{escape(translator.t("reader.history.events"), quote=True)}">{"".join(rows)}</ol>'
@@ -530,13 +542,33 @@ def _document_title(document: SourceDocument, view: SourceDocumentsReaderViewMod
     fixture = any(source.owner == "manager-gui-fixture" for source in view.source_refs)
     if fixture:
         return _document_fixture_text(translator, document, "title", fixture=True)
-    return document.title or translator.t("reader.documents.missing")
+    raw = _raw_document(document, view)
+    if raw is not None:
+        for key in ("title", "name", "label"):
+            if title := _text(raw.get(key)):
+                return title
+        return translator.t("reader.documents.title_missing")
+    return document.title or translator.t("reader.documents.title_missing")
 
 
-def _document_markup(view: SourceDocumentsReaderViewModel, context: QueryContext, translator: Translator) -> str:
+def _raw_document(document: SourceDocument, view: SourceDocumentsReaderViewModel) -> Mapping[str, object] | None:
+    # A versioned typed entry must never borrow another version's body. Duplicate
+    # identities are ambiguous even when their metadata happens to be identical.
+    def identity(item: Mapping[str, object], keys: tuple[str, ...]) -> str | None:
+        return next((text.strip() for key in keys if (text := _text(item.get(key))) is not None), None)
+
+    matches = tuple(
+        item for item in _iter_document_items(view.read_model.data)
+        if identity(item, ("document_id", "documentId", "id")) == document.document_id
+        and identity(item, ("version", "revision", "document_version")) == document.version
+    )
+    return matches[0] if len(matches) == 1 else None
+
+
+def _document_markup(view: SourceDocumentsReaderViewModel, context: QueryContext, translator: Translator, *, selected_documents: tuple[SourceDocument, ...] | None = None) -> str:
     sections: list[str] = []
     window = PageWindow.from_query(context, total=len(view.source_documents))
-    paged_documents = view.source_documents[window.start : window.stop]
+    paged_documents = selected_documents if selected_documents is not None else view.source_documents[window.start : window.stop]
     for document_type in view.documents.categories:
         documents = tuple(document for document in paged_documents if document.document_type is document_type)
         if not documents:
@@ -544,36 +576,59 @@ def _document_markup(view: SourceDocumentsReaderViewModel, context: QueryContext
         rows: list[str] = []
         for document in documents:
             title = _document_title(document, view, translator)
-            title_markup = _fixture_markup(title, view.scope) if any(source.owner == "manager-gui-fixture" for source in view.source_refs) else _owner(title, translator)
-            locator = public_locator(document.source_locator) if document.approved else None
-            locator_markup = (
-                f'<a href="{escape(locator, quote=True)}" translate="no">{escape(document.source_locator or "")}</a>'
-                if locator else escape(translator.t("reader.documents.no_source"))
-            )
+            title_markup = _fixture_markup(title, view.scope) if any(source.owner == "manager-gui-fixture" for source in view.source_refs) else _owner(title, translator) if document.title else escape(title)
+            raw = _raw_document(document, view)
+            body = render_material_details(raw, translator) if raw is not None else f'<p>{escape(translator.t("reader.documents.body_ambiguous"))}</p>'
+            support = source_support_entry(document.document_id, record=raw) if raw is not None else None
+            impact = source_support_impact(raw)
+            if raw is not None and not source_support_usable(raw):
+                impact += f'<p>{escape(translator.t("reader.documents.unusable"))}</p>'
+            locator_markup = escape(translator.t("reader.documents.original_entry"))
             records = " · ".join(
-                f'<a data-link-kind="record" href="{escape(context_link(context, view=ViewId.HISTORY, record_id=record_id), quote=True)}" translate="no">{escape(record_id)}</a>'
+                f'<a data-link-kind="record" href="{escape(context_link(context, view=ViewId.HISTORY, record_id=record_id), quote=True)}">{escape(translator.t("reader.history.open_record"))} <span translate="no">{escape(record_id)}</span></a>'
                 for record_id in document.record_citations
             ) or escape(translator.t("reader.documents.missing"))
             reverse = " · ".join(
-                f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=document_id), quote=True)}" translate="no">{escape(document_id)}</a>'
+                f'<a data-link-kind="document" href="{escape(context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=document_id), quote=True)}">{escape(translator.t("reader.documents.open_material"))} <span translate="no">{escape(document_id)}</span></a>'
                 for document_id in document.reverse_citations
             ) or escape(translator.t("reader.documents.missing"))
             rows.append(
                 f'<li class="documents-reader-document" data-document-id="{escape(document.document_id, quote=True)}" data-document-type="{escape(document.document_type.value, quote=True)}" data-reader-state="{view.index_state.value}">'
-                f'<h3>{title_markup}</h3><dl><div><dt>{escape(translator.t("reader.documents.document_id"))}</dt><dd><span translate="no">{escape(document.document_id)}</span></dd></div>'
+                f'<h3>{title_markup}</h3>{body}{impact}<p>{support or escape(translator.t("reader.documents.no_source"))}</p><details><summary>{escape(translator.t("reader.documents.technical"))}</summary><dl><div><dt>{escape(translator.t("reader.documents.document_id"))}</dt><dd><span translate="no">{escape(document.document_id)}</span></dd></div>'
                 f'<div><dt>{escape(translator.t("reader.documents.type"))}</dt><dd>{escape(translator.label("documents.type", document.document_type.value))}</dd></div>'
                 f'<div><dt>{escape(translator.t("reader.documents.version"))}</dt><dd>{_machine(document.version, translator)}</dd></div>'
                 f'<div><dt>{escape(translator.t("reader.documents.locator"))}</dt><dd>{locator_markup}</dd></div>'
                 f'<div><dt>{escape(translator.t("reader.documents.updated"))}</dt><dd>{_machine(document.updated_at, translator)}</dd></div>'
                 f'<div><dt>{escape(translator.t("reader.documents.citations"))}</dt><dd>{records}</dd></div>'
-                f'<div><dt>{escape(translator.t("reader.documents.reverse_citations"))}</dt><dd>{reverse}</dd></div></dl></li>'
+                f'<div><dt>{escape(translator.t("reader.documents.reverse_citations"))}</dt><dd>{reverse}</dd></div></dl></details></li>'
             )
-        heading_id = f"documents-reader-{document_type.value}"
+        heading_id = f"documents-reader-{'selected-' if selected_documents is not None else ''}{document_type.value}"
         sections.append(
             f'<section class="documents-reader-category" data-document-type="{escape(document_type.value, quote=True)}" aria-labelledby="{heading_id}">'
             f'<h3 id="{heading_id}">{escape(translator.label("documents.type", document_type.value))}</h3><ul>{"".join(rows)}</ul></section>'
         )
     return "".join(sections) or f'<p class="documents-reader-empty" data-reader-state="{escape(view.index_state.value, quote=True)}">{escape(translator.t("reader.documents.no_documents"))}</p>'
+
+
+def _selected_content(view: HistoryReaderViewModel | SourceDocumentsReaderViewModel, context: QueryContext, translator: Translator) -> str:
+    values = query_values(context)
+    if isinstance(view, HistoryReaderViewModel):
+        identifier = values.get("record_id")
+        if not identifier:
+            return ""
+        events = tuple(event for event in view.events if event.record_id == identifier)
+        body = _event_markup(view, context, translator, selected_events=events) if events else ""
+        page = "history"
+    else:
+        identifier = values.get("document_id")
+        if not identifier:
+            return ""
+        documents = tuple(document for document in view.source_documents if document.document_id == identifier)
+        body = _document_markup(view, context, translator, selected_documents=documents) if len(documents) == 1 and _raw_document(documents[0], view) is not None else ""
+        page = "documents"
+    if not body:
+        return f'<p class="reader-selection-gap">{escape(translator.t(f"reader.{page}.selection_missing"))}</p>'
+    return f'<section class="reader-selected-content" tabindex="-1"><h2>{escape(translator.t(f"reader.{page}.selected"))}</h2>{body}</section>'
 
 
 def _raw_markup(projection: ReaderProjection, *, heading: str, translator: Translator, page: str) -> str:
@@ -585,12 +640,19 @@ def _raw_markup(projection: ReaderProjection, *, heading: str, translator: Trans
     )
 
 
-def _context_markup(model: ManagerReadModel, scope: str | None, translator: Translator, *, page: str) -> str:
-    return (
+def _context_markup(model: ManagerReadModel, scope: str | None, translator: Translator, *, page: str, mode: ProjectionMode) -> str:
+    context = (
         f'<p class="{page}-reader-context"><strong>{escape(translator.t(f"reader.{page}.as_of"))}</strong> {_machine(model.as_of, translator)} · '
         f'<strong>{escape(translator.t(f"reader.{page}.snapshot"))}</strong> {_machine(model.snapshot_token, translator)} · '
         f'<strong>{escape(translator.t(f"reader.{page}.scope"))}</strong> {_machine(scope, translator)}</p>'
     )
+    status = render_status_block(model, translator=translator) if mode is not ProjectionMode.EXPERT else ""
+    if mode is ProjectionMode.READER:
+        return source_support_impact() + (
+            f'<details><summary>{escape(translator.t(f"reader.{page}.technical"))}</summary>'
+            + status + context + '</details>'
+        )
+    return status + context
 
 
 def _related_links(context: QueryContext, translator: Translator, *, page: str) -> str:
@@ -624,7 +686,8 @@ def render_history_reader(
         body = f'<section class="history-reader-expert"><h2>{escape(selected.t("reader.history.expert_heading"))}</h2>{render_history(view.read_model, scope=view.scope, base_path=base, query=query_context, translator=selected)}</section>'
     else:
         body = (
-            render_reader_surface(reader_projection, page=ReaderPage.HISTORY, query_context=query_context, translator=selected)
+            _selected_content(view, query_context, selected)
+            + f'<details class="reader-technical-checks"><summary>{escape(selected.t("reader.history.technical"))}</summary>{render_reader_surface(reader_projection, page=ReaderPage.HISTORY, query_context=query_context, translator=selected)}</details>'
             + f'<section class="history-reader-scope"><h2>{escape(selected.t("reader.history.scope"))}</h2><p>{escape(selected.t("reader.history.scope_intro"))}</p>{_scope_links(query_context, view=ViewId.HISTORY, translator=selected, key_prefix="reader.history.scope")}</section>'
             + f'<section class="history-reader-events-section"><h2>{escape(selected.t("reader.history.events"))}</h2>{_event_markup(view, query_context, selected)}{_pagination(query_context, view=ViewId.HISTORY, total=len(view.events), translator=selected)}</section>'
             + f'<section class="history-reader-boundary" data-boundary="canonical-fact"><h2>{escape(selected.t("reader.history.canonical_heading"))}</h2><p>{escape(selected.t("reader.history.canonical_copy"))}</p></section>'
@@ -632,7 +695,7 @@ def render_history_reader(
         )
     return (
         f'<section class="history-reader-page" data-reader-hook="{HISTORY_READER_HOOK}" data-reader-contract="v1" data-integration-hook="{HISTORY_READER_INTEGRATION_HOOK}" data-reader-mode="{selected_mode.value}" data-status="{view.read_model.availability.status.value}" data-history-scope="{escape(view.scope or "", quote=True)}">'
-        f'<p class="eyebrow">{escape(selected.t("reader.history.eyebrow"))}</p><h1 data-page-title tabindex="-1">{escape(selected.t("reader.history.title"))}</h1><p class="page-intro">{escape(selected.t("reader.history.confirmed_intro"))}</p>{render_status_block(view.read_model, translator=selected)}{_context_markup(view.read_model, view.scope, selected, page="history")}{body}{_source_links(view, query_context, selected, page="history")}{_related_links(query_context, selected, page="history")}</section>'
+        f'<p class="eyebrow">{escape(selected.t("reader.history.eyebrow"))}</p><h1 data-page-title tabindex="-1">{escape(selected.t("reader.history.title"))}</h1><p class="page-intro">{escape(selected.t("reader.history.confirmed_intro"))}</p>{_context_markup(view.read_model, view.scope, selected, page="history", mode=selected_mode)}{body}{_source_links(view, query_context, selected, page="history")}{_related_links(query_context, selected, page="history")}</section>'
     )
 
 
@@ -659,15 +722,16 @@ def render_source_documents_reader(
         body = f'<section class="documents-reader-expert"><h2>{escape(selected.t("reader.documents.expert_heading"))}</h2>{render_source_documents(view.read_model, scope=view.scope, approved_directories=view.approved_directories, boundary=ApprovedDirectoryBoundary(view.approved_directories), base_path=base, query=query_context, translator=selected)}</section>'
     else:
         body = (
-            render_reader_surface(reader_projection, page=ReaderPage.DOCUMENTS, query_context=query_context, translator=selected)
+            _selected_content(view, query_context, selected)
+            + f'<details class="reader-technical-checks"><summary>{escape(selected.t("reader.documents.technical"))}</summary>{render_reader_surface(reader_projection, page=ReaderPage.DOCUMENTS, query_context=query_context, translator=selected)}</details>'
             + f'<section class="documents-reader-scope"><h2>{escape(selected.t("reader.documents.scope"))}</h2><p>{escape(selected.t("reader.documents.scope_intro"))}</p>{_scope_links(query_context, view=ViewId.SOURCE_DOCUMENTS, translator=selected, key_prefix="reader.documents.scope")}</section>'
-            + f'<section class="documents-reader-layers" data-boundary="document-interpretation"><h2>{escape(selected.t("reader.documents.categories"))}</h2><h3>{escape(selected.t("reader.documents.canonical_heading"))}</h3><p>{escape(selected.t("reader.documents.canonical_copy"))}</p><h3>{escape(selected.t("reader.documents.interpretation_heading"))}</h3><p>{escape(selected.t("reader.documents.interpretation_copy"))}</p></section>'
-            + f'<section class="documents-reader-index"><h2>{escape(selected.t("reader.documents.index_state"))}</h2><p data-reader-state="{escape(view.index_state.value, quote=True)}">{escape(selected.t(f"documents.state.{view.index_state.value}"))}</p>{_document_markup(view, query_context, selected)}{_pagination(query_context, view=ViewId.SOURCE_DOCUMENTS, total=len(view.source_documents), translator=selected)}</section>'
+            + f'<details class="documents-reader-layers" data-boundary="document-interpretation"><summary>{escape(selected.t("reader.documents.technical"))}</summary><h2>{escape(selected.t("reader.documents.categories"))}</h2><h3>{escape(selected.t("reader.documents.canonical_heading"))}</h3><p>{escape(selected.t("reader.documents.canonical_copy"))}</p><h3>{escape(selected.t("reader.documents.interpretation_heading"))}</h3><p>{escape(selected.t("reader.documents.interpretation_copy"))}</p></details>'
+            + f'<section class="documents-reader-index"><h2>{escape(selected.t("reader.documents.materials"))}</h2><details><summary>{escape(selected.t("reader.documents.technical"))}</summary><h3>{escape(selected.t("reader.documents.index_state"))}</h3><p data-reader-state="{escape(view.index_state.value, quote=True)}">{escape(selected.t(f"documents.state.{view.index_state.value}"))}</p></details>{_document_markup(view, query_context, selected)}{_pagination(query_context, view=ViewId.SOURCE_DOCUMENTS, total=len(view.source_documents), translator=selected)}</section>'
             + f'<p class="documents-reader-read-only">{escape(selected.t("reader.documents.read_only"))}</p>'
         )
     return (
         f'<section class="documents-reader-page" data-reader-hook="{DOCUMENTS_READER_HOOK}" data-reader-contract="v1" data-integration-hook="{DOCUMENTS_READER_INTEGRATION_HOOK}" data-reader-mode="{selected_mode.value}" data-status="{view.read_model.availability.status.value}" data-document-index-state="{view.index_state.value}" data-document-scope="{escape(view.scope or "", quote=True)}">'
-        f'<p class="eyebrow">{escape(selected.t("reader.documents.eyebrow"))}</p><h1 data-page-title tabindex="-1">{escape(selected.t("reader.documents.title"))}</h1><p class="page-intro">{escape(selected.t("reader.documents.confirmed_intro"))}</p>{render_status_block(view.read_model, translator=selected)}{_context_markup(view.read_model, view.scope, selected, page="documents")}{body}{_source_links(view, query_context, selected, page="documents")}{_related_links(query_context, selected, page="documents")}</section>'
+        f'<p class="eyebrow">{escape(selected.t("reader.documents.eyebrow"))}</p><h1 data-page-title tabindex="-1">{escape(selected.t("reader.documents.title"))}</h1><p class="page-intro">{escape(selected.t("reader.documents.confirmed_intro"))}</p>{_context_markup(view.read_model, view.scope, selected, page="documents", mode=selected_mode)}{body}{_source_links(view, query_context, selected, page="documents")}{_related_links(query_context, selected, page="documents")}</section>'
     )
 
 

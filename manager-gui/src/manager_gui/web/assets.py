@@ -95,6 +95,8 @@ a { color: inherit; }
 .reader-mode-link:hover, .reader-mode-link[aria-current="page"], .reader-mode-link[aria-current="true"] {
   color: #18343a; background: #f2a65a; border-color: #f2a65a;
 }
+.material-reading { min-width: 0; overflow-wrap: anywhere; }
+.material-reading pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 .plain-result article { margin: 20px 0; padding: 22px; background: var(--surface); border: 1px solid var(--line); overflow-wrap: anywhere; }
 .plain-result p, .plain-result dd { font-size: 16px; line-height: 1.7; }
 .plain-definition { color: var(--ink); background: var(--positive-soft); border-left: 3px solid var(--positive); padding: 12px 15px; }
