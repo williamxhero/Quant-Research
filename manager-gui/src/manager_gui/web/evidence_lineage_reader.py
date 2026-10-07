@@ -42,9 +42,9 @@ from .i18n import Translator
 from .i18n.catalog.reader import render_reader_reason
 from .lineage import LineageQuery, LineageViewModel, render_lineage, render_reader_relationships
 from .locators import public_locator
-from .source_support import source_support_entry
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import display_state_for
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None

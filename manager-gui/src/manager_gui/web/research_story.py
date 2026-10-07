@@ -23,8 +23,8 @@ from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import context_link
-from .source_support import source_support_entry
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 
@@ -993,10 +993,11 @@ def _render_links(
         return f'<span class="source-missing">{escape(translator.t("story.source_missing"))}</span>'
     rendered: list[str] = []
     for link in links:
-        if link.source_id or link.kind in {"source", "report", "artifact"}:
-            if support := source_support_entry(link.source_id or "", record=record):
-                rendered.append(support)
-                continue
+        if (link.source_id or link.kind in {"source", "report", "artifact"}) and (
+            support := source_support_entry(link.source_id or "", record=record)
+        ):
+            rendered.append(support)
+            continue
         label = _render_link_label(link, translator=translator)
         if link.target:
             rendered.append(
@@ -1101,7 +1102,10 @@ def _render_evidence_row(
         else escape(translator.t("story.missing"))
     )
     source_links = _render_links(
-        entry.links, translator=translator, query_context=query_context
+        entry.links, translator=translator, query_context=query_context, record=entry.raw
+    )
+    entry_links = _render_links(
+        entry.links, translator=translator, query_context=query_context, record=entry.raw
     )
     title = _owner_or_catalog(
         entry.title, "story.entry.title_missing", translator=translator, fixture=fixture
@@ -1112,7 +1116,7 @@ def _render_evidence_row(
         f'{_render_outcome(entry.outcome, translator=translator)}</th>'
         f'<td>{_render_evidence_state(entry.evidence_state, translator=translator)}</td>'
         f'<td>{record_id}</td><td>{source_links}</td>'
-        f'<td>{event_time}</td><td>{known_at}</td><td>{source_links}</td></tr>'
+        f'<td>{event_time}</td><td>{known_at}</td><td>{entry_links}</td></tr>'
     )
 
 

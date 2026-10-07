@@ -26,8 +26,8 @@ from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import clear_filters_link
-from .source_support import source_support_computation, source_support_entry, source_support_impact
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_computation, source_support_entry, source_support_impact
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 LIFECYCLE_SPINE: tuple[str, ...] = (
@@ -948,6 +948,9 @@ def render_atlas_reading(
             continue
         title = _first_text(record.payload, "title", "name", "label")
         name = title or translator.t("support.title_missing")
+        display_name = _fixture_text(name, translator=translator, fixture=sample)
+        story_label = escape(translator.t("pipeline.open_story", name=name))
+        story_label = story_label.replace(escape(name), display_name, 1)
         summary = _first_text(record.payload, "summary", "research_question", "description")
         wording = (
             f'<p data-owner-text="true" translate="no">{escape(summary)}</p>' if summary
@@ -959,9 +962,9 @@ def render_atlas_reading(
         )
         cards.append(
             f'<article data-research-object="{escape(record.record_id, quote=True)}">{card_sample}'
-            f'<h2 data-owner-text="true">{escape(name)}</h2>{wording}<p>{support}</p>'
+            f'<h2>{display_name}</h2>{wording}<p>{support}</p>'
             f'<a class="atlas-story-link" href="{escape(_story_link(record, query_context), quote=True)}">'
-            f'{escape(translator.t("pipeline.open_story", name=name))}</a></article>'
+            f'{story_label}</a></article>'
         )
     pointers = "".join(
         f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs

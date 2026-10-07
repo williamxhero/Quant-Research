@@ -34,7 +34,6 @@ from ..reader import (
 from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
-from .source_support import source_support_entry
 from .methodology import (
     METHODOLOGY_RESOURCE,
     MethodologyFixtureProvider,
@@ -47,6 +46,7 @@ from .methodology import (
 )
 from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None

@@ -59,8 +59,8 @@ from .i18n import CatalogError, Translator, merge
 from .i18n.catalog import CATALOG
 from .i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from .locators import public_locator
-from .source_support import source_support_entry
 from .navigation import PageWindow, context_link, query_values
+from .source_support import source_support_entry, suspend_source_support
 from .status import render_operational_state, render_status_block
 
 LINEAGE_RESOURCE = "lineage"
@@ -2068,6 +2068,11 @@ def render_reader_relationships(
     if view.failure is not None:
         return _render_failure(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
     visible = view.visible_nodes
+    if not visible:
+        return (
+            f'<section data-lineage-state="{view.state.value}">'
+            f'<p>{escape(translator.t("lineage.empty_scope"))}</p></section>'
+        )
     window = PageWindow.from_query(
         {**query_values(query_context), "page_size": str(view.query.page_size)}, total=len(visible),
     )
@@ -2075,12 +2080,26 @@ def render_reader_relationships(
     identifiers = {node.node_id for node in nodes}
     edges = tuple(edge for edge in view.visible_edges
                   if edge.source_id in identifiers and edge.target_id in identifiers)
+    with suspend_source_support():
+        inspector = _render_inspector(
+            view, view.query.node or view.root_id, context=query_context,
+            route=LINEAGE_ROUTE, translator=translator,
+        )
+    partial = (
+        _render_partial(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
+        if view.partial else ""
+    )
     return (
-        _render_graph(view, nodes, edges, context=query_context, route=LINEAGE_ROUTE,
-                      inspected_id=view.query.node or view.root_id, translator=translator)
+        f'<section data-lineage-state="{view.state.value}">'
+        + partial
+        + _render_graph(view, nodes, edges, context=query_context, route=LINEAGE_ROUTE,
+                        inspected_id=view.query.node or view.root_id, translator=translator)
+        + _render_evidence_path(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
         + _render_tables(view, nodes, edges, context=query_context, route=LINEAGE_ROUTE,
                          total=len(visible), off_page=len(view.visible_edges)-len(edges),
                          translator=translator)
+        + f'<details><summary>{escape(translator.t("reader.mode.expert"))}</summary>{inspector}</details>'
+        + '</section>'
     )
 
 

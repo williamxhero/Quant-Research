@@ -34,7 +34,6 @@ from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .i18n.catalog.l5_portal_reader import ENTRIES as PORTAL_READER_CATALOG
 from .navigation import ViewId, context_link
-from .source_support import source_support_entry
 from .portal import (
     PORTAL_RESOURCE,
     PortalArtifactState,
@@ -47,6 +46,7 @@ from .portal import (
     report_source_view,
 )
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None

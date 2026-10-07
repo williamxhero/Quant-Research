@@ -80,7 +80,9 @@ def render_plain_result(
     if view == "stories":
         root = ResearchStoryViewModel.from_read_model(model).root
         if record_id is not None and record_id in (
-            root.campaign_id, root.study_id, root.strategy_family_id,
+            root.campaign_id,
+            root.study_id,
+            root.strategy_family_id,
         ):
             record_id = None
     selected = tuple(
@@ -124,19 +126,27 @@ def _render_story_stages(model: ManagerReadModel, translator: Translator) -> str
             raw = entry.raw
             if raw is None:
                 continue
-            wording = next((text for key in ("summary", "text", "description", "detail")
-                            if (text := _text(raw.get(key))) is not None), None)
+            wording = next(
+                (
+                    text
+                    for key in ("summary", "text", "description", "detail")
+                    if (text := _text(raw.get(key))) is not None
+                ),
+                None,
+            )
             if wording is not None:
                 content.append(f'<p data-owner-text="true">{escape(wording)}</p>')
             source = _text(raw.get("source_ref"))
             if source is not None:
                 content.append(source_support_entry(source, record=raw) or "")
         if not content:
-            content.append(f'<p>{escape(translator.t("pipeline.story.missing." + chapter.key))}</p>')
+            content.append(
+                f"<p>{escape(translator.t('pipeline.story.missing.' + chapter.key))}</p>"
+            )
         sections.append(
             f'<section class="plain-story-stage"><h2>'
-            f'{escape(translator.t("pipeline.story." + chapter.key))}</h2>'
-            f'{"".join(content)}</section>'
+            f"{escape(translator.t('pipeline.story.' + chapter.key))}</h2>"
+            f"{''.join(content)}</section>"
         )
     return "".join(sections)
 
@@ -287,17 +297,22 @@ def _render_record(
     lineage_id = _text(record.get("lineage_id"))
     if view == "evidence" and lineage_id is not None and usable:
         lineage_url = context_link(
-            query_context, view="lineage", record_id=lineage_id, node=lineage_id,
-            source_id=None, snapshot_token=model.snapshot_token,
+            query_context,
+            view="lineage",
+            record_id=lineage_id,
+            node=lineage_id,
+            source_id=None,
+            snapshot_token=model.snapshot_token,
             direction=query_values(query_context).get("direction") or "both",
         )
         link += (
             f'<p><a data-evidence-lineage href="{escape(lineage_url, quote=True)}">'
-            f'{escape(translator.t("pipeline.open_lineage"))}</a></p>'
+            f"{escape(translator.t('pipeline.open_lineage'))}</a></p>"
         )
     sample_markup = (
         f'<p class="sample-note">{t("sample")}</p>'
-        if sample or record.get("fabricated_example") is True else ""
+        if sample or record.get("fabricated_example") is True
+        else ""
     )
     sample_markup += source_support_impact(record)
     if not model.availability.complete:
@@ -305,7 +320,8 @@ def _render_record(
     support = source_support_entry(str(record.get("source_ref") or ""), record=record) or ""
     return (
         f"<article>{sample_markup}<h2>{title_markup}</h2>{definitions}"
-        f'<p class="plain-outcome">{result}</p><p>{support}</p><p>{period_markup}</p><p>{t("limits")}</p>'
+        f'<p class="plain-outcome">{result}</p><p>{support}</p>'
+        f'<p>{period_markup}</p><p>{t("limits")}</p>'
         f"{limitations_markup}{follow_up_markup}"
         f"<h3>{t('source_text')}</h3>{summary_markup}<p>{author_markup}</p>"
         f"{fields}<p>{t('no_full_report')}</p>{link}</article>"

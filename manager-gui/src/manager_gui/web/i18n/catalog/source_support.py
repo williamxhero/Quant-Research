@@ -8,20 +8,46 @@ ENTRIES = {
     "pipeline.story.evidence": M("记录提供了哪些结果材料？", "What result material was supplied?"),
     "pipeline.story.failures": M("记录写明了哪些问题？", "What problems were recorded?"),
     "pipeline.story.follow_up": M("测试之后又做了什么？", "What happened after the test?"),
-    "pipeline.story.missing.intent": M("当时想知道什么的记录未提供，不能补猜动机。", "No question or intent record was supplied; no motive is inferred."),
-    "pipeline.story.missing.initial_hypothesis": M("准备测试的想法未提供。", "No hypothesis record was supplied."),
-    "pipeline.story.missing.research_design": M("测试前的安排未提供，不能据此说没有安排过。", "No test-plan record was supplied; this does not establish that no plan existed."),
-    "pipeline.story.missing.attempts": M("尝试的过程未提供，不能据此说没有测试过。", "No attempt record was supplied; this does not establish that no test was run."),
-    "pipeline.story.missing.evidence": M("其他结果材料未提供。", "No additional result material was supplied."),
-    "pipeline.story.missing.failures": M("问题的记录未提供，不能据此判断没有问题。", "No problem record was supplied; this does not establish there were no problems."),
-    "pipeline.story.missing.follow_up": M("后来的动作未提供，不能补造修改办法或再次测试的计划。", "No later action was supplied; no change or retest plan is invented."),
-    "pipeline.open_lineage": M("查看这条记录指向的关联关系", "Read the relationships referenced by this record"),
-    "pipeline.relation_boundary": M("记录中的关联关系不等于原因。", "A recorded relationship is not a cause."),
+    "pipeline.story.missing.intent": M(
+        "当时想知道什么的记录未提供，不能补猜动机。",
+        "No question or intent record was supplied; no motive is inferred.",
+    ),
+    "pipeline.story.missing.initial_hypothesis": M(
+        "准备测试的想法未提供。", "No hypothesis record was supplied."
+    ),
+    "pipeline.story.missing.research_design": M(
+        "测试前的安排未提供，不能据此说没有安排过。",
+        "No test-plan record was supplied; this does not establish that no plan existed.",
+    ),
+    "pipeline.story.missing.attempts": M(
+        "尝试的过程未提供，不能据此说没有测试过。",
+        "No attempt record was supplied; this does not establish that no test was run.",
+    ),
+    "pipeline.story.missing.evidence": M(
+        "其他结果材料未提供。", "No additional result material was supplied."
+    ),
+    "pipeline.story.missing.failures": M(
+        "问题的记录未提供，不能据此判断没有问题。",
+        "No problem record was supplied; this does not establish there were no problems.",
+    ),
+    "pipeline.story.missing.follow_up": M(
+        "后来的动作未提供，不能补造修改办法或再次测试的计划。",
+        "No later action was supplied; no change or retest plan is invented.",
+    ),
+    "pipeline.open_lineage": M(
+        "查看这条记录指向的关联关系", "Read the relationships referenced by this record"
+    ),
+    "pipeline.relation_boundary": M(
+        "记录中的关联关系不等于原因。", "A recorded relationship is not a cause."
+    ),
     "pipeline.atlas_title": M("当前可以阅读哪些研究？", "Which research objects can be read now?"),
-    "pipeline.open_story": M("阅读「{name}」的研究过程与结果", "Read the process and results for “{name}”"),
+    "pipeline.open_story": M(
+        "阅读「{name}」的研究过程与结果", "Read the process and results for “{name}”"
+    ),
     "pipeline.object_result_missing": M(
         "这个对象没有提供具体研究结果，不能用执行状态代替。",
-        "No specific research result was provided for this object; execution status is not a substitute.",
+        "No specific research result was provided for this object; "
+        "execution status is not a substitute.",
     ),
     "pipeline.no_research_objects": M(
         "当前列表没有明确标识为研究活动、研究或办法系列的对象；其他记录仍列在统计输入中。",
@@ -35,24 +61,38 @@ ENTRIES = {
     "support.count_unit": M("单位：记录，不是研究或测试。", "Unit: records, not studies or tests."),
     "support.count_rule": M(
         "页面统计：先应用当前列表筛选，再按明确的类型和编号计算不同记录数。额外查询条件原样保留，不猜它们的含义。",
-        "GUI calculation: apply the current list filters, then count distinct explicit record identities. "
+        "GUI calculation: apply the current list filters, "
+        "then count distinct explicit record identities. "
         "Additional query context is retained without guessing its meaning.",
     ),
     "support.count_dedup": M(
-        "去重规则：记录类型和稳定编号。", "Deduplication: record type and stable identifier.",
+        "去重规则：记录类型和稳定编号。",
+        "Deduplication: record type and stable identifier.",
     ),
     "support.count_complete": M(
         "已提供列表在这次读取范围内完整；不代表接入了所有研究。",
-        "The supplied list is complete for this read, not necessarily the entire research collection.",
+        "The supplied list is complete for this read, "
+        "not necessarily the entire research collection.",
     ),
     "support.count_partial": M(
         "已提供范围不完整，尚不能确定整个集合的数量。",
         "The supplied range is incomplete; no full collection total is established.",
     ),
-    "support.filters": M("实际筛选与保留的查询：{filters}", "Applied filters and retained query: {filters}"),
-    "support.count_inputs": M("核对记录数量的全部已提供输入", "Check all supplied inputs to the record count"),
-    "support.all_inputs": M("全部已提供的统计输入（{n} 行）", "All supplied calculation inputs ({n} rows)"),
+    "support.filters": M(
+        "实际筛选与保留的查询：{filters}", "Applied filters and retained query: {filters}"
+    ),
+    "support.count_inputs": M(
+        "核对记录数量的全部已提供输入", "Check all supplied inputs to the record count"
+    ),
+    "support.all_inputs": M(
+        "全部已提供的统计输入（{n} 行）", "All supplied calculation inputs ({n} rows)"
+    ),
     "support.open": M("核对「{name}」的已提供内容", "Check supplied content for “{name}”"),
+    "support.open_unnamed": M("核对已提供的来源内容", "Check the supplied source content"),
+    "support.gap_unnamed": M("查看当前无法核对的原因", "See why this content cannot be checked"),
+    "support.heading_unnamed": M("来源名称未提供", "No source title was provided"),
+    "support.query": M("筛选与保留的查询条件", "Filters and retained query context"),
+    "support.raw_record": M("按原样核对完整记录", "Check the complete record unchanged"),
     "support.title": M("来源 {source} 的已提供内容", "Supplied content for source {source}"),
     "support.unnamed": M("未命名来源", "unnamed source"),
     "support.gap_entry": M("查看为何不能核对「{name}」", "See why “{name}” cannot be checked"),
@@ -106,7 +146,8 @@ ENTRIES = {
     ),
     "support.impact.blocked": M(
         "访问或所需能力受限；不能确认这次测试是否达到目标，受限原因未说明时仍未知。",
-        "Access or a capability is blocked; the content cannot establish whether this test met its target. "
+        "Access or a capability is blocked; "
+        "the content cannot establish whether this test met its target. "
         "The cause remains unknown unless supplied.",
     ),
     "support.impact.stale": M(
@@ -135,7 +176,8 @@ ENTRIES = {
     ),
     "support.impact.errors": M(
         "公开读取报告了错误；这些内容不能确认这次测试是否达到目标。以下保留已报告的原因，不补猜原因。",
-        "The public read reported errors; this content cannot establish whether this test met its target. "
+        "The public read reported errors; "
+        "this content cannot establish whether this test met its target. "
         "Reported reasons are retained below; no cause is guessed.",
     ),
     "support.impact.partial": M(

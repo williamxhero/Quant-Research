@@ -55,9 +55,9 @@ from .history import (
 )
 from .i18n import Translator
 from .locators import public_locator
-from .source_support import source_support_entry
 from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None

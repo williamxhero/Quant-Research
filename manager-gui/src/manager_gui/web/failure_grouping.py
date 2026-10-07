@@ -32,9 +32,9 @@ from ..provider import ManagerDataProvider
 from ..reader import ReaderProjection
 from .i18n import Translator
 from .locators import public_locator
-from .source_support import source_support_entry
 from .memory import memory_source_link, render_memory_text, render_memory_value
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_operational_state, render_status_block
 
 FAILURE_GROUPING_RESOURCE = "failure_grouping"

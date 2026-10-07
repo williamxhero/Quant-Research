@@ -45,9 +45,9 @@ from ..reader import (
 from ..reader.mode import ProjectionMode, ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
-from .source_support import source_support_entry
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import display_state_for, render_status_block
 
 # HTML fragments intentionally keep readable markup at the call site.

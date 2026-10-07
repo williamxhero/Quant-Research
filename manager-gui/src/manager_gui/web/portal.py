@@ -37,8 +37,8 @@ from ..provider import ManagerDataProvider
 from .i18n import Translator
 from .i18n.catalog.l5_portal import ENTRIES as PORTAL_CATALOG
 from .locators import public_locator
-from .source_support import source_support_entry
 from .navigation import context_link
+from .source_support import source_support_entry
 from .status import DisplayState, render_operational_state, render_status_block
 
 

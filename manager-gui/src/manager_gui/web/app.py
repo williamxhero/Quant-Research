@@ -577,7 +577,8 @@ class ManagerGUIApp:
         route = reader_route(state.view)
         translator = Translator(state.locale)
         with support_scope(
-            model, normalized_url, translator, sample=projection.sample_data is not None
+            model, normalized_url, translator, sample=projection.sample_data is not None,
+            active=state.mode is ProjectionMode.READER,
         ) as support:
             rendered = self._render_page(
                 state, model, normalized_url, translator=translator, reader_projection=projection
@@ -655,13 +656,13 @@ class ManagerGUIApp:
         cached = _CachedReadProvider(model)
         if state.view is ViewId.ATLAS:
             if state.mode is ProjectionMode.READER:
-                return _PlainResultPage(render_atlas_reading(
+                return render_atlas_reading(
                     model, query_context=url, translator=translator,
                     sample=reader_projection.sample_data is not None,
                 ) + _legacy_reader_compat(render_atlas_view(
                     cached, query_context=url, snapshot_token=model.snapshot_token,
                     translator=translator, reader_projection=reader_projection,
-                )))
+                ))
             return render_atlas_view(
                 cached,
                 query_context=url,
@@ -825,15 +826,12 @@ class ManagerGUIApp:
                 query_context=url,
                 translator=translator,
             )
-            return reader_markup + _legacy_reader_compat(
-                render_lineage_view(
-                    cached,
-                    query_context=url,
-                    snapshot_token=model.snapshot_token,
-                    record_id=dict(state.context).get("record_id"),
-                    translator=translator,
-                )
-            )
+            if state.snapshot_token and state.snapshot_token != model.snapshot_token:
+                reader_markup += _legacy_reader_compat(render_lineage_view(
+                    cached, query_context=url, snapshot_token=model.snapshot_token,
+                    record_id=dict(state.context).get("record_id"), translator=translator,
+                ))
+            return reader_markup
         if state.view is ViewId.EVIDENCE_COMPARISON:
             if state.mode in {ProjectionMode.READER, ProjectionMode.EXPERT, ProjectionMode.RAW}:
                 reader_markup = render_comparison_reader(

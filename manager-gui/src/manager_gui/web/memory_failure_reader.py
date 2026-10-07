@@ -45,10 +45,10 @@ from .failure_patterns import (
 from .i18n import Translator
 from .i18n.catalog.reader import render_claim_explanation
 from .locators import public_locator
-from .source_support import source_support_entry
 from .memory import MemoryEntry, MemoryViewModel, render_memory_text
 from .navigation import context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import display_state_for
 
 # HTML fragments intentionally keep readable markup at the call site.
