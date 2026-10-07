@@ -102,6 +102,16 @@ ENTRIES = {
     "support.title": M("来源 {source} 的已提供内容", "Supplied content for source {source}"),
     "support.unnamed": M("未命名来源", "unnamed source"),
     "support.gap_entry": M("查看为何不能核对「{name}」", "See why “{name}” cannot be checked"),
+    "support.unverified_content": M(
+        "以下保留已提供的文字供核对，但不能作为可用原文或已核验依据。",
+        "The supplied text is retained below for inspection, "
+        "not as a usable original or verified support.",
+    ),
+    "support.record_content": M(
+        "已提供这条公开记录中的正文；这不证明已核对作者的全部原文。",
+        "A body was supplied in this public record; "
+        "this does not prove the author's full original was checked.",
+    ),
     "support.record_original": M(
         "已提供结构化记录，并另附原文；记录字段与来源作者原话分开显示。",
         "A structured record and a separate original were supplied. "

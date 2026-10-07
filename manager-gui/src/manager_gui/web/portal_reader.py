@@ -33,20 +33,19 @@ from ..reader import (
 from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .i18n.catalog.l5_portal_reader import ENTRIES as PORTAL_READER_CATALOG
-from .navigation import ViewId, context_link
+from .material_reading import render_material_details
+from .navigation import ViewId, context_link, query_values
 from .portal import (
     PORTAL_RESOURCE,
     PortalArtifactState,
     PortalViewModel,
     ReportSourceProvider,
-    _render_artifact,
-    _render_publication,
-    _render_report_index,
+    _portal_index_items,
     render_portal,
     report_source_view,
 )
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_entry
+from .source_support import source_support_entry, source_support_impact, source_support_usable
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -353,34 +352,171 @@ def _context_markup(
     )
 
 
+def _verification_failed(record: Mapping[str, object]) -> bool:
+    for key in ("verify_status", "verification_status", "verify", "verification"):
+        value = record.get(key)
+        if isinstance(value, Mapping):
+            value = value.get("status", value.get("state", value.get("result")))
+        if isinstance(value, str) and value.lower().replace("-", "_") in {
+            "failed", "failure", "fail", "invalid", "digest_mismatch", "hash_mismatch",
+        }:
+            return True
+    return False
+
+
+def _object_markup(
+    record: Mapping[str, object],
+    *,
+    kind: str,
+    artifact_state: PortalArtifactState,
+    report_id: str | None,
+    query_context: QueryContext,
+    translator: Translator,
+) -> str:
+    """Retain metadata selectors, never turn a locator into an original entry."""
+    artifact = kind == "generated-artifact"
+    id_key = "artifact_id" if artifact else "source_publication_id"
+    id_keys = ("artifact_id", "artifactId", "id") if artifact else ("publication_id", "publicationId", "source_publication_id", "sourcePublicationId", "id", "source_ref", "source_id")
+    identifier = None
+    for key in id_keys:
+        candidate = record.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            identifier = candidate
+            break
+    title = None
+    for key in ("title", "name", "label"):
+        candidate = record.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            title = candidate
+            break
+    heading = _machine(title, translator) if title else escape(translator.t("reader.portal.untitled_material"))
+    link = ""
+    if isinstance(identifier, str) and identifier:
+        updates = {"artifact_id": None, "source_publication_id": None, id_key: identifier}
+        target = context_link(query_context, view="portal", report_id=report_id, **updates)
+        link = (
+            f'<a class="portal-metadata-link" data-link-kind="{kind}" '
+            f'href="{escape(target, quote=True)}">{escape(translator.t("reader.portal.open_artifact" if artifact else "reader.portal.open_source"))}</a>'
+        )
+    failed = _verification_failed(record)
+    usable = source_support_usable(record) and not failed
+    has_original = False
+    for name in ("text", "content", "original_text", "original_source_id"):
+        candidate = record.get(name)
+        if isinstance(candidate, str) and candidate.strip():
+            has_original = True
+            break
+    readability_key = "verify_failed" if failed else "original_blocked" if not usable else None if has_original else "original_missing"
+    source_id = record.get("source_ref", record.get("source_id", identifier))
+    support = (
+        source_support_entry(source_id, record=record)
+        if usable and isinstance(source_id, str) and source_id
+        else None
+    )
+    readability = f'<p>{escape(translator.t("reader.portal." + readability_key))}</p>' if readability_key else ""
+    state = "integrity-failure" if failed else artifact_state.value if artifact else "published"
+    return (
+        f'<article class="portal-{kind}" data-{"artifact-id" if artifact else "source-publication-id"}="{escape(str(identifier or ""), quote=True)}" '
+        f'data-{"artifact-state" if artifact else "source-publication-state"}="{state}">'
+        f'<h3>{heading}</h3>{render_material_details(record, translator)}'
+        f'{readability}{source_support_impact(record)}{support or ""}'
+        f'<details><summary>{escape(translator.t("reader.portal.technical"))}</summary>'
+        f'<p>{escape(translator.t("reader.portal.artifact_object" if artifact else "reader.portal.publication_object"))}</p>'
+        f'{link}</details></article>'
+    )
+
+
+def _material_gap(view: PortalReaderViewModel, translator: Translator, query_context: QueryContext) -> str:
+    entries = [source_support_entry(source.source_id) for source in view.source_refs]
+    context = query_values(query_context)
+    selection_gap = f'<p>{escape(translator.t("reader.portal.selection_missing"))}</p>' if any(context.get(key) for key in ("report_id", "source_publication_id", "artifact_id")) else ""
+    return (
+        selection_gap + f'<p>{escape(translator.t("reader.portal.no_material"))}</p>'
+        + source_support_impact()
+        + "".join(f'<p>{entry}</p>' for entry in entries if entry)
+    )
+
+
 def _metadata_markup(
     view: PortalReaderViewModel,
     *,
     query_context: QueryContext,
     translator: Translator,
 ) -> str:
-    indexed = _render_report_index(
-        view.reports,
-        query_context=query_context,
-        translator=translator,
-    )
-    if indexed:
-        return indexed
-    return (
-        _render_publication(
-            view.source_publication,
-            query_context=query_context,
-            report_id=view.report_id,
-            translator=translator,
+    payload = view.read_model.data
+    if not isinstance(payload, Mapping):
+        return _material_gap(view, translator, query_context)
+    records = _portal_index_items(payload)
+    if not records and not any(key in payload for key in ("reports", "report_index", "reportIndex", "entries", "items")):
+        records = (payload,) if payload else ()
+    if not records:
+        return _material_gap(view, translator, query_context)
+    context = query_values(query_context)
+    selectors = {key: context[key] for key in ("report_id", "source_publication_id", "artifact_id") if context.get(key)}
+    matches = []
+    for index, entry in enumerate(view.reports):
+        identities = {
+            "report_id": entry.report_id,
+            "source_publication_id": entry.source_publication.publication_id if entry.source_publication else None,
+            "artifact_id": entry.generated_artifact.artifact_id if entry.generated_artifact else None,
+        }
+        if selectors and all(identities[key] == value for key, value in selectors.items()):
+            matches.append(index)
+    order = list(range(len(records)))
+    if matches:
+        order = [index for index in order if index in matches] + [index for index in order if index not in matches]
+    selection_gap = f'<p>{escape(translator.t("reader.portal.selection_missing"))}</p>' if selectors and not matches else ""
+    cards = []
+    for index in order:
+        supplied_record = records[index]
+        # Match the existing Portal parser's wrapper/child precedence while
+        # retaining supplied fields for reading and support, not a typed copy.
+        nested = supplied_record.get("report")
+        record = {**supplied_record, **nested} if isinstance(nested, Mapping) else supplied_record
+        entry = view.reports[index] if index < len(view.reports) else None
+        state = entry.artifact_state if entry is not None else view.artifact_state
+        title = record.get("title") or (entry.title if entry is not None else None)
+        heading = (
+            _machine(title, translator)
+            if isinstance(title, str) and title.strip()
+            else escape(translator.t("reader.portal.untitled_material"))
         )
-        + _render_artifact(
-            view.generated_artifact,
-            state=view.artifact_state,
-            query_context=query_context,
-            report_id=view.report_id,
-            translator=translator,
+        report_id = entry.report_id if entry is not None else record.get("report_id", record.get("reportId", record.get("id")))
+        source_id = record.get("source_ref", record.get("source_id", report_id))
+        failed = _verification_failed(record)
+        usable = source_support_usable(record) and not failed
+        support = (
+            source_support_entry(source_id, record=record)
+            if usable and isinstance(source_id, str) and source_id
+            else None
         )
-    )
+        readability = (
+            f'<p>{escape(translator.t("reader.portal.verify_failed" if failed else "reader.portal.original_blocked"))}</p>'
+            if not usable else ""
+        ) + source_support_impact(record)
+        if usable and not any(record.get(key) for key in ("original_source_id", "original_text", "text", "content")):
+            readability += f'<p>{escape(translator.t("reader.portal.original_missing"))}</p>'
+        objects = ""
+        selected_object = ""
+        requested_kind = "generated-artifact" if "artifact_id" in selectors else "source-publication" if "source_publication_id" in selectors else None
+        for kind, keys in (
+            ("source-publication", ("source_publication", "sourcePublication", "report_source", "reportSource", "publication", "source")),
+            ("generated-artifact", ("generated_artifact", "generatedArtifact", "report_artifact", "reportArtifact", "artifact", "generated")),
+        ):
+            for key in keys:
+                item = record.get(key)
+                if isinstance(item, Mapping):
+                    markup = _object_markup(item, kind=kind, artifact_state=state, report_id=str(report_id) if report_id else None, query_context=query_context, translator=translator)
+                    if index in matches and kind == requested_kind:
+                        selected_object += markup
+                    else:
+                        objects += markup
+                    break
+        cards.append(
+            f'<article class="portal-report-entry" data-report-id="{escape(str(report_id or ""), quote=True)}" data-portal-state="{state.value}">'
+            f'<h2>{heading}</h2>{selected_object}{render_material_details(record, translator)}{readability}{support or ""}{objects}</article>'
+        )
+    return selection_gap + '<section class="portal-report-index">' + "".join(cards) + '</section>'
 
 
 def _raw_markup(projection: ReaderProjection, *, translator: Translator) -> str:
@@ -452,18 +588,22 @@ def render_portal_reader(
         )
     else:
         body = (
-            render_reader_surface(
+            _metadata_markup(view, query_context=context, translator=selected)
+            + f'<p>{escape(selected.t("reader.portal.generation_boundary"))}</p>'
+            + '<details class="portal-reader-technical"><summary>'
+            + escape(selected.t("reader.portal.technical")) + '</summary>'
+            + render_status_block(view.read_model, translator=selected)
+            + render_reader_surface(
                 reader_projection,
                 page=ReaderPage.PORTAL,
                 query_context=context,
                 translator=selected,
             )
             + _context_markup(view, query_context=context, translator=selected)
-            + _metadata_markup(view, query_context=context, translator=selected)
             + f'<section class="portal-reader-boundary" data-boundary="static-publication-not-canonical">'
             f'<h2>{escape(selected.t("reader.portal.boundary_heading"))}</h2>'
             f'<p>{escape(selected.t("reader.portal.boundary"))}</p>'
-            f'<p>{escape(selected.t("reader.portal.rendered_copy"))}</p></section>'
+            f'<p>{escape(selected.t("reader.portal.rendered_copy"))}</p></section></details>'
             + f'<p class="portal-reader-read-only">{escape(selected.t("reader.portal.read_only"))}</p>'
         )
     return (
@@ -474,8 +614,8 @@ def render_portal_reader(
         f'<div class="portal-page">'
         f'<p class="eyebrow">{escape(selected.t("reader.portal.eyebrow"))}</p>'
         f'<h1 id="portal-reader-title" data-page-title tabindex="-1">{escape(selected.t("reader.portal.title"))}</h1>'
-        f'<p class="page-intro">{escape(selected.t("reader.portal.confirmed_intro"))}</p>'
-        f'{render_status_block(view.read_model, translator=selected)}{body}</div></section>'
+        f'<p class="page-intro">{escape(selected.t("reader.portal.reading_intro" if selected_mode is ProjectionMode.READER else "reader.portal.confirmed_intro"))}</p>'
+        f'{render_status_block(view.read_model, translator=selected) if selected_mode is ProjectionMode.RAW else ""}{body}</div></section>'
     )
 
 

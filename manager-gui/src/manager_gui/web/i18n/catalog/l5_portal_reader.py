@@ -11,7 +11,7 @@ from ..translator import M
 
 ENTRIES: Mapping[str, M] = {
     "reader.portal.eyebrow": M("门户阅读器 · 只读", "Portal Reader · read-only"),
-    "reader.portal.title": M("报告门户阅读器", "Portal Reader"),
+    "reader.portal.title": M("报告写了什么，能否核对？", "What do the reports say, and can they be checked?"),
     "reader.portal.question": M(
         "来源发布记录、生成制品、渲染器、核验与重建状态分别记录了什么？",
         "What do the source publication, generated artifact, renderer, verification, and rebuild states each record?",
@@ -55,6 +55,15 @@ ENTRIES: Mapping[str, M] = {
     "reader.portal.open_source": M("打开来源元数据", "Open source metadata"),
     "reader.portal.open_artifact": M("打开制品元数据", "Open artifact metadata"),
     "reader.portal.missing": M("未记录 / 无法得出结论", "Not recorded / no conclusion can be drawn"),
+    "reader.portal.no_material": M("当前范围没有提供可读材料；不能据此断言没有报告。", "No readable material was supplied in this scope; this does not establish that no report exists."),
+    "reader.portal.reading_intro": M("阅读已提供的报告、说明或记录，查看内容范围、版本与当前无法核对的部分。", "Read the supplied reports, explanations or records, including their scope, version and what cannot currently be checked."),
+    "reader.portal.technical": M("可选：来源与技术核对", "Optional: source and technical checks"),
+    "reader.portal.selection_missing": M("当前提供的范围未找到所选材料；下面保留原有材料目录，不能用其他材料代替它。", "Requested material was not found in the supplied scope; the existing material list is retained below, not substituted for the requested material."),
+    "reader.portal.untitled_material": M("未提供标题的材料", "Material with no supplied title"),
+    "reader.portal.original_blocked": M("无法打开原文；当前内容不能作为已核对的支持。", "Cannot open the original; this content cannot be treated as verified support."),
+    "reader.portal.generation_boundary": M("报告生成完成不等于研究成功，也不表示测试达到了原定目标。", "Generating a report does not mean the research succeeded or that the test reached its original target."),
+    "reader.portal.verify_failed": M("核验失败；无法把生成的内容作为已核对原文。", "Verification failed; the generated content cannot be treated as a verified original."),
+    "reader.portal.original_missing": M("没有提供可打开的原文；仅有地址不能证明内容可读。", "No openable original was supplied; a locator alone does not establish readability."),
     "reader.portal.sample_banner": M("样例数据，不代表真实研究结果：{fixture}", "Sample data; not a real research result: {fixture}"),
 }
 

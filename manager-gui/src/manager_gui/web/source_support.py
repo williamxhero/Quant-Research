@@ -17,6 +17,7 @@ from html import escape
 from ..models import ManagerReadModel, ReadModelStatus
 from .i18n import Translator
 from .locators import public_locator
+from .material_reading import MATERIAL_RECORD_KINDS, render_material_details
 from .navigation import query_values
 
 # These are existing public payload containers, not an owner schema or a search
@@ -159,6 +160,7 @@ class SourceSupport:
     computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool, str | None]] = field(
         default_factory=dict
     )
+    matched_fields: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
 
     def computation(
         self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool,
@@ -221,6 +223,7 @@ class SourceSupport:
         record: Mapping[str, object] | None = None,
         *,
         record_id: str | None = None,
+        fields: tuple[tuple[str, str], ...] = (),
         explanation: str | None = None,
         fabricated_example: bool = False,
         display_name: str | None = None,
@@ -241,6 +244,7 @@ class SourceSupport:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, record))
+        self.matched_fields[index] = fields
         if explanation is not None:
             # GUI-rendered, escaped, ID-free prose; the original supplied mapping remains below.
             self.explanations[index] = explanation
@@ -280,8 +284,12 @@ class SourceSupport:
             issues.append("conflict")
         if original.get("available") is False or original.get("approved") is False:
             issues.append("restricted")
-        locator = _text(original.get("locator", original.get("source_locator")))
-        if locator and public_locator(locator) is None:
+        locators = (
+            _text(original.get(key))
+            for key in ("locator", "source_locator", "source_url", "url", "href", "uri",
+                        "artifact_locator")
+        )
+        if any(locator and public_locator(locator) is None for locator in locators):
             issues.append("unsafe")
         original_snapshot = original.get("snapshot_token")
         if original_snapshot is not None and (
@@ -297,8 +305,14 @@ class SourceSupport:
             "blocked", "stale", "integrity_failure", "api_unavailable", "missing", "incomparable"
         }:
             source_status = None
-        statuses = (
-            status, source_status, original.get("read_status"), original.get("verification_status")
+        statuses = tuple(
+            value.get("status", value.get("state", value.get("result")))
+            if isinstance(value, Mapping) else value
+            for value in (
+                status, source_status, original.get("read_status"),
+                original.get("verification_status"), original.get("verify_status"),
+                original.get("verify"), original.get("verification"),
+            )
         )
         failures = {
             "incomparable",
@@ -308,12 +322,15 @@ class SourceSupport:
             "api_unavailable",
             "missing",
             "hash_mismatch",
+            "digest_mismatch",
+            "invalid",
             "fail",
             "failed",
             "failure",
         }
         if any(
-            isinstance(value, str) and value.replace("-", "_") in failures for value in statuses
+            isinstance(value, str) and value.strip().lower().replace("-", "_") in failures
+            for value in statuses
         ):
             issues.append("source_failure")
         return issues
@@ -346,6 +363,13 @@ class SourceSupport:
                 if title
                 else f"<h3>{self._t('title_missing')}</h3>"
             )
+            if issues:
+                parts.append(
+                    f'{title_markup}<p>{self._t("unverified_content")}</p>'
+                    f'{self._sample(record) or self._sample(original)}'
+                    f'<pre data-owner-text="true" translate="no">{escape(text)}</pre>'
+                )
+                continue
             excerpt = _text(record.get("excerpt"))
             matching = (
                 not conflict
@@ -470,9 +494,32 @@ class SourceSupport:
                 + self.impact(record) + self.explanations.get(index, "")
             )
             has_record = record is not None and _has_content(record)
-            key = "record_original" if record and self._originals(record) else "structured"
+            key = (
+                "record_original" if record and self._originals(record)
+                else "record_content" if record and any(
+                    _text(record.get(name)) for name in ("content", "text", "original_text")
+                )
+                else "structured"
+            )
             body += f"<p>{self._t(key if has_record else 'pointer')}</p>"
             if record is not None:
+                located = tuple(
+                    (name, label) for name, label in self.matched_fields.get(index, ())
+                    if name in record
+                )
+                if located:
+                    body += f"<h3>{escape(self.translator.t('reader.search.content_heading'))}</h3>"
+                    for name, label in located:
+                        content = json.dumps(record[name], ensure_ascii=False)
+                        body += (
+                            f"<h4>{escape(label)}</h4>"
+                            f'<pre data-owner-text="true" translate="no">{escape(content)}</pre>'
+                        )
+                record_type = record.get("record_type")
+                if "document_type" in record or (
+                    isinstance(record_type, str) and record_type in MATERIAL_RECORD_KINDS
+                ):
+                    body += render_material_details(record, self.translator)
                 body += self._original_markup(
                     record, panel_id, fabricated_example=fabricated_example
                 )
@@ -524,6 +571,7 @@ def source_support_entry(
     *,
     record: Mapping[str, object] | None = None,
     record_id: str | None = None,
+    fields: tuple[tuple[str, str], ...] = (),
     explanation: str | None = None,
     fabricated_example: bool = False,
     display_name: str | None = None,
@@ -537,6 +585,7 @@ def source_support_entry(
             source_id,
             record,
             record_id=record_id,
+            fields=fields,
             explanation=explanation,
             fabricated_example=fabricated_example,
             display_name=display_name,

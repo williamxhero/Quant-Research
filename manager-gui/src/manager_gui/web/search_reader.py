@@ -32,9 +32,26 @@ from ..reader import (
 )
 from ..reader.mode import ReaderURLState
 from .i18n import Translator
-from .navigation import ViewId, context_link
+from .material_reading import render_material_details
+from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
-from .search import SEARCH_RESOURCE, SearchViewModel, _query_from_context, render_search_view
+from .search import (
+    _FIELD_ALIASES,
+    SEARCH_RESOURCE,
+    SearchViewModel,
+    _is_search_fixture,
+    _iter_index_items,
+    _localized_fixture_text,
+    _query_from_context,
+    _search_hidden_controls,
+    _search_value_label,
+    _search_values,
+    _source_ids,
+    render_search_view,
+    search_result_link,
+)
+from .source_support import source_support_entry, source_support_impact
+from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
 
@@ -278,9 +295,9 @@ def _filter_markup(
         f'<dl><div><dt>{escape(translator.t("reader.search.filter_type"))}</dt><dd translate="no">{escape(record_type)}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.search.filter_source"))}</dt><dd translate="no">{escape(source)}</dd></div>'
         f'<div><dt>{escape(translator.t("reader.search.filter_snapshot"))}</dt><dd translate="no">{escape(snapshot)}</dd></div>'
-        f'<div><dt>{escape(translator.t("reader.search.filter_scope"))}</dt><dd>{escape(scope)}</dd></div></dl>'
+        f"<div><dt>{escape(translator.t('reader.search.filter_scope'))}</dt><dd>{escape(scope)}</dd></div></dl>"
         f'<p class="search-reader-context-link"><a href="{escape(context_link(context, view=ViewId.SEARCH), quote=True)}">'
-        f'{escape(translator.t("reader.search.title"))}</a></p></section>'
+        f"{escape(translator.t('reader.search.title'))}</a></p></section>"
     )
 
 
@@ -289,7 +306,7 @@ def _raw_markup(projection: ReaderProjection, translator: Translator) -> str:
     return (
         f'<section class="search-reader-raw" data-reader-hook="{SEARCH_READER_HOOK}" '
         f'data-integration-hook="{SEARCH_READER_INTEGRATION_HOOK}" data-reader-mode="raw">'
-        f'<h1>{escape(translator.t("reader.search.raw_heading"))}</h1>'
+        f"<h1>{escape(translator.t('reader.search.raw_heading'))}</h1>"
         f'<pre data-v0-schema="manager-gui.manager-read-model.v0" translate="no">{escape(raw)}</pre>'
         f'<p translate="no" data-raw-sha256="{escape(projection.raw_source.sha256, quote=True)}">{projection.raw_source.sha256}</p></section>'
     )
@@ -298,7 +315,96 @@ def _raw_markup(projection: ReaderProjection, translator: Translator) -> str:
 def _without_page_heading(markup: str) -> str:
     """Keep the shell/Reader wrapper as the only document-level h1."""
 
-    return re.sub(r'<h1\b[^>]*>.*?</h1>', "", markup, count=1, flags=re.DOTALL)
+    return re.sub(r"<h1\b[^>]*>.*?</h1>", "", markup, count=1, flags=re.DOTALL)
+
+
+def _content_markup(view: SearchViewModel, context: QueryContext, translator: Translator) -> str:
+    def t(key: str, **params: object) -> str:
+        return escape(translator.t("reader.search." + key, **params))
+
+    def owner(text: str) -> str:
+        return f'<span data-owner-text="true" translate="no">{escape(text)}</span>'
+
+    refs = {ref.source_id: ref for ref in view.source_refs}
+    candidates = tuple(
+        (
+            kind,
+            raw,
+            _source_ids(raw),
+            _search_values(raw, kind=kind, source_refs=refs, source_ids=_source_ids(raw)),
+        )
+        for kind, raw in _iter_index_items(view.read_model.data)
+    )
+    fixture = _is_search_fixture(view.read_model)
+    window = PageWindow.from_query(context, total=len(view.hits))
+    body = source_support_impact()
+    body += f"<p>{t('coverage')}</p><p>{t('no_existence')}</p>"
+    body += f"<p>{t('scope_complete' if view.pagination.complete else 'scope_partial')}</p>"
+    body += (
+        f'<form class="search-form" method="get" action="/" aria-label="{t("form_label")}">'
+        + _search_hidden_controls(context, translator=translator)
+    )
+    body += f'<label for="search-query">{t("query_label")}</label><input id="search-query" name="q" type="search" value="{escape(view.query, quote=True)}"><button type="submit">{t("submit_label")}</button></form>'
+    if not view.hits:
+        body += f"<p>{t('not_found_content')}</p>"
+        body += "".join(source_support_entry(ref.source_id) or "" for ref in view.source_refs)
+    body += '<ol class="search-results">'
+    for hit in view.hits[window.start : window.stop]:
+        matches = tuple(
+            raw
+            for kind, raw, sources, values in candidates
+            if kind == hit.result_kind
+            and values.get("record_id") == hit.record_id
+            and values.get("revision") == hit.revision
+            and sources == hit.source_ids
+        )
+        raw = matches[0] if len(matches) == 1 else None
+        title = _localized_fixture_text(
+            hit.title or hit.document_title, translator=translator, fixture=fixture
+        )
+        display = owner(title) if title else t("untitled")
+        body += f'<li class="search-result" data-result-id="{escape(hit.result_id, quote=True)}" data-result-kind="{escape(hit.result_kind, quote=True)}"><h2>{display}</h2>'
+        body += f"<p>{t('document_category' if hit.result_kind == 'document' else 'record_category')}</p>"
+        body += f"<p>{t('related' if hit.matched_fields else 'browse')}</p>"
+        body += f"<h3>{t('content_heading')}</h3>"
+        for field_name in hit.matched_fields:
+            text = getattr(hit, "record_type" if field_name == "type" else field_name, None)
+            if isinstance(text, str):
+                text = _search_value_label(translator, field_name, text, fixture=fixture) or text
+                display_value = escape(text) if fixture and field_name in {"type", "status"} else owner(text)
+                body += f"<p><strong>{escape(translator.label('l5_search_field', field_name))}</strong>: {display_value}</p>"
+        if raw is not None:
+            body += source_support_impact(raw)
+            body += render_material_details(raw, translator)
+            source = hit.source_ids[0] if len(hit.source_ids) == 1 else ""
+            fields = tuple(
+                (alias, translator.t("material.summary") if name == "safe_summary"
+                 else translator.label("l5_search_field", name))
+                for name in hit.matched_fields
+                for alias in _FIELD_ALIASES[name]
+                if alias in raw
+            )
+            body += source_support_entry(source, record=raw, fields=fields) or ""
+        else:
+            body += f"<p>{t('ambiguous')}</p>"
+        href = search_result_link(hit, context)
+        location = translator.t("nav." + hit.target_view + ".label")
+        body += f'<p><a class="search-result-link" data-link-kind="{escape(hit.result_kind, quote=True)}" href="{escape(href, quote=True)}">{t("open_destination", title=title or translator.t("reader.search.untitled"), location=location)}</a></p><p>{t("destination_limit")}</p></li>'
+    body += "</ol>"
+    body += window.render(context, view=ViewId.SEARCH, translator=translator)
+    if view.pagination.next_cursor and view.pagination.has_more:
+        next_url = context_link(context, view=ViewId.SEARCH, cursor=view.pagination.next_cursor, page=2)
+        body += (
+            f'<p class="search-cursor-pagination" data-search-next-cursor="{escape(view.pagination.next_cursor, quote=True)}">'
+            f'<a class="search-next-cursor" rel="next" href="{escape(next_url, quote=True)}" '
+            f'aria-label="{escape(translator.t("l5.search.next_page_aria"), quote=True)}">'
+            f'{escape(translator.t("l5.search.next_page"))}</a></p>'
+        )
+    return (
+        f'<section class="search-page" data-search-state="{view.state.value}" '
+        f'data-search-complete="{str(view.pagination.complete).lower()}" '
+        f'data-pagination-complete="{str(view.pagination.complete).lower()}">{body}</section>'
+    )
 
 
 def _reader_markup(
@@ -314,7 +420,7 @@ def _reader_markup(
         query_context=context,
         translator=translator,
     )
-    search_markup = _without_page_heading(view.render(query_context=context, translator=translator))
+    search_markup = _content_markup(view, context, translator)
     return (
         f'<section class="search-reader-page" data-reader-hook="{SEARCH_READER_HOOK}" '
         f'data-integration-hook="{SEARCH_READER_INTEGRATION_HOOK}" data-reader-contract="v1" '
@@ -323,9 +429,9 @@ def _reader_markup(
         f'<p class="eyebrow">{escape(translator.t("reader.search.eyebrow"))}</p>'
         f'<h1 id="search-reader-title" data-page-title tabindex="-1">{escape(translator.t("reader.search.title"))}</h1>'
         f'<p class="reader-intro">{escape(translator.t("reader.search.confirmed_intro"))}</p>'
-        f'{surface}{_filter_markup(view, context=context, translator=translator)}'
+        f"<details><summary>{escape(translator.t('reader.search.technical_details'))}</summary>{render_status_block(view.read_model, translator=translator)}{surface}</details>{_filter_markup(view, context=context, translator=translator)}"
         f'<p class="search-reader-boundary" data-boundary="search-match">{escape(translator.t("reader.search.not_evidence"))}</p>'
-        f'{search_markup}'
+        f"{search_markup}"
         f'<p class="search-reader-read-only">{escape(translator.t("reader.search.read_only"))}</p></section>'
     )
 
@@ -340,8 +446,8 @@ def _expert_markup(
         f'<section class="search-reader-page" data-reader-hook="{SEARCH_READER_HOOK}" '
         f'data-integration-hook="{SEARCH_READER_INTEGRATION_HOOK}" data-reader-contract="v1" '
         f'data-reader-mode="expert" data-status="{escape(view.status.value, quote=True)}">'
-        f'<h1>{escape(translator.t("reader.search.expert_heading"))}</h1>'
-        f'{_without_page_heading(render_search_view(view.read_model, query=view.query, record_type=view.record_type, source_filter=view.source, query_context=context, translator=translator))}</section>'
+        f"<h1>{escape(translator.t('reader.search.expert_heading'))}</h1>"
+        f"{_without_page_heading(render_search_view(view.read_model, query=view.query, record_type=view.record_type, source_filter=view.source, query_context=context, translator=translator))}</section>"
     )
 
 
@@ -394,11 +500,15 @@ def render_search_reader(
         sample=sample,
         sample_state=sample_state,
     )
-    context_pairs = tuple(
-        (str(key), str(value))
-        for key, value in (query_context or {}).items()
-        if value is not None
-    ) if isinstance(query_context, Mapping) else ()
+    context_pairs = (
+        tuple(
+            (str(key), str(value))
+            for key, value in (query_context or {}).items()
+            if value is not None
+        )
+        if isinstance(query_context, Mapping)
+        else ()
+    )
     raw_context_mode = next((value for key, value in context_pairs if key == "mode"), None)
     try:
         context_mode = (
