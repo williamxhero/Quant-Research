@@ -297,7 +297,9 @@ class SourceSupport:
             "blocked", "stale", "integrity_failure", "api_unavailable", "missing", "incomparable"
         }:
             source_status = None
-        statuses = (status, source_status, original.get("read_status"), original.get("verification_status"))
+        statuses = (
+            status, source_status, original.get("read_status"), original.get("verification_status")
+        )
         failures = {
             "incomparable",
             "blocked",

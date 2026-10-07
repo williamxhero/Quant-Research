@@ -35,8 +35,9 @@ ENTRIES = {
     ),
     "plain.memory.goal_fields_gap": M(
         "记录另有失败或错误标记。它不能说明测试未达金融目标，也不能用金额绕过这个差异而确认达标。",
-        "The record also contains a failure marker or an error marker. It does not establish a missed "
-        "financial target, and the amounts cannot bypass this discrepancy to confirm achievement.",
+        "The record also contains a failure marker or an error marker. "
+        "It does not establish a missed financial target, and the amounts cannot bypass "
+        "this discrepancy to confirm achievement.",
     ),
     "plain.memory.target": M("测试前的原定目标", "Original target set before the test"),
     "plain.memory.target_unknown": M(
