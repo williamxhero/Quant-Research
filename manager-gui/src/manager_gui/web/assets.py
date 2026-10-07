@@ -70,7 +70,7 @@ a { color: inherit; }
 .app-shell { display: grid; grid-template-rows: auto auto 1fr; min-height: 100vh; }
 .professional-navigation > summary { padding: 10px 28px; cursor: pointer; }
 .reading-task-link { padding: 10px 12px; text-decoration: none; overflow-wrap: anywhere; }
-.reading-task-link[aria-current="page"] { font-weight: 700; background: var(--accent-soft); }
+.reading-task-link[aria-current="true"] { font-weight: 700; background: var(--accent-soft); }
 .reading-navigation { flex-wrap: wrap; }
 .topbar {
   display: flex; align-items: center; gap: 24px; padding: 14px 28px; color: white;

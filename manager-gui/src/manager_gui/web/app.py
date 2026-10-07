@@ -1214,7 +1214,7 @@ class ManagerGUIApp:
                 label = translator.t(f"nav.reading.{item.view_id.value}")
                 links.append(
                     f'<a class="reading-task-link" href="{escape(href, quote=True)}" '
-                    f'aria-current="{"page" if current else "false"}">{escape(label)}</a>'
+                    f'aria-current="{"true" if current else "false"}">{escape(label)}</a>'
                 )
                 continue
             label = navigation_label(item.view_id, translator)
