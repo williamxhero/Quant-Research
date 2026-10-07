@@ -216,6 +216,8 @@ a { color: inherit; }
 }
 .view-mode-controls [aria-pressed="true"] { color: white; background: var(--accent); border-color: var(--accent); }
 [data-view-panel][hidden] { display: none; }
+.lineage-graph-scroll, .lineage-table-view > [role="region"] { max-width: 100%; overflow-x: auto; }
+.lineage-text-view { overflow-wrap: anywhere; }
 .lineage-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lineage-table th, .lineage-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
 .lineage-table th { color: var(--muted); font-size: 11px; }
