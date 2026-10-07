@@ -415,8 +415,11 @@ def render_attempt(
     )
     if calculated_goal and state in {"met", "missed"} and calculated_goal != state:
         state = "conflicting"
-    outcome = str(value(record, "outcome", "result", "status") or "").lower().replace("-", "_")
-    failed_marker = outcome in {"failed", "failure", "error", "execution_error"}
+    failed_marker = any(
+        isinstance(raw := record.get(key), str)
+        and raw.lower().replace("-", "_") in {"failed", "failure", "error", "execution_error"}
+        for key in ("outcome", "result", "status", "state", "execution_status", "test_status")
+    )
     goal_gap = t(translator, "goal_fields_gap") if failed_marker else ""
     if failed_marker and state == "met":
         state = "ended_unknown"
