@@ -9,6 +9,14 @@ from ..translator import M
 
 ENTRIES: Mapping[str, M] = {
     "nav.aria": M("管理界面分区", "Manager GUI sections"),
+    "nav.reading.aria": M("按阅读任务查看内容", "Explore by reading task"),
+    "nav.professional": M("全部专业页面", "All specialist pages"),
+    "nav.reading.atlas": M("正在研究什么", "What is being researched"),
+    "nav.reading.stories": M("一项研究怎么做的", "How a study was carried out"),
+    "nav.reading.strategies": M("买卖和挑选股票的办法", "Buying, selling and selecting stocks"),
+    "nav.reading.memory": M("学到的经验", "Lessons recorded"),
+    "nav.reading.methodology": M("怎样检查结果", "How results are checked"),
+    "nav.reading.portal": M("报告和说明", "Reports and explanations"),
     "nav.atlas.label": M("总览", "Atlas"),
     "nav.atlas.description": M("工作区地图与当前只读模型范围。", "Workspace map and current read-model scope."),
     "nav.stories.label": M("研究故事", "Stories"),

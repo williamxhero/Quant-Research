@@ -68,6 +68,10 @@ a { color: inherit; }
 .skip-link:focus { transform: translateY(0); }
 
 .app-shell { display: grid; grid-template-rows: auto auto 1fr; min-height: 100vh; }
+.professional-navigation > summary { padding: 10px 28px; cursor: pointer; }
+.reading-task-link { padding: 10px 12px; text-decoration: none; overflow-wrap: anywhere; }
+.reading-task-link[aria-current="true"] { font-weight: 700; background: var(--accent-soft); }
+.reading-navigation { flex-wrap: wrap; }
 .topbar {
   display: flex; align-items: center; gap: 24px; padding: 14px 28px; color: white;
   background: #18343a; box-shadow: 0 1px 0 rgb(255 255 255 / 10%);
@@ -212,6 +216,8 @@ a { color: inherit; }
 }
 .view-mode-controls [aria-pressed="true"] { color: white; background: var(--accent); border-color: var(--accent); }
 [data-view-panel][hidden] { display: none; }
+.lineage-graph-scroll, .lineage-table-view > [role="region"] { max-width: 100%; overflow-x: auto; }
+.lineage-text-view { overflow-wrap: anywhere; }
 .lineage-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .lineage-table th, .lineage-table td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
 .lineage-table th { color: var(--muted); font-size: 11px; }

@@ -1034,6 +1034,17 @@ class ManagerGUIApp:
             snapshot_token=model.snapshot_token,
             model=model,
         )
+        navigation = (
+            f'<nav class="nav-strip" aria-label="{escape(translator.t("nav.aria"), quote=True)}">'
+            f'{ManagerGUIApp._render_navigation_static(state, raw_url, translator)}</nav>'
+        )
+        if state.mode is ProjectionMode.READER:
+            navigation = (
+                f'<div><nav class="nav-strip reading-navigation" aria-label="{escape(translator.t("nav.reading.aria"), quote=True)}">'
+                f'{ManagerGUIApp._render_navigation_static(state, raw_url, translator, reading_tasks=True)}</nav>'
+                f'<details class="professional-navigation"><summary>{escape(translator.t("nav.professional"))}</summary>'
+                f'{navigation}</details></div>'
+            )
         language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
         mode_context_url = ManagerGUIApp._reader_mode_context_url(state, raw_url)
         reader_mode_switch = render_mode_switch(
@@ -1088,7 +1099,7 @@ class ManagerGUIApp:
       <input type="hidden" name="fixture" value="{state_value}">{lang_hidden}{context_hidden}{panel_hidden}{mode_hidden}
     </form>
   </header>
-  <nav class="nav-strip" aria-label="{escape(translator.t("nav.aria"), quote=True)}">{ManagerGUIApp._render_navigation_static(state, raw_url, translator)}</nav>
+  {navigation}
   <div class="workspace">
     <main id="main-content" class="main-column" tabindex="-1">
       {sample_banner}
@@ -1179,7 +1190,7 @@ class ManagerGUIApp:
 
     @staticmethod
     def _render_navigation_static(
-        state: WebRequestState, raw_url: str, translator: Translator
+        state: WebRequestState, raw_url: str, translator: Translator, *, reading_tasks: bool = False
     ) -> str:
         normalized_url = with_lang(raw_url, state.lang)
         raw_pairs = parse_qsl(urlsplit(normalized_url).query, keep_blank_values=True)
@@ -1189,10 +1200,23 @@ class ManagerGUIApp:
             if key not in {"view", "fixture"}
         ]
         links = []
+        task_views = (
+            ViewId.ATLAS, ViewId.STORIES, ViewId.STRATEGIES,
+            ViewId.MEMORY, ViewId.METHODOLOGY, ViewId.PORTAL,
+        )
         for item in NAVIGATION:
+            if reading_tasks and item.view_id not in task_views:
+                continue
             current = item.view_id is state.view
             href_values = [("view", item.view_id.value), ("fixture", state.fixture.value), *context]
             href = "/?" + urlencode(href_values)
+            if reading_tasks:
+                label = translator.t(f"nav.reading.{item.view_id.value}")
+                links.append(
+                    f'<a class="reading-task-link" href="{escape(href, quote=True)}" '
+                    f'aria-current="{"true" if current else "false"}">{escape(label)}</a>'
+                )
+                continue
             label = navigation_label(item.view_id, translator)
             description = navigation_description(item.view_id, translator)
             links.append(

@@ -162,6 +162,7 @@ def _strategy(
     wording = _wording(record, "strategy_summary", "description", "summary", "behavior_summary")
     if wording:
         content += f"<p>{_owner(wording)}</p>"
+    content += _support(record, model)
     timing = _mapping(behavior.get("timing"))
     execution = {key: timing.get(key) for key in ("execution_time", "execution_price")}
     execution_complete = all(value not in (None, "", [], {}) for value in execution.values())
@@ -221,10 +222,11 @@ def _strategy(
             )
         if value_usable and daily and key in ("entry", "exit", "timing"):
             explanation = _t(translator, "daily_" + key)
-        supplied = {**record, "behavior": {key: value}} if key in behavior else record
+        supplied = value_record or {key: value}
+        rule_name = f"{title or translator.t('plain.strategy.unnamed')} — {translator.t('plain.strategy.' + key)}"
         content += (
             f"<section><h3>{_t(translator, key)}</h3>{source_support_impact(value_record)}"
-            f"<p>{explanation}</p>{_support(supplied, model)}</section>"
+            f"<p>{explanation}</p>{_support(supplied, model, fabricated_example=record.get('fabricated_example') is True, display_name=rule_name)}</section>"
         )
     if daily and usable:
         for key in ("day", "mean"):
@@ -260,7 +262,6 @@ def _strategy(
             content += f"<p>{_t(translator, 'costs_boundary')}</p>"
     content += _conditions(record, model, translator)
     content += _revisions(record, model, translator)
-    content += _support(record, model)
     return f"<article>{content}</article>"
 
 

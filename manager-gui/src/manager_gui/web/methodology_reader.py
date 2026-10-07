@@ -331,7 +331,9 @@ def _child_records(record: Mapping[str, object], key: str, alias: str = "") -> t
     return _methodology_sequence(record.get(key, record.get(alias)))
 
 
-def _record_support(record: Mapping[str, object], identifier: str) -> str:
+def _record_support(
+    record: Mapping[str, object], identifier: str, *, fabricated_example: bool = False
+) -> str:
     # Supply the exact visible record, never a generic envelope source list.
     source = record.get("source_ref", record.get("source_id"))
     if source is None:
@@ -340,7 +342,9 @@ def _record_support(record: Mapping[str, object], identifier: str) -> str:
             source = refs[0]
     if isinstance(source, Mapping):
         source = source.get("source_id", source.get("id"))
-    return source_support_entry(_text(source) or identifier, record=record) or ""
+    return source_support_entry(
+        _text(source) or identifier, record=record, fabricated_example=fabricated_example
+    ) or ""
 
 
 def _record_fields(record: Mapping[str, object], translator: Translator) -> str:
@@ -406,7 +410,7 @@ def _usage_markup(method: MethodologyMethod, translator: Translator, model: Mana
             f'<li><p>{_owner(usage.summary, translator)}</p>'
             f'<p>{escape(translator.t("reader.methodology." + key))}</p><dl>'
             f'<div><dt>{escape(translator.t("reader.methodology.used_at"))}</dt><dd>{_owner(used_at, translator)}</dd></div>'
-            f'{_record_fields(record, translator)}</dl>{source_support_impact(record)}{_record_support(record, usage.usage_id)}{_reference_links(usage.record_refs, translator, context)}</li>'
+            f'{_record_fields(record, translator)}</dl>{source_support_impact(record)}{_record_support(record, usage.usage_id, fabricated_example=method.raw.get("fabricated_example") is True)}{_reference_links(usage.record_refs, translator, context)}</li>'
         )
     return f'<ul class="methodology-reader-usages">{"".join(items)}</ul>'
 
@@ -422,7 +426,7 @@ def _results_markup(method: MethodologyMethod, translator: Translator, context: 
             f'<li><h4>{_owner(result.title, translator)}</h4><p>{_owner(result.summary, translator)}</p>'
             f'<p>{escape(translator.t("reader.methodology.record_status"))}: {_owner(result.status, translator)}</p>'
             f'{render_material_details(record, translator)}{source_support_impact(record)}'
-            f'{_record_support(record, result.result_id)}{_reference_links(result.record_refs, translator, context)}</li>'
+            f'{_record_support(record, result.result_id, fabricated_example=method.raw.get("fabricated_example") is True)}{_reference_links(result.record_refs, translator, context)}</li>'
         )
     return f'<ul class="methodology-reader-results">{"".join(items)}</ul>'
 
@@ -438,7 +442,7 @@ def _validity_markup(method: MethodologyMethod, translator: Translator, context:
             f'<li><h4>{_owner(evidence.label, translator)}</h4><p>{_owner(evidence.summary, translator)}</p>'
             f'<p>{escape(translator.t("reader.methodology.record_status"))}: {_owner(evidence.status, translator)}</p>'
             f'{render_material_details(record, translator)}{source_support_impact(record)}'
-            f'{_record_support(record, evidence.evidence_id)}'
+            f'{_record_support(record, evidence.evidence_id, fabricated_example=method.raw.get("fabricated_example") is True)}'
             f'{_reference_links(evidence.document_refs, translator, context)}'
             f'{_reference_links(evidence.record_refs, translator, context)}</li>'
         )
