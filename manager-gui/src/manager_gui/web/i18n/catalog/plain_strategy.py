@@ -44,6 +44,10 @@ ENTRIES = {
         "实际买卖时刻和股票价格未提供。买卖提示不是实际成交，不能据此复现完整买卖。",
         "Actual execution time and stock price were not provided. Signals are not executions and cannot reproduce complete trades.",
     ),
+    "plain.strategy.execution_partial": M(
+        "实际买卖细节未完整提供，或目前无法核对。买卖提示不是实际成交，不能据此复现完整买卖。",
+        "Execution details were not fully provided or cannot currently be verified. Signals are not executions and cannot reproduce complete trades.",
+    ),
     "plain.strategy.execution": M(
         "实际买卖时刻和股票价格的记录", "Recorded execution time and stock price"
     ),
@@ -110,6 +114,10 @@ ENTRIES = {
         "记录称这条条件得到测试支持；不代表其他条件也成立。",
         "The record says this condition was supported by the test, not that other conditions hold.",
     ),
+    "plain.strategy.failed": M(
+        "记录称这条条件未通过测试；不代表未测试的其他条件也失败。",
+        "The record says this condition failed the test; no failure is implied for other untested conditions.",
+    ),
     "plain.strategy.not_evaluated": M(
         "这条条件明确尚未测试。", "This condition is explicitly not yet tested."
     ),
@@ -161,8 +169,8 @@ ENTRIES = {
     ),
     "plain.strategy.unnamed_object": M("未命名的比较对象", "Unnamed comparison object"),
     "plain.strategy.side_definition": M(
-        "这里 A 指左侧对象，B 指右侧对象；下文和依据沿用记录提供的同一名称。",
-        "A refers to the left object and B to the right object. The same supplied names are used below and in supporting records.",
+        "这里 {left} 指左侧对象，{right} 指右侧对象；下文和依据沿用记录提供的同一名称。",
+        "{left} refers to the left object and {right} to the right object. The same supplied names are used below and in supporting records.",
     ),
     "plain.strategy.no_winner": M(
         "这里逐项核对比较条件，不能选出赢家或补出完整赚亏结果。配置相同不等于效果一样好。",
@@ -222,6 +230,36 @@ ENTRIES = {
         "比较用了哪些结果记录？", "Which result records are used for comparison?"
     ),
     "plain.strategy.axis.currency": M("金额币种一致吗？", "Do the currencies of amounts match?"),
+    "plain.strategy.factor": M(
+        "因子是用于描述或挑选股票的一项量，不是完整买卖办法。买入、卖出和实际买卖条件仍需各自提供。",
+        "A factor is a measure used to describe or select stocks, not a complete trading method. Buy, sell, and execution conditions must be supplied separately.",
+    ),
+    "plain.strategy.main_conditions": M(
+        "主要办法条件和实际买卖细节已提供；这说明记录写了什么，不证明测试赚钱或规则实现正确。",
+        "The main method conditions and execution details are supplied. This describes the record, not proof of profitable tests or a correct implementation.",
+    ),
+    "plain.strategy.drawdown": M(
+        "配置把从资金总值最高点往下减少的比例限制在 {percent}%；这是记录的风险限制，不是实际亏损结果。",
+        "The configuration limits the fall from the highest total account value to {percent}%. This is a recorded risk limit, not an observed loss.",
+    ),
+    "plain.strategy.selection_scope": M(
+        "记录指定的挑选范围：{scope}。这不说明在这些市场分别测试过。",
+        "Configured selection scope: {scope}. This does not establish separate tests in these markets.",
+    ),
+    "plain.strategy.decision_delay": M(
+        "记录要求延后 {n} 个数据间隔判断；间隔长度和实际钟点未提供，不能默认下一天成交。",
+        "The record delays decisions by {n} data intervals. Actual clock time was not provided, and neither was the interval length; next-day execution cannot be assumed.",
+    ),
+    "plain.strategy.commission": M(
+        "配置中每买卖 10,000 单位金额另外支付 {n} 单位的买卖费用；币种仍须由记录说明。这不证明测试金额已扣除买卖费用。",
+        "The configuration charges {n} units in trading costs per 10,000 units traded. Currency still requires a record. This does not establish that test amounts deducted trading costs.",
+    ),
+    "plain.strategy.execution_time": M("实际买卖时刻", "Execution time"),
+    "plain.strategy.execution_price": M("实际买卖的股票价格", "Execution stock price"),
+    "plain.strategy.axis.unverified": M(
+        "读取不完整、过时或对应资料有问题，目前不能核对这项比较条件；下面仅保留提供的记录值。",
+        "The read is incomplete, out of date, or has source issues. We cannot currently verify this comparison condition; supplied record values remain below.",
+    ),
     "plain.strategy.supplement": M(
         "补充：专业字段与原有核对内容", "Supplement: technical fields and existing checks"
     ),

@@ -1088,37 +1088,54 @@ def _render_raw(projection: ReaderProjection, *, translator: Translator) -> str:
     )
 
 
-def _render_related_links(view: ComparisonReaderViewModel, *, context: QueryContext, translator: Translator) -> str:
+def _related_context_link(context: QueryContext, *, view: ViewId, **updates: object) -> str:
+    """Keep related-object navigation's opaque pairs in their supplied order."""
+    if not isinstance(context, str):
+        return context_link(context, view=view, **updates)
+    state = ReaderURLState.from_url(context)
+    pairs = tuple((key, value) for key, value in state.pairs if key not in {"view", "page", *updates})
+    pairs = (*pairs, ("view", view.value), *((key, str(value)) for key, value in updates.items() if value is not None))
+    return ReaderURLState(path="/", pairs=pairs, mode=state.mode).url()
+
+
+def _render_related_links(view: ComparisonReaderViewModel, *, context: QueryContext, translator: Translator, plain_names: bool = False) -> str:
     comparison = view.comparison
     left_id = None if comparison is None else comparison.left_object_id
     right_id = None if comparison is None else comparison.right_object_id
+    names = {"left": _machine(left_id), "right": _machine(right_id)}
+    if plain_names and comparison is not None:
+        for key, label in (("left", "A"), ("right", "B")):
+            side = _mapping(comparison.raw.get(key)) or {}
+            title = _owner_source(side, "title", "name", "label")
+            name = _owner(title, translator) if title else escape(translator.t("plain.strategy.unnamed_object"))
+            names[key] = f'<span translate="no">{label}: </span>{name}<span hidden>{names[key]}</span>'
     links: list[str] = []
     if left_id is not None:
         links.append(
-            f'<a class="comparison-left-object-link" href="{escape(context_link(context, view=ViewId.STRATEGIES, genome_id=left_id), quote=True)}">'
-            f'{escape(translator.t("reader.comparison.object_reader"))} {_machine(left_id)}</a>'
+            f'<a class="comparison-left-object-link" href="{escape(_related_context_link(context, view=ViewId.STRATEGIES, genome_id=left_id), quote=True)}">'
+            f'{escape(translator.t("reader.comparison.object_reader"))} {names["left"]}</a>'
         )
     if right_id is not None:
         links.append(
-            f'<a class="comparison-right-object-link" href="{escape(context_link(context, view=ViewId.STRATEGIES, genome_id=right_id), quote=True)}">'
-            f'{escape(translator.t("reader.comparison.object_reader"))} {_machine(right_id)}</a>'
+            f'<a class="comparison-right-object-link" href="{escape(_related_context_link(context, view=ViewId.STRATEGIES, genome_id=right_id), quote=True)}">'
+            f'{escape(translator.t("reader.comparison.object_reader"))} {names["right"]}</a>'
         )
     # Keep the published R3 class hooks discoverable while the Reader uses its
     # more general object-link names.
     if left_id is not None:
         links.append(
-            f'<a class="comparison-left-genome-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(context_link(context, view=ViewId.STRATEGIES, genome_id=left_id), quote=True)}"></a>'
-            f'<a class="comparison-left-conditions-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(context_link(context, view=ViewId.CONDITIONS, genome_id=left_id), quote=True)}"></a>'
+            f'<a class="comparison-left-genome-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(_related_context_link(context, view=ViewId.STRATEGIES, genome_id=left_id), quote=True)}"></a>'
+            f'<a class="comparison-left-conditions-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(_related_context_link(context, view=ViewId.CONDITIONS, genome_id=left_id), quote=True)}"></a>'
         )
     if right_id is not None:
         links.append(
-            f'<a class="comparison-right-genome-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(context_link(context, view=ViewId.STRATEGIES, genome_id=right_id), quote=True)}"></a>'
-            f'<a class="comparison-right-conditions-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(context_link(context, view=ViewId.CONDITIONS, genome_id=right_id), quote=True)}"></a>'
+            f'<a class="comparison-right-genome-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(_related_context_link(context, view=ViewId.STRATEGIES, genome_id=right_id), quote=True)}"></a>'
+            f'<a class="comparison-right-conditions-link" aria-label="{escape(translator.t("reader.comparison.object_reader"), quote=True)}" hidden href="{escape(_related_context_link(context, view=ViewId.CONDITIONS, genome_id=right_id), quote=True)}"></a>'
         )
     links.extend(
         (
-            f'<a class="comparison-evidence-link" href="{escape(context_link(context, view=ViewId.EVIDENCE), quote=True)}">{escape(translator.t("reader.comparison.evidence"))}</a>',
-            f'<a class="comparison-lineage-link" href="{escape(context_link(context, view=ViewId.LINEAGE), quote=True)}">{escape(translator.t("reader.comparison.lineage"))}</a>',
+            f'<a class="comparison-evidence-link" href="{escape(_related_context_link(context, view=ViewId.EVIDENCE), quote=True)}">{escape(translator.t("reader.comparison.evidence"))}</a>',
+            f'<a class="comparison-lineage-link" href="{escape(_related_context_link(context, view=ViewId.LINEAGE), quote=True)}">{escape(translator.t("reader.comparison.lineage"))}</a>',
         )
     )
     return f'<nav class="comparison-reader-related" aria-label="{escape(translator.t("reader.comparison.related"), quote=True)}">{"".join(links)}</nav>'
@@ -1167,7 +1184,23 @@ def render_comparison_reader(
                 f'<p class="comparison-reader-boundary" data-statistics="not-generated">{escape(selected.t("reader.comparison.no_statistics"))}</p>'
                 f'</section>'
             )
-        body = render_plain_comparison(view.comparison, view.read_model, translator=selected)
+        # A partial/stale envelope can still contain supplied values worth
+        # reading. Reuse the comparator for UI-only display, without replacing
+        # the canonical view/projection's refusal or missing state.
+        reading_comparison = view.comparison
+        if reading_comparison is None:
+            supplied = _comparison_payload(view.read_model.data)
+            pair = _object_pair(supplied)
+            if pair is not None:
+                missing, refused_axes = _axis_sets(supplied)
+                reading_comparison = compare_reader_objects(
+                    *pair,
+                    axis_results=_explicit_axis_results(supplied),
+                    missing_axes=tuple(missing),
+                    not_comparable_axes=tuple(refused_axes),
+                    source_refs=view.read_model.source_refs,
+                )
+        body = render_plain_comparison(reading_comparison, view.read_model, translator=selected)
         body += f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary><h2>{escape(selected.t("reader.comparison.title"))}</h2>{surface}{table}</details>'
     status = render_status_block(view.read_model, translator=selected)
     refusal = (
@@ -1201,7 +1234,7 @@ def render_comparison_reader(
         f'data-comparison-result="{escape(result, quote=True)}">{legacy_marker}'
         f'<p class="eyebrow">{escape(selected.t("comparison.eyebrow"))}</p>'
         f'<h1 data-page-title tabindex="-1">{escape(selected.t("plain.strategy.comparison_title" if selected_mode is ProjectionMode.READER else "reader.comparison.title"))}</h1>'
-        f'{status}{refusal}{body}{_render_related_links(view, context=query_context, translator=selected)}'
+        f'{status}{refusal}{body}{_render_related_links(view, context=query_context, translator=selected, plain_names=selected_mode is ProjectionMode.READER)}'
         f'</section>'
     )
 

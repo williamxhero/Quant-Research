@@ -49,6 +49,10 @@ def _support(record: Mapping[str, object], model: ManagerReadModel) -> str:
     return source_support_entry(source or "", record=record) or ""
 
 
+def _pointers(model: ManagerReadModel) -> str:
+    return "".join(source_support_entry(ref.source_id) or "" for ref in model.source_refs)
+
+
 def _rule(value: object, key: str, translator: Translator) -> str:
     if value in (None, "", {}, []):
         return _t(translator, "missing")
@@ -61,6 +65,29 @@ def _rule(value: object, key: str, translator: Translator) -> str:
         return _t(translator, "positive")
     if key == "exit" and rule == "signal_negative":
         return _t(translator, "negative")
+    if key == "universe" and (scope := _text(record.get("scope"))) is not None:
+        return _t(translator, "selection_scope", scope=scope).replace(
+            escape(scope), _owner(scope), 1
+        )
+    drawdown = record.get("max_drawdown")
+    if (
+        key == "risk_controls"
+        and isinstance(drawdown, (int, float))
+        and not isinstance(drawdown, bool)
+        and 0 <= drawdown <= 1
+    ):
+        return _t(translator, "drawdown", percent=f"{drawdown * 100:g}")
+    lag = record.get("decision_lag_bars")
+    if key == "timing" and type(lag) is int and lag >= 0:
+        return _t(translator, "decision_delay", n=lag)
+    commission = record.get("commission_bps")
+    if (
+        key == "costs"
+        and isinstance(commission, (int, float))
+        and not isinstance(commission, bool)
+        and commission >= 0
+    ):
+        return _t(translator, "commission", n=commission)
     return _t(translator, "unexplained")
 
 
@@ -76,7 +103,7 @@ def render_plain_strategy(
         record for record in catalog if selected_id is None or record.genome_id == selected_id
     )
     if not selected:
-        body = f"<p>{_t(translator, 'not_found')}</p>{source_support_impact()}"
+        body = f"<p>{_t(translator, 'not_found')}</p>{source_support_impact()}{_pointers(model)}"
     else:
         body = "".join(
             _strategy(record.raw, record.behavior, model, translator) for record in selected
@@ -89,8 +116,10 @@ def _strategy(
     behavior: Mapping[str, object],
     model: ManagerReadModel,
     translator: Translator,
+    *,
+    display_name: str | None = None,
 ) -> str:
-    title = _wording(record, "title", "name", "label")
+    title = display_name or _wording(record, "title", "name", "label")
     heading = _owner(title) if title else _t(translator, "unnamed")
     content = f"<h2>{heading}</h2>"
     if record.get("fabricated_example") is True:
@@ -100,7 +129,22 @@ def _strategy(
     wording = _wording(record, "strategy_summary", "description", "summary", "behavior_summary")
     if wording:
         content += f"<p>{_owner(wording)}</p>"
-    content += f"<p>{_t(translator, 'incomplete')}</p>"
+    timing = _mapping(behavior.get("timing"))
+    execution = {key: timing.get(key) for key in ("execution_time", "execution_price")}
+    execution_complete = all(value not in (None, "", [], {}) for value in execution.values())
+    main_conditions = execution_complete and all(
+        _wording(_mapping(behavior.get(key)), "description", "text", "summary")
+        for key in ("universe", "entry", "exit", "risk_controls", "timing")
+    )
+    kind = _wording(record, "record_type", "type", "kind")
+    classification = (
+        "factor"
+        if kind in ("factor", "stock_factor")
+        else "main_conditions"
+        if main_conditions and usable
+        else "incomplete"
+    )
+    content += f"<p>{_t(translator, classification)}</p>"
     content += f'<p class="plain-definition"><strong>{_t(translator, "signal_question")}</strong>{_t(translator, "signal_definition")}</p>'
     daily = (
         record.get("fabricated_example") is True
@@ -133,7 +177,14 @@ def _strategy(
         for key in ("day", "mean"):
             content += f'<p class="plain-definition"><strong>{_t(translator, key + "_question")}</strong>{_t(translator, key + "_definition")}</p>'
         content += f"<p>{_t(translator, 'fake_amounts')}</p>"
-    content += f"<p>{_t(translator, 'execution_unknown')}</p>"
+    if execution_complete and usable:
+        content += _fields(execution, {key: (key,) for key in execution}, translator)
+    else:
+        has_details = any(value not in (None, "", [], {}) for value in execution.values())
+        gap = "execution_partial" if has_details else "execution_unknown"
+        content += f"<p>{_t(translator, gap)}</p>"
+        if has_details:
+            content += _fields(execution, {key: (key,) for key in execution}, translator)
     content += f'<p class="plain-definition"><strong>{escape(translator.t("plain.result.cost_question"))}</strong>{escape(translator.t("plain.result.cost_definition"))}</p>'
     for key, value in (
         ("period", record.get("test_period")),
@@ -141,7 +192,12 @@ def _strategy(
         ("currency", record.get("currency")),
         ("costs", behavior.get("costs")),
     ):
-        content += f"<h3>{_t(translator, key)}</h3><p>{_owner(value) if value not in (None, '', [], {}) and usable else _t(translator, key + '_unknown')}</p>"
+        rendered = (
+            (_rule(value, key, translator) if key == "costs" else _owner(value))
+            if value not in (None, "", [], {}) and usable
+            else _t(translator, key + "_unknown")
+        )
+        content += f"<h3>{_t(translator, key)}</h3><p>{rendered}</p>"
         if key == "costs" and value:
             content += f"<p>{_t(translator, 'costs_boundary')}</p>"
     content += _conditions(record, model, translator)
@@ -166,7 +222,7 @@ def _fields(
         value = next(
             (record[key] for key in aliases if record.get(key) not in (None, "", {}, [])), None
         )
-        if label == "outcome" and value in ("supported", "not_evaluated"):
+        if label == "outcome" and value in ("supported", "failed", "not_evaluated"):
             rendered = _t(translator, str(value))
         else:
             rendered = _owner(value) if value is not None else _t(translator, "missing")
@@ -189,7 +245,9 @@ def _conditions(
     ):
         for item in _items(record.get(collection)):
             count += 1
-            wording = _wording(item, "title", "description", "text", "condition", "name")
+            wording = _wording(
+                item, "title", "description", "text", "condition", "descriptor", "name"
+            )
             content += f"<section><h4>{_owner(wording) if wording else _t(translator, 'condition_unnamed')}</h4>"
             if collection == "descriptors" or item.get("category", item.get("kind")) in (
                 "descriptor",
@@ -205,6 +263,7 @@ def _conditions(
                     "time": ("time", "time_range", "period"),
                     "scope": ("scope", "market", "universe"),
                     "evidence": ("evidence", "evidence_refs"),
+                    "limitations": ("limitations", "limitations_note", "limits"),
                 },
                 translator,
             )
@@ -218,7 +277,7 @@ def _revisions(
     record: Mapping[str, object], model: ManagerReadModel, translator: Translator
 ) -> str:
     content = f"<h3>{_t(translator, 'revisions')}</h3><p>{_t(translator, 'modification')}</p>"
-    revisions = []
+    revisions = [record] if _wording(record, "revision_id", "revisionId", "revision") else []
     for key in ("revisions", "strategy_revisions", "evolution", "revision_tree", "history"):
         raw = record.get(key)
         revisions.extend(
@@ -269,10 +328,13 @@ def render_plain_comparison(
     *,
     translator: Translator,
 ) -> str:
-    body = f"<p>{_t(translator, 'side_definition')}</p><p>{_t(translator, 'no_winner')}</p>"
+    definition = _t(translator, "side_definition", left="A", right="B")
+    for label in ("A", "B"):
+        definition = definition.replace(label, f'<span translate="no">{label}</span>', 1)
+    body = f"<p>{definition}</p><p>{_t(translator, 'no_winner')}</p>"
     body += source_support_impact()
     if comparison is None:
-        body += f"<p>{_t(translator, 'no_comparison')}</p>"
+        body += f"<p>{_t(translator, 'no_comparison')}</p>{_pointers(model)}"
     else:
         sides = tuple(_mapping(comparison.raw.get(key)) for key in ("left", "right"))
         names = tuple(
@@ -284,19 +346,35 @@ def render_plain_comparison(
             for label, side in zip(("A", "B"), sides, strict=True)
         )
         for side, name in zip(sides, names, strict=True):
+            if isinstance(side.get("behavior"), Mapping):
+                body += _strategy(
+                    side, _mapping(side["behavior"]), model, translator, display_name=name
+                )
+                continue
             body += f"<article><h2>{_owner(name)}</h2>"
             if side.get("fabricated_example") is True:
                 body += f"<p>{escape(translator.t('plain.result.sample'))}</p>"
             wording = _wording(side, "description", "summary", "text")
             if wording:
                 body += f"<p>{_owner(wording)}</p>"
-            body += source_support_impact(side) + _support(side, model) + "</article>"
+            body += source_support_impact(side)
+            if _wording(side, "revision_id", "revisionId", "revision"):
+                body += _revisions(side, model, translator)
+            body += _support(side, model) + "</article>"
         body += f'<p class="plain-definition"><strong>{escape(translator.t("plain.result.cost_question"))}</strong>{escape(translator.t("plain.result.cost_definition"))}</p>'
         for axis in comparison.axes:
             key = axis.axis.value
             body += f"<section><h3>{_t(translator, 'axis.' + key)}</h3>"
-            usable = all(source_support_usable(side) for side in sides)
-            body += f"<p>{_t(translator, 'axis.' + (axis.state.value if usable else 'not_comparable'))}</p>"
+            usable = (
+                model.availability.complete
+                and all(source_support_usable(side) for side in sides)
+                and source_support_usable(axis.raw)
+            )
+            if axis.raw:
+                body += source_support_impact(axis.raw)
+            body += (
+                f"<p>{_t(translator, 'axis.' + (axis.state.value if usable else 'unverified'))}</p>"
+            )
             if axis.owner_reason and axis.reason:
                 body += f"<p>{_owner(axis.reason)}</p>"
             body += "<dl>"
