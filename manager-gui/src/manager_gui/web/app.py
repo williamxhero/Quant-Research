@@ -109,6 +109,7 @@ from .navigation import (
     navigation_item,
     navigation_label,
 )
+from .plain_result import render_plain_result
 from .portal import REPORT_SOURCE_RESOURCE
 from .portal_reader import project_portal_reader, render_portal_reader
 from .reader_shell import annotate_reader_mount, reader_route
@@ -642,7 +643,7 @@ class ManagerGUIApp:
                 include_reader_surface=state.mode is ProjectionMode.READER,
             )
         if state.view is ViewId.STORIES:
-            return render_research_story(
+            legacy_markup = render_research_story(
                 model,
                 mode=state.story_mode,
                 base_path=url,
@@ -651,6 +652,14 @@ class ManagerGUIApp:
                 reader_projection=reader_projection,
                 include_reader_surface=state.mode is ProjectionMode.READER,
             )
+            if state.mode is ProjectionMode.READER:
+                plain_markup = render_plain_result(
+                    model, view="stories", query_context=url, translator=translator,
+                    sample=reader_projection.sample_data is not None,
+                )
+                if plain_markup is not None:
+                    return plain_markup + _legacy_reader_compat(legacy_markup)
+            return legacy_markup
         if state.view is ViewId.STRATEGIES:
             if state.mode is ProjectionMode.READER:
                 return render_strategy_reader(
@@ -751,7 +760,11 @@ class ManagerGUIApp:
                     snapshot_token=model.snapshot_token,
                     translator=translator,
                 ) + render_evidence_trace(model, query_context=url, translator=translator)
-                return reader_markup + _legacy_reader_compat(legacy_markup)
+                plain_markup = render_plain_result(
+                    model, view="evidence", query_context=url, translator=translator,
+                    sample=reader_projection.sample_data is not None,
+                )
+                return (plain_markup or reader_markup) + _legacy_reader_compat(legacy_markup)
             if state.mode is ProjectionMode.RAW:
                 return render_evidence_lineage_reader(
                     model,
@@ -932,7 +945,17 @@ class ManagerGUIApp:
         legacy_story_modes = {story_mode.value for story_mode in StoryMode}
         search_mode = raw_mode if raw_mode in legacy_story_modes else state.mode.value
         raw_view_selected = state.mode is ProjectionMode.RAW
-        inspector_hidden = " hidden" if state.panel == "events" or raw_view_selected else ""
+        plain_reading = bool(page and page.startswith('<section class="plain-result"'))
+        inspector_hidden = " hidden" if (
+            state.panel == "events" or raw_view_selected
+            or (plain_reading and state.panel != "inspector")
+        ) else ""
+        workspace_note = (
+            translator.t("plain.result.sample" if reader_projection.sample_data else "plain.result.scope")
+            if plain_reading else translator.t(
+                "shell.workspace_snapshot", snapshot=model.snapshot_token or translator.t("shell.snapshot_missing")
+            )
+        )
         drawer_hidden = "" if state.panel == "events" or raw_view_selected else " hidden"
         snapshot = model.snapshot_token or translator.t("shell.snapshot_missing")
         as_of = model.as_of or translator.t("shell.unavailable")
@@ -999,7 +1022,7 @@ class ManagerGUIApp:
         sample_banner = render_sample_banner(
             reader_projection,
             locale=state.locale.value,
-            text=translator.t("reader.sample.banner.fixed"),
+            text=translator.t("plain.result.sample" if plain_reading else "reader.sample.banner.fixed"),
         )
         snapshot_markup = (
             f'<span data-opaque-ref="{escape(snapshot, quote=True)}">{escape(snapshot)}</span>'
@@ -1024,7 +1047,7 @@ class ManagerGUIApp:
       <span class="brand-mark" aria-hidden="true">M</span><span class="brand-name" translate="no">{escape(translator.t("shell.brand"))}</span>
     </a>
     <div class="topbar-meta">
-      <span class="workspace-note">{escape(translator.t("shell.workspace_snapshot", snapshot=snapshot))}</span>
+      <span class="workspace-note">{escape(workspace_note)}</span>
       <span class="read-only-badge" aria-label="{escape(translator.t("shell.read_only_aria"), quote=True)}">{escape(translator.t("shell.read_only"))}</span>
       {language_switcher}
       {reader_mode_switch}
@@ -1043,7 +1066,7 @@ class ManagerGUIApp:
       {sample_banner}
       {page_markup}
       <div class="panel-actions" aria-label="{escape(translator.t("shell.shared_panels"), quote=True)}">
-        <button class="panel-button" type="button" data-panel-target="inspector" aria-controls="inspector" aria-expanded="{str(state.panel != 'events').lower()}">{escape(translator.t("shell.open_inspector"))}</button>
+        <button class="panel-button" type="button" data-panel-target="inspector" aria-controls="inspector" aria-expanded="{str(not inspector_hidden).lower()}">{escape(translator.t("shell.open_inspector"))}</button>
         <button class="panel-button" type="button" data-panel-target="events" aria-controls="event-drawer" aria-expanded="{str(state.panel == 'events').lower()}">{escape(translator.t("shell.open_events"))}</button>
         {export_control}
       </div>

@@ -95,6 +95,15 @@ a { color: inherit; }
 .reader-mode-link:hover, .reader-mode-link[aria-current="page"], .reader-mode-link[aria-current="true"] {
   color: #18343a; background: #f2a65a; border-color: #f2a65a;
 }
+.plain-result article { margin: 20px 0; padding: 22px; background: var(--surface); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.plain-result p, .plain-result dd { font-size: 16px; line-height: 1.7; }
+.plain-definition { color: var(--ink); background: var(--positive-soft); border-left: 3px solid var(--positive); padding: 12px 15px; }
+.plain-definition strong { display: block; color: var(--positive); margin-bottom: 4px; }
+.plain-outcome { font-weight: 650; }
+.plain-result dl { display: grid; gap: 12px; }
+.plain-result dl > div { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.plain-result dt { font-weight: 650; }
+.plain-result dd { margin: 4px 0 0; }
 .reader-sample-banner {
   margin: 0 0 18px; padding: 11px 14px; color: #6b4a0b; font-size: 13px;
   background: var(--warning-soft); border: 1px solid #e7c979; border-radius: 4px;
