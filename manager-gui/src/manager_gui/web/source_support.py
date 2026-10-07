@@ -292,8 +292,14 @@ class SourceSupport:
         if isinstance(availability, Mapping) and availability.get("complete") is False:
             issues.append("impact.partial")
         status = availability.get("status") if isinstance(availability, Mapping) else availability
-        statuses = (status, original.get("read_status"), original.get("verification_status"))
+        source_status = original.get("status")
+        if not isinstance(source_status, str) or source_status not in {
+            "blocked", "stale", "integrity_failure", "api_unavailable", "missing", "incomparable"
+        }:
+            source_status = None
+        statuses = (status, source_status, original.get("read_status"), original.get("verification_status"))
         failures = {
+            "incomparable",
             "blocked",
             "stale",
             "integrity_failure",
@@ -369,20 +375,26 @@ class SourceSupport:
             )
         return "".join(parts)
 
-    def usable(self, record: Mapping[str, object] | None = None) -> bool:
+    def usable(
+        self, record: Mapping[str, object] | None = None, *, require_complete: bool = False
+    ) -> bool:
         query = query_values(self.query_context)
         requested = query.get("snapshot_token") or query.get("snapshot")
         return (
             self.model.availability.status is ReadModelStatus.KNOWN
             and not self.model.errors
             and (not requested or requested == self.model.snapshot_token)
-            and (record is None or not self._read_issues(record, self.model.snapshot_token))
+            and (record is None or not any(
+                issue != "impact.partial" or require_complete
+                for issue in self._read_issues(record, self.model.snapshot_token)
+            ))
             and (record is None or len(self._originals(record)) <= 1)
             and (
                 record is None
                 or not any(
-                    self._read_issues(original, record.get("original_snapshot_token"))
+                    issue != "impact.partial" or require_complete
                     for original in self._originals(record)
+                    for issue in self._read_issues(original, record.get("original_snapshot_token"))
                 )
             )
         )
@@ -567,5 +579,5 @@ def source_support_usable(
     return support is None or (
         (not require_complete or (
             support.model.availability.complete and _original_supplied(support, record)
-        )) and support.usable(record)
+        )) and support.usable(record, require_complete=require_complete)
     )
