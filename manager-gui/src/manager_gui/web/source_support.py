@@ -160,11 +160,13 @@ class SourceSupport:
     def computation(
         self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool
     ) -> str:
-        entry = self.reference(self.translator.t("support.count_inputs"))
-        self.computations[len(self.entries)] = (inputs, filters, complete)
-        return entry.replace(
-            self._t("gap_entry", name=self.translator.t("support.count_inputs")),
-            self._t("count_inputs"),
+        index = len(self.entries) + 1
+        panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
+        self.entries.append((trigger_id, None))
+        self.computations[index] = (inputs, filters, complete)
+        return (
+            f'<a id="{trigger_id}" href="#{panel_id}" data-source-support="{panel_id}" '
+            f'aria-controls="{panel_id}">{self._t("count_inputs")}</a>'
         )
 
     def _computation_markup(self, index: int) -> str:
@@ -269,15 +271,21 @@ class SourceSupport:
             issues.append("version_change")
         availability = original.get("availability")
         status = availability.get("status") if isinstance(availability, Mapping) else availability
-        status = status or original.get("read_status") or original.get("verification_status")
-        if isinstance(status, str) and status in {
+        statuses = (status, original.get("read_status"), original.get("verification_status"))
+        failures = {
             "blocked",
             "stale",
             "integrity_failure",
             "api_unavailable",
             "missing",
             "hash_mismatch",
-        }:
+            "fail",
+            "failed",
+            "failure",
+        }
+        if any(
+            isinstance(value, str) and value.replace("-", "_") in failures for value in statuses
+        ):
             issues.append("source_failure")
         return issues
 
@@ -322,7 +330,7 @@ class SourceSupport:
             related = (
                 f'<h3>{self._t("excerpt")}</h3><blockquote data-owner-text="true" translate="no">'
                 f"{escape(excerpt)}</blockquote>"
-                if matching
+                if matching and excerpt is not None
                 else f"<p>{self._t('unlocated')}</p>"
             )
             original_id = f"{panel_id}-original-{index}"
@@ -391,12 +399,12 @@ class SourceSupport:
         if self.model.availability.reason:
             markup += (
                 '<p data-owner-text="true" translate="no">'
-                f'{escape(self.model.availability.reason)}</p>'
+                f"{escape(self.model.availability.reason)}</p>"
             )
         for error in self.model.errors:
             markup += (
                 '<p data-owner-text="true" translate="no">'
-                f'{escape(error.code)}: {escape(error.message)}</p>'
+                f"{escape(error.code)}: {escape(error.message)}</p>"
             )
         return markup
 

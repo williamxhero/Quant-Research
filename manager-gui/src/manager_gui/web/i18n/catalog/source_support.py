@@ -1,6 +1,12 @@
 from ..translator import M
 
 ENTRIES = {
+    "pipeline.lineage_title": M("这些内容有哪些已记录的关联？", "How are these records connected?"),
+    "pipeline.lineage_intro": M(
+        "图和表列出同一组已提供的内容及关联。没有记录为什么关联时，就不能补猜原因。",
+        "The graph and table show the same supplied records and relationships. "
+        "If no reason was recorded, none is inferred.",
+    ),
     "pipeline.story.intent": M("当时想知道什么？", "What question was recorded?"),
     "pipeline.story.initial_hypothesis": M("当时想测试什么想法？", "What hypothesis was recorded?"),
     "pipeline.story.research_design": M("测试前怎样安排？", "How was the test planned?"),

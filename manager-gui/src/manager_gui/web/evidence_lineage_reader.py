@@ -1051,15 +1051,19 @@ def render_lineage_reader(
         query_context=query_context,
         translator=selected,
     )
+    sources = "".join(
+        f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
+    )
     return (
         f'<section class="lineage-reader-page" data-reader-hook="lineage-reader" '
         f'data-integration-hook="lineage-view" data-reader-mode="reader" '
         f'data-status="{escape(model.availability.status.value, quote=True)}" '
         f'data-display-state="{display_state_for(model).value}">'
         f'<p class="eyebrow">{escape(selected.t("reader.lineage.eyebrow"))}</p>'
-        f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.lineage.title"))}</h1>'
-        f'<p class="reader-intro">{escape(selected.t("reader.lineage.intro"))}</p>'
-        f'{surface}<p>{escape(selected.t("pipeline.relation_boundary"))}</p>'
+        f'<h1 data-page-title tabindex="-1">{escape(selected.t("pipeline.lineage_title"))}</h1>'
+        f'<p class="reader-intro">{escape(selected.t("pipeline.lineage_intro"))}</p>'
+        f'<details><summary>{escape(selected.t("reader.mode.expert"))}</summary>{surface}</details>'
+        f'<p>{escape(selected.t("pipeline.relation_boundary"))}</p>{sources}'
         f'{render_reader_relationships(model, query_context=query_context, translator=selected)}</section>'
     )
 
