@@ -153,36 +153,37 @@ class SourceSupport:
     translator: Translator
     sample: bool = False
     entries: list[tuple[str, Mapping[str, object] | None]] = field(default_factory=list)
+    explanations: dict[int, str] = field(default_factory=dict)
     fabricated_entries: set[int] = field(default_factory=set)
     display_names: dict[int, str] = field(default_factory=dict)
     items: tuple[Mapping[str, object], ...] = field(init=False)
-    computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool]] = field(
+    computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool, str | None]] = field(
         default_factory=dict
     )
     matched_fields: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
 
     def computation(
-        self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool
+        self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool,
+        description: str | None = None,
     ) -> str:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, None))
-        self.computations[index] = (inputs, filters, complete)
+        self.computations[index] = (inputs, filters, complete, description)
         return (
             f'<a id="{trigger_id}" href="#{panel_id}" data-source-support="{panel_id}" '
             f'aria-controls="{panel_id}">{self._t("count_inputs")}</a>'
         )
 
     def _computation_markup(self, index: int) -> str:
-        inputs, filters, complete = self.computations[index]
-        markup = self._sample(None)
-        for key in (
-            "count_unit",
-            "count_rule",
-            "count_dedup",
-            "count_complete" if complete else "count_partial",
-        ):
-            markup += f"<p>{self._t(key)}</p>"
+        inputs, filters, complete, description = self.computations[index]
+        markup = self._sample(None) + self.impact()
+        if description is None:
+            for key in ("count_unit", "count_rule", "count_dedup"):
+                markup += f"<p>{self._t(key)}</p>"
+        else:
+            markup += f"<p>{escape(description)}</p>"
+        markup += f'<p>{self._t("count_complete" if complete else "count_partial")}</p>'
         markup += (
             f"<p>{self._t('query')}</p>"
             f'<pre data-owner-text="true" translate="no">{escape(filters)}</pre>'
@@ -191,7 +192,7 @@ class SourceSupport:
         markup += (
             "<ol>"
             + "".join(
-                f'<li><pre data-owner-text="true" translate="no">'
+                f'<li>{self._sample(record)}<pre data-owner-text="true" translate="no">'
                 f"{escape(json.dumps(dict(record), ensure_ascii=False, indent=2))}</pre></li>"
                 for record in inputs
             )
@@ -223,6 +224,7 @@ class SourceSupport:
         *,
         record_id: str | None = None,
         fields: tuple[tuple[str, str], ...] = (),
+        explanation: str | None = None,
         fabricated_example: bool = False,
         display_name: str | None = None,
     ) -> str:
@@ -243,6 +245,9 @@ class SourceSupport:
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, record))
         self.matched_fields[index] = fields
+        if explanation is not None:
+            # GUI-rendered, escaped, ID-free prose; the original supplied mapping remains below.
+            self.explanations[index] = explanation
         if fabricated_example:
             self.fabricated_entries.add(index)
         if (name := _text(display_name)) is not None:
@@ -292,16 +297,25 @@ class SourceSupport:
         ):
             issues.append("version_change")
         availability = original.get("availability")
+        if isinstance(availability, Mapping) and availability.get("complete") is False:
+            issues.append("impact.partial")
         status = availability.get("status") if isinstance(availability, Mapping) else availability
+        source_status = original.get("status")
+        if not isinstance(source_status, str) or source_status not in {
+            "blocked", "stale", "integrity_failure", "api_unavailable", "missing", "incomparable"
+        }:
+            source_status = None
         statuses = tuple(
             value.get("status", value.get("state", value.get("result")))
             if isinstance(value, Mapping) else value
             for value in (
-                status, original.get("read_status"), original.get("verification_status"),
-                original.get("verify_status"), original.get("verify"), original.get("verification"),
+                status, source_status, original.get("read_status"),
+                original.get("verification_status"), original.get("verify_status"),
+                original.get("verify"), original.get("verification"),
             )
         )
         failures = {
+            "incomparable",
             "blocked",
             "stale",
             "integrity_failure",
@@ -310,7 +324,6 @@ class SourceSupport:
             "hash_mismatch",
             "digest_mismatch",
             "invalid",
-            "incomparable",
             "fail",
             "failed",
             "failure",
@@ -388,20 +401,26 @@ class SourceSupport:
             )
         return "".join(parts)
 
-    def usable(self, record: Mapping[str, object] | None = None) -> bool:
+    def usable(
+        self, record: Mapping[str, object] | None = None, *, require_complete: bool = False
+    ) -> bool:
         query = query_values(self.query_context)
         requested = query.get("snapshot_token") or query.get("snapshot")
         return (
             self.model.availability.status is ReadModelStatus.KNOWN
             and not self.model.errors
             and (not requested or requested == self.model.snapshot_token)
-            and (record is None or not self._read_issues(record, self.model.snapshot_token))
+            and (record is None or not any(
+                issue != "impact.partial" or require_complete
+                for issue in self._read_issues(record, self.model.snapshot_token)
+            ))
             and (record is None or len(self._originals(record)) <= 1)
             and (
                 record is None
                 or not any(
-                    self._read_issues(original, record.get("original_snapshot_token"))
+                    issue != "impact.partial" or require_complete
                     for original in self._originals(record)
+                    for issue in self._read_issues(original, record.get("original_snapshot_token"))
                 )
             )
         )
@@ -470,7 +489,10 @@ class SourceSupport:
                 else self._t("heading_unnamed")
             )
             fabricated_example = index in self.fabricated_entries
-            body = self._sample(record, fabricated_example=fabricated_example) + self.impact(record)
+            body = (
+                self._sample(record, fabricated_example=fabricated_example)
+                + self.impact(record) + self.explanations.get(index, "")
+            )
             has_record = record is not None and _has_content(record)
             key = (
                 "record_original" if record and self._originals(record)
@@ -550,6 +572,7 @@ def source_support_entry(
     record: Mapping[str, object] | None = None,
     record_id: str | None = None,
     fields: tuple[tuple[str, str], ...] = (),
+    explanation: str | None = None,
     fabricated_example: bool = False,
     display_name: str | None = None,
 ) -> str | None:
@@ -563,6 +586,7 @@ def source_support_entry(
             record,
             record_id=record_id,
             fields=fields,
+            explanation=explanation,
             fabricated_example=fabricated_example,
             display_name=display_name,
         )
@@ -570,17 +594,41 @@ def source_support_entry(
 
 
 def source_support_computation(
-    inputs: tuple[Mapping[str, object], ...], *, filters: str, complete: bool
+    inputs: tuple[Mapping[str, object], ...], *, filters: str, complete: bool,
+    description: str | None = None,
 ) -> str:
     support = _CURRENT.get()
-    return "" if support is None else support.computation(inputs, filters, complete)
+    return "" if support is None else support.computation(inputs, filters, complete, description)
 
 
-def source_support_impact(record: Mapping[str, object] | None = None) -> str:
+def source_support_impact(
+    record: Mapping[str, object] | None = None, *, require_original: bool = False,
+) -> str:
     support = _CURRENT.get()
-    return "" if support is None else support.impact(record)
+    if support is None:
+        return ""
+    markup = support.impact(record)
+    if require_original and record is not None and not _original_supplied(support, record):
+        markup += f'<p class="support-impact">{support._t("original_missing")}</p>'
+    return markup
 
 
-def source_support_usable(record: Mapping[str, object]) -> bool:
+def _original_supplied(support: SourceSupport, record: Mapping[str, object]) -> bool:
+    if _text(record.get("original_source_id")) is None:
+        return True
+    originals = support._originals(record)
+    return bool(originals) and all(
+        _text(item.get("text", item.get("content", item.get("original_text")))) is not None
+        for item in originals
+    )
+
+
+def source_support_usable(
+    record: Mapping[str, object], *, require_complete: bool = False,
+) -> bool:
     support = _CURRENT.get()
-    return True if support is None else support.usable(record)
+    return support is None or (
+        (not require_complete or (
+            support.model.availability.complete and _original_supplied(support, record)
+        )) and support.usable(record, require_complete=require_complete)
+    )
