@@ -46,6 +46,7 @@ from .portal import (
     report_source_view,
 )
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -324,6 +325,9 @@ def _context_markup(
 ) -> str:
     source_links = []
     for source in view.source_refs:
+        if support := source_support_entry(source.source_id):
+            source_links.append(f"<li>{support}</li>")
+            continue
         target = context_link(query_context, view=ViewId.EVIDENCE, source_id=source.source_id)
         source_links.append(
             f'<li><a data-link-kind="source-ref" href="{escape(target, quote=True)}" translate="no">'

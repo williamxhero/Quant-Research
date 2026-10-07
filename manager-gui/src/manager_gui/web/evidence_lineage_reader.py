@@ -40,10 +40,11 @@ from .evidence import (
 )
 from .i18n import Translator
 from .i18n.catalog.reader import render_reader_reason
-from .lineage import LineageQuery, LineageViewModel, render_lineage
+from .lineage import LineageQuery, LineageViewModel, render_lineage, render_reader_relationships
 from .locators import public_locator
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import display_state_for
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -773,6 +774,9 @@ def _source_markup(
         return escape(translator.t("reader.evidence_lineage.no_source"))
     items: list[str] = []
     for ref in refs:
+        if support := source_support_entry(ref.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         local = context_link(context, view=ViewId.EVIDENCE, source_id=ref.source_id, reader_step=f"source:{ref.source_id}")
         link = public_locator(ref.locator)
         external = (
@@ -1047,15 +1051,20 @@ def render_lineage_reader(
         query_context=query_context,
         translator=selected,
     )
+    sources = "".join(
+        f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
+    )
     return (
         f'<section class="lineage-reader-page" data-reader-hook="lineage-reader" '
         f'data-integration-hook="lineage-view" data-reader-mode="reader" '
         f'data-status="{escape(model.availability.status.value, quote=True)}" '
         f'data-display-state="{display_state_for(model).value}">'
         f'<p class="eyebrow">{escape(selected.t("reader.lineage.eyebrow"))}</p>'
-        f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.lineage.title"))}</h1>'
-        f'<p class="reader-intro">{escape(selected.t("reader.lineage.intro"))}</p>'
-        f'{surface}</section>'
+        f'<h1 data-page-title tabindex="-1">{escape(selected.t("pipeline.lineage_title"))}</h1>'
+        f'<p class="reader-intro">{escape(selected.t("pipeline.lineage_intro"))}</p>'
+        f'<details><summary>{escape(selected.t("reader.mode.expert"))}</summary>{surface}</details>'
+        f'<p>{escape(selected.t("pipeline.relation_boundary"))}</p>{sources}'
+        f'{render_reader_relationships(model, query_context=query_context, translator=selected)}</section>'
     )
 
 

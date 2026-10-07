@@ -149,9 +149,10 @@ from . import reader as reader_catalog  # noqa: E402
 READER_CATALOG = reader_catalog.ENTRIES
 REGISTRY.register(READER_CATALOG)
 
-from . import plain_result  # noqa: E402
+from . import plain_result, source_support  # noqa: E402
 
 REGISTRY.register(plain_result.ENTRIES)
+REGISTRY.register(source_support.ENTRIES)
 
 
 __all__ = [

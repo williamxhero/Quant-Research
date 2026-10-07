@@ -57,6 +57,7 @@ from .i18n import Translator
 from .locators import public_locator
 from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -459,6 +460,9 @@ def _source_links(view: HistoryReaderViewModel | SourceDocumentsReaderViewModel,
         return f'<p class="{page}-reader-no-source">{escape(translator.t(f"reader.{page}.no_source"))}</p>'
     items: list[str] = []
     for source in view.source_refs:
+        if support := source_support_entry(source.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         locator = public_locator(source.locator)
         source_id = f'<span translate="no">{escape(source.source_id)}</span>'
         if locator:

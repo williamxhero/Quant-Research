@@ -38,6 +38,7 @@ from .i18n import Translator
 from .i18n.catalog.l5_portal import ENTRIES as PORTAL_CATALOG
 from .locators import public_locator
 from .navigation import context_link
+from .source_support import source_support_entry
 from .status import DisplayState, render_operational_state, render_status_block
 
 
@@ -814,6 +815,8 @@ def _render_publication(
         if internal
         else ""
     )
+    if support := source_support_entry(publication.publication_id, record_id=publication.publication_id):
+        locator, stable = support, ""
     return (
         f'<article class="portal-source-publication" data-source-publication-id="{escape(publication.publication_id, quote=True)}" '
         'data-source-publication-state="published">'
@@ -864,6 +867,8 @@ def _render_artifact(
         if internal
         else ""
     )
+    if support := source_support_entry(artifact.artifact_id, record_id=artifact.artifact_id):
+        locator, stable = support, ""
     return (
         f'<article class="portal-generated-artifact" data-artifact-id="{escape(artifact.artifact_id, quote=True)}" '
         f'data-artifact-state="{state.value}">'

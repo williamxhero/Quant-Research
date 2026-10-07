@@ -48,6 +48,7 @@ from .locators import public_locator
 from .memory import MemoryEntry, MemoryViewModel, render_memory_text
 from .navigation import context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import display_state_for
 
 # HTML fragments intentionally keep readable markup at the call site.
@@ -614,6 +615,9 @@ def _record_source_links(record: MemoryFailureReaderRecord, model: ManagerReadMo
     index = {ref.source_id: ref for ref in model.source_refs}
     rendered: list[str] = []
     for source_id in record.source_ids:
+        if support := source_support_entry(source_id, record=record.raw):
+            rendered.append(support)
+            continue
         source = index.get(source_id)
         if source is None:
             rendered.append(

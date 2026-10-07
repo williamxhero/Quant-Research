@@ -46,6 +46,7 @@ from .methodology import (
 )
 from .navigation import PageWindow, ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
+from .source_support import source_support_entry
 from .status import render_status_block
 
 QueryContext: TypeAlias = str | Mapping[str, object] | None
@@ -305,6 +306,9 @@ def _source_markup(view: MethodologyReaderViewModel, context: QueryContext, tran
         return f'<p class="methodology-reader-no-source">{escape(translator.t("reader.methodology.no_source"))}</p>'
     items: list[str] = []
     for ref in view.source_refs:
+        if support := source_support_entry(ref.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         locator = public_locator(ref.locator)
         value = f'<span translate="no">{escape(ref.source_id)}</span>'
         if locator:

@@ -60,6 +60,7 @@ from .i18n.catalog import CATALOG
 from .i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from .locators import public_locator
 from .navigation import PageWindow, context_link, query_values
+from .source_support import source_support_entry, suspend_source_support
 from .status import render_operational_state, render_status_block
 
 LINEAGE_RESOURCE = "lineage"
@@ -1439,6 +1440,9 @@ def _render_sources(refs: Sequence[LineageSourceRef], *, translator: Translator)
         return escape(translator.t("lineage.not_recorded"))
     parts: list[str] = []
     for ref in refs:
+        if support := source_support_entry(ref.source_id):
+            parts.append(support)
+            continue
         origin = " · ".join(part for part in (ref.owner, ref.kind) if part)
         label = _owner(ref.source_id) + (f" ({_owner(origin)})" if origin else "")
         target = public_locator(ref.locator)
@@ -1635,7 +1639,7 @@ def _render_graph(
         "lineage.svg_description", nodes=len(page_nodes), edges=len(page_edges)
     )
     return (
-        '<figure class="lineage-graph" data-lineage-graph="true" aria-labelledby="lineage-graph-caption">'
+        '<figure class="lineage-graph" data-lineage-graph="true" data-lineage-view="graph" aria-labelledby="lineage-graph-caption">'
         f'<figcaption id="lineage-graph-caption">{escape(caption)} '
         f'<a class="lineage-skip" href="#lineage-table">{escape(translator.t("lineage.skip_table"))}</a></figcaption>'
         f'<div class="lineage-graph-scroll" role="region" aria-label="{_attr(translator.t("lineage.graph_region"))}" tabindex="0">'
@@ -1767,7 +1771,7 @@ def _render_tables(
         else ""
     )
     return (
-        '<section id="lineage-table" class="lineage-table-view" aria-labelledby="lineage-table-heading" tabindex="-1">'
+        '<section id="lineage-table" class="lineage-table-view" data-lineage-view="table" aria-labelledby="lineage-table-heading" tabindex="-1">'
         f'<h2 id="lineage-table-heading">{escape(translator.t("lineage.table_heading"))}</h2>'
         f"<p>{escape(translator.t('lineage.table_intro'))}</p>{off_page_note}"
         f'<div role="region" aria-label="{_attr(translator.t("lineage.records_region"))}" tabindex="0">'
@@ -2054,6 +2058,48 @@ def _render_failure(
         f'data-lineage-failure="{failure.code.value}"><h2>{escape(translator.t("lineage.failure_heading"))}</h2>'
         f"<p><strong>{escape(title)}.</strong> {_owner(failure.detail)}</p>"
         f"<p>{escape(translator.t('lineage.failure_explanation'))}</p>{restart}</section>"
+    )
+
+
+def render_reader_relationships(
+    model: ManagerReadModel, *, query_context: QueryContext, translator: Translator,
+) -> str:
+    view = LineageViewModel.from_read_model(model, LineageQuery.from_query(query_context))
+    if view.failure is not None:
+        return _render_failure(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
+    visible = view.visible_nodes
+    if not visible:
+        return (
+            f'<section data-lineage-state="{view.state.value}">'
+            f'<p>{escape(translator.t("lineage.empty_scope"))}</p></section>'
+        )
+    window = PageWindow.from_query(
+        {**query_values(query_context), "page_size": str(view.query.page_size)}, total=len(visible),
+    )
+    nodes = visible[window.start:window.stop]
+    identifiers = {node.node_id for node in nodes}
+    edges = tuple(edge for edge in view.visible_edges
+                  if edge.source_id in identifiers and edge.target_id in identifiers)
+    with suspend_source_support():
+        inspector = _render_inspector(
+            view, view.query.node or view.root_id, context=query_context,
+            route=LINEAGE_ROUTE, translator=translator,
+        )
+    partial = (
+        _render_partial(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
+        if view.partial else ""
+    )
+    return (
+        f'<section data-lineage-state="{view.state.value}">'
+        + partial
+        + _render_graph(view, nodes, edges, context=query_context, route=LINEAGE_ROUTE,
+                        inspected_id=view.query.node or view.root_id, translator=translator)
+        + _render_evidence_path(view, context=query_context, route=LINEAGE_ROUTE, translator=translator)
+        + _render_tables(view, nodes, edges, context=query_context, route=LINEAGE_ROUTE,
+                         total=len(visible), off_page=len(view.visible_edges)-len(edges),
+                         translator=translator)
+        + f'<details><summary>{escape(translator.t("reader.mode.expert"))}</summary>{inspector}</details>'
+        + '</section>'
     )
 
 

@@ -43,6 +43,7 @@ from .i18n.catalog.l3_atlas_story import FIXTURE_KEYS as SHARED_FIXTURE_KEYS
 from .i18n.catalog.l5_search import ENTRIES as SEARCH_CATALOG
 from .locators import public_locator
 from .navigation import PageWindow, ViewId, context_link, query_values
+from .source_support import source_support_entry
 from .status import DisplayState, render_operational_state, render_status_block
 
 SEARCH_RESOURCE = "search"
@@ -1140,6 +1141,8 @@ class SearchViewModel:
 def _safe_source_link(source: SourceReference, *, translator: Translator) -> str:
     """Render only public or fixture locators; never expose private paths as links."""
 
+    if support := source_support_entry(source.source_id):
+        return support
     locator = public_locator(source.locator)
     if locator is None:
         return f'<span class="search-source-locator">{translator.html("l5.search.missing")}</span>'

@@ -104,6 +104,10 @@ a { color: inherit; }
 .plain-result dl > div { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .plain-result dt { font-weight: 650; }
 .plain-result dd { margin: 4px 0 0; }
+.source-support { margin: 20px 0; padding: 20px; background: var(--surface); border: 1px solid var(--line); overflow-wrap: anywhere; scroll-margin-top: 20px; }
+.source-support p, .source-support a { font-size: 16px; line-height: 1.7; }
+.source-support pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.support-impact { border-left: 3px solid var(--warning); padding: 10px 14px; background: var(--warning-soft); }
 .reader-sample-banner {
   margin: 0 0 18px; padding: 11px 14px; color: #6b4a0b; font-size: 13px;
   background: var(--warning-soft); border: 1px solid #e7c979; border-radius: 4px;
@@ -237,6 +241,7 @@ a { color: inherit; }
   .event-drawer { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 480px) {
+  .topbar-meta { flex-wrap: wrap; }
   .brand-name { font-size: 14px; }
   .workspace-note { max-width: 160px; }
   .status-block { padding: 17px; }
@@ -318,6 +323,47 @@ JS_TEMPLATE = r"""
     if (event.key === "Escape" && drawer && !drawer.hidden) {
       event.preventDefault();
       showPanel(null);
+    }
+  });
+
+  const supportPanels = [...document.querySelectorAll('.source-support')];
+  let activeSupport = null;
+  let supportTrigger = null;
+  supportPanels.forEach(panel => { panel.hidden = true; });
+  function closeSupport() {
+    if (!activeSupport) return;
+    activeSupport.hidden = true;
+    activeSupport = null;
+    if (supportTrigger && document.contains(supportTrigger)) {
+      supportTrigger.setAttribute('aria-expanded', 'false');
+      supportTrigger.focus();
+    }
+  }
+  document.querySelectorAll('[data-source-support]').forEach(link => {
+    link.setAttribute('aria-expanded', 'false');
+    link.addEventListener('click', event => {
+      const panel = document.getElementById(link.dataset.sourceSupport);
+      if (!panel) return;
+      event.preventDefault();
+      closeSupport();
+      supportTrigger = link;
+      activeSupport = panel;
+      panel.hidden = false;
+      link.setAttribute('aria-expanded', 'true');
+      panel.focus();
+      panel.scrollIntoView({ block: 'start' });
+    });
+  });
+  document.querySelectorAll('[data-support-close]').forEach(link => {
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      closeSupport();
+    });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && activeSupport) {
+      event.preventDefault();
+      closeSupport();
     }
   });
 
