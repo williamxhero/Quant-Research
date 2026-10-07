@@ -5,6 +5,10 @@
 from ..translator import M
 
 ENTRIES = {
+    "plain.strategy.descriptor_status": M(
+        "记录中的状态（不能据此断言实际测试结果）",
+        "Recorded status (not a confirmed observed test result)",
+    ),
     "plain.strategy.title": M(
         "买卖和挑选股票的办法写了什么？", "What do the stock selection and trading rules say?"
     ),

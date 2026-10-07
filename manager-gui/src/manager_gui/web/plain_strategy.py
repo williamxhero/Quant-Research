@@ -13,10 +13,27 @@ if TYPE_CHECKING:
     from .comparison_reader import ComparisonReaderComparison
 
 from ..models import ManagerReadModel
-from .genome import GenomeViewModel
+from .genome import GenomeFilters, GenomeViewModel
 from .i18n import Translator
 from .navigation import query_values
 from .source_support import source_support_entry, source_support_impact, source_support_usable
+
+CONDITION_COLLECTION_KEYS = (
+    "conditions",
+    "condition_evidence",
+    "applicability_conditions",
+    "invalidation_conditions",
+    "failure_conditions",
+    "counterexamples",
+    "descriptors",
+)
+REVISION_COLLECTION_KEYS = (
+    "revisions",
+    "strategy_revisions",
+    "evolution",
+    "revision_tree",
+    "history",
+)
 
 
 def _text(value: object) -> str | None:
@@ -97,7 +114,9 @@ def render_plain_strategy(
     query_context: str,
     translator: Translator,
 ) -> str:
-    catalog = GenomeViewModel.from_read_model(model).catalog
+    catalog = GenomeViewModel.from_read_model(
+        model, filters=GenomeFilters.from_query(query_context)
+    ).catalog
     selected_id = query_values(query_context).get("genome_id")
     selected = tuple(
         record for record in catalog if selected_id is None or record.genome_id == selected_id
@@ -132,9 +151,18 @@ def _strategy(
     timing = _mapping(behavior.get("timing"))
     execution = {key: timing.get(key) for key in ("execution_time", "execution_price")}
     execution_complete = all(value not in (None, "", [], {}) for value in execution.values())
-    main_conditions = execution_complete and all(
-        _wording(_mapping(behavior.get(key)), "description", "text", "summary")
-        for key in ("universe", "entry", "exit", "risk_controls", "timing")
+    execution_usable = usable and source_support_usable(timing)
+    main_conditions = (
+        execution_complete
+        and execution_usable
+        and all(
+            source_support_usable(_mapping(behavior.get(key)))
+            for key in ("universe", "entry", "exit", "risk_controls", "timing")
+        )
+        and all(
+            _wording(_mapping(behavior.get(key)), "description", "text", "summary")
+            for key in ("universe", "entry", "exit", "risk_controls", "timing")
+        )
     )
     kind = _wording(record, "record_type", "type", "kind")
     classification = (
@@ -148,6 +176,10 @@ def _strategy(
     content += f'<p class="plain-definition"><strong>{_t(translator, "signal_question")}</strong>{_t(translator, "signal_definition")}</p>'
     daily = (
         record.get("fabricated_example") is True
+        and all(
+            source_support_usable(_mapping(behavior.get(key)))
+            for key in ("entry", "exit", "timing")
+        )
         and _mapping(behavior.get("entry")).get("rule")
         == "daily_close_crosses_above_20_trading_day_mean"
         and _mapping(behavior.get("exit")).get("rule")
@@ -156,9 +188,13 @@ def _strategy(
     )
     for key in ("universe", "entry", "exit", "risk_controls", "timing"):
         value = behavior.get(key)
-        explanation = _rule(value, key, translator) if usable else _t(translator, "unexplained")
+        value_record = _mapping(value)
+        value_usable = usable and source_support_usable(value_record)
+        explanation = (
+            _rule(value, key, translator) if value_usable else _t(translator, "unexplained")
+        )
         if (
-            usable
+            value_usable
             and key == "universe"
             and _mapping(value).get("selection_goal") == "smaller_daily_stock_price_changes"
         ):
@@ -169,15 +205,18 @@ def _strategy(
                 if threshold is None
                 else _t(translator, "threshold") + ": " + _owner(threshold)
             )
-        if usable and daily and key in ("entry", "exit", "timing"):
+        if value_usable and daily and key in ("entry", "exit", "timing"):
             explanation = _t(translator, "daily_" + key)
         supplied = {**record, "behavior": {key: value}} if key in behavior else record
-        content += f"<section><h3>{_t(translator, key)}</h3><p>{explanation}</p>{_support(supplied, model)}</section>"
+        content += (
+            f"<section><h3>{_t(translator, key)}</h3>{source_support_impact(value_record)}"
+            f"<p>{explanation}</p>{_support(supplied, model)}</section>"
+        )
     if daily and usable:
         for key in ("day", "mean"):
             content += f'<p class="plain-definition"><strong>{_t(translator, key + "_question")}</strong>{_t(translator, key + "_definition")}</p>'
         content += f"<p>{_t(translator, 'fake_amounts')}</p>"
-    if execution_complete and usable:
+    if execution_complete and execution_usable:
         content += _fields(execution, {key: (key,) for key in execution}, translator)
     else:
         has_details = any(value not in (None, "", [], {}) for value in execution.values())
@@ -194,10 +233,15 @@ def _strategy(
     ):
         rendered = (
             (_rule(value, key, translator) if key == "costs" else _owner(value))
-            if value not in (None, "", [], {}) and usable
+            if value not in (None, "", [], {})
+            and usable
+            and (key != "costs" or source_support_usable(_mapping(value)))
             else _t(translator, key + "_unknown")
         )
-        content += f"<h3>{_t(translator, key)}</h3><p>{rendered}</p>"
+        content += (
+            f"<h3>{_t(translator, key)}</h3>{source_support_impact(_mapping(value))}"
+            f"<p>{rendered}</p>"
+        )
         if key == "costs" and value:
             content += f"<p>{_t(translator, 'costs_boundary')}</p>"
     content += _conditions(record, model, translator)
@@ -215,18 +259,27 @@ def _items(value: object) -> tuple[Mapping[str, object], ...]:
 
 
 def _fields(
-    record: Mapping[str, object], fields: Mapping[str, tuple[str, ...]], translator: Translator
+    record: Mapping[str, object],
+    fields: Mapping[str, tuple[str, ...]],
+    translator: Translator,
+    *,
+    interpret_outcome: bool = True,
 ) -> str:
     rows = []
     for label, aliases in fields.items():
         value = next(
             (record[key] for key in aliases if record.get(key) not in (None, "", {}, [])), None
         )
-        if label == "outcome" and value in ("supported", "failed", "not_evaluated"):
+        if (
+            label == "outcome"
+            and interpret_outcome
+            and value in ("supported", "failed", "not_evaluated")
+        ):
             rendered = _t(translator, str(value))
         else:
             rendered = _owner(value) if value is not None else _t(translator, "missing")
-        rows.append(f"<div><dt>{_t(translator, label)}</dt><dd>{rendered}</dd></div>")
+        caption = "descriptor_status" if label == "outcome" and not interpret_outcome else label
+        rows.append(f"<div><dt>{_t(translator, caption)}</dt><dd>{rendered}</dd></div>")
     return "<dl>" + "".join(rows) + "</dl>"
 
 
@@ -235,25 +288,19 @@ def _conditions(
 ) -> str:
     content = f"<h3>{_t(translator, 'conditions')}</h3><p>{_t(translator, 'untested')}</p>"
     count = 0
-    for collection in (
-        "conditions",
-        "condition_evidence",
-        "applicability_conditions",
-        "invalidation_conditions",
-        "counterexamples",
-        "descriptors",
-    ):
+    for collection in CONDITION_COLLECTION_KEYS:
         for item in _items(record.get(collection)):
             count += 1
             wording = _wording(
-                item, "title", "description", "text", "condition", "descriptor", "name"
+                item, "title", "description", "text", "condition", "statement", "descriptor", "name"
             )
             content += f"<section><h4>{_owner(wording) if wording else _t(translator, 'condition_unnamed')}</h4>"
-            if collection == "descriptors" or item.get("category", item.get("kind")) in (
+            descriptor = collection == "descriptors" or item.get("category", item.get("kind")) in (
                 "descriptor",
                 "observation",
                 "descriptive_observation",
-            ):
+            )
+            if descriptor:
                 content += f"<p>{_t(translator, 'descriptor')}</p>"
             content += source_support_impact(item)
             content += _fields(
@@ -266,6 +313,7 @@ def _conditions(
                     "limitations": ("limitations", "limitations_note", "limits"),
                 },
                 translator,
+                interpret_outcome=not descriptor and source_support_usable(item),
             )
             content += _support(item, model) + "</section>"
     if not count:
@@ -278,7 +326,7 @@ def _revisions(
 ) -> str:
     content = f"<h3>{_t(translator, 'revisions')}</h3><p>{_t(translator, 'modification')}</p>"
     revisions = [record] if _wording(record, "revision_id", "revisionId", "revision") else []
-    for key in ("revisions", "strategy_revisions", "evolution", "revision_tree", "history"):
+    for key in REVISION_COLLECTION_KEYS:
         raw = record.get(key)
         revisions.extend(
             _items(raw.get("revisions"))
@@ -318,7 +366,13 @@ def _comparison_value(value: object, axis: str, translator: Translator) -> str:
     record = _mapping(value)
     if axis == "costs" and type(record.get("costs_included")) is bool:
         key = "cost_included" if record["costs_included"] else "cost_excluded"
-        return escape(translator.t("plain.result." + key))
+        return (
+            escape(translator.t("plain.result." + key))
+            + " "
+            + _rule(record, "costs", translator)
+            + " "
+            + _owner(record)
+        )
     return _owner(value)
 
 
@@ -369,6 +423,10 @@ def render_plain_comparison(
                 model.availability.complete
                 and all(source_support_usable(side) for side in sides)
                 and source_support_usable(axis.raw)
+                and all(
+                    source_support_usable(_mapping(value))
+                    for value in (axis.left_value, axis.right_value)
+                )
             )
             if axis.raw:
                 body += source_support_impact(axis.raw)
@@ -381,7 +439,10 @@ def render_plain_comparison(
             for side, name, value in zip(
                 sides, names, (axis.left_value, axis.right_value), strict=True
             ):
-                body += f"<div><dt>{_owner(name)}</dt><dd>{_comparison_value(value, key, translator)}</dd></div>"
+                body += (
+                    f"<div><dt>{_owner(name)}</dt><dd>{source_support_impact(_mapping(value))}"
+                    f"{_comparison_value(value, key, translator)}</dd></div>"
+                )
                 # Keep explicit declarations or the actual side record as support,
                 # not an arbitrary sibling discovered through a source pointer.
                 support_record = axis.raw if axis.raw else side
