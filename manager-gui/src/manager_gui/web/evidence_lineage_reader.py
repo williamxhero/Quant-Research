@@ -40,7 +40,7 @@ from .evidence import (
 )
 from .i18n import Translator
 from .i18n.catalog.reader import render_reader_reason
-from .lineage import LineageQuery, LineageViewModel, render_lineage
+from .lineage import LineageQuery, LineageViewModel, render_lineage, render_reader_relationships
 from .locators import public_locator
 from .source_support import source_support_entry
 from .navigation import ViewId, context_link
@@ -1059,7 +1059,8 @@ def render_lineage_reader(
         f'<p class="eyebrow">{escape(selected.t("reader.lineage.eyebrow"))}</p>'
         f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.lineage.title"))}</h1>'
         f'<p class="reader-intro">{escape(selected.t("reader.lineage.intro"))}</p>'
-        f'{surface}</section>'
+        f'{surface}<p>{escape(selected.t("pipeline.relation_boundary"))}</p>'
+        f'{render_reader_relationships(model, query_context=query_context, translator=selected)}</section>'
     )
 
 

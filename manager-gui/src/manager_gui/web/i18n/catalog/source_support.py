@@ -1,6 +1,22 @@
 from ..translator import M
 
 ENTRIES = {
+    "pipeline.story.intent": M("当时想知道什么？", "What question was recorded?"),
+    "pipeline.story.initial_hypothesis": M("当时想测试什么想法？", "What hypothesis was recorded?"),
+    "pipeline.story.research_design": M("测试前怎样安排？", "How was the test planned?"),
+    "pipeline.story.attempts": M("做了哪些尝试？", "What attempts were recorded?"),
+    "pipeline.story.evidence": M("记录提供了哪些结果材料？", "What result material was supplied?"),
+    "pipeline.story.failures": M("记录写明了哪些问题？", "What problems were recorded?"),
+    "pipeline.story.follow_up": M("测试之后又做了什么？", "What happened after the test?"),
+    "pipeline.story.missing.intent": M("当时想知道什么的记录未提供，不能补猜动机。", "No question or intent record was supplied; no motive is inferred."),
+    "pipeline.story.missing.initial_hypothesis": M("准备测试的想法未提供。", "No hypothesis record was supplied."),
+    "pipeline.story.missing.research_design": M("测试前的安排未提供，不能据此说没有安排过。", "No test-plan record was supplied; this does not establish that no plan existed."),
+    "pipeline.story.missing.attempts": M("尝试的过程未提供，不能据此说没有测试过。", "No attempt record was supplied; this does not establish that no test was run."),
+    "pipeline.story.missing.evidence": M("其他结果材料未提供。", "No additional result material was supplied."),
+    "pipeline.story.missing.failures": M("问题的记录未提供，不能据此判断没有问题。", "No problem record was supplied; this does not establish there were no problems."),
+    "pipeline.story.missing.follow_up": M("后来的动作未提供，不能补造修改办法或再次测试的计划。", "No later action was supplied; no change or retest plan is invented."),
+    "pipeline.open_lineage": M("查看这条记录指向的关联关系", "Read the relationships referenced by this record"),
+    "pipeline.relation_boundary": M("记录中的关联关系不等于原因。", "A recorded relationship is not a cause."),
     "pipeline.atlas_title": M("当前可以阅读哪些研究？", "Which research objects can be read now?"),
     "pipeline.open_story": M("阅读「{name}」的研究过程与结果", "Read the process and results for “{name}”"),
     "pipeline.object_result_missing": M(
