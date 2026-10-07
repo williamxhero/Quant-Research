@@ -721,6 +721,12 @@ def _render_record(
             record.raw, translator=translator, rule=pattern.rule, scope=pattern.input_scope,
             sample_count=pattern.sample_count, inputs=inputs, query_context=str(context or ""),
             complete=model.availability.complete, sample=sample,
+            candidates=tuple(item.raw for item in cases) + tuple(
+                item
+                for key in ("failures", "failure_experiences", "failure_records", "failure_events", "ordinary_failures", "records")
+                for raw in _sequence((_mapping(model.data) or {}).get(key))
+                if (item := _mapping(raw)) is not None
+            ),
         )
     else:
         readable = render_attempt(
