@@ -33,8 +33,10 @@ from ..reader import ReaderProjection
 from .i18n import Translator
 from .locators import public_locator
 from .memory import memory_source_link, render_memory_text, render_memory_value
+from .navigation import query_values
+from .plain_memory import render_case_group
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_entry
+from .source_support import source_support_entry, source_support_impact, suspend_source_support
 from .status import render_operational_state, render_status_block
 
 FAILURE_GROUPING_RESOURCE = "failure_grouping"
@@ -654,6 +656,38 @@ def render_failure_grouping(
         else FailureGroupingViewModel.from_read_model(view_or_model)
     )
     model = view.read_model
+    if include_reader_surface:
+        selected_id = query_values(query_context).get("group_id")
+        groups = tuple(group for group in view.groups if selected_id is None or group.group_id == selected_id)
+        body = "".join(
+            render_case_group(
+                group.raw, translator=selected_translator, rule=group.rule, scope=group.input_scope,
+                sample_count=group.sample_count,
+                inputs=tuple((item.record_id, item.raw) for item in group.participants),
+                query_context=str(query_context or ""), complete=model.availability.complete,
+                sample=reader_projection is not None and reader_projection.sample_data is not None,
+            )
+            for group in groups
+        )
+        if not groups:
+            body = selected_translator.html("plain.memory.missing")
+            body += "".join(source_support_entry(ref.source_id) or "" for ref in model.source_refs)
+        with suspend_source_support():
+            technical = render_failure_grouping(
+                view, query_context=query_context, include_raw_json=include_raw_json,
+                translator=selected_translator,
+            )
+            if reader_projection is not None:
+                technical += render_reader_surface(
+                    reader_projection, page=ReaderPage.FAILURE_GROUPING,
+                    query_context=query_context, translator=selected_translator,
+                )
+        return (
+            f'<section class="plain-memory-grouping"><h1 class="page-title" data-page-title tabindex="-1">'
+            f'{selected_translator.html("plain.memory.group_title")}</h1>'
+            f'{source_support_impact()}{body}<details><summary>'
+            f'{selected_translator.html("plain.memory.technical")}</summary>{technical}</details></section>'
+        )
     reader_surface = (
         render_reader_surface(
             reader_projection,

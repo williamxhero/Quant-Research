@@ -38,6 +38,7 @@ from ..reader import (
 from .failure_lineage import FailureLineage
 from .failure_patterns import (
     FailureExperience,
+    FailureFilters,
     FailurePattern,
     FailureViewModel,
     render_failure_lineage,
@@ -45,10 +46,11 @@ from .failure_patterns import (
 from .i18n import Translator
 from .i18n.catalog.reader import render_claim_explanation
 from .locators import public_locator
-from .memory import MemoryEntry, MemoryViewModel, render_memory_text
-from .navigation import context_link
+from .memory import MemoryEntry, MemoryFilters, MemoryViewModel, render_memory_text
+from .navigation import context_link, query_values
+from .plain_memory import render_attempt, render_case_group
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_entry
+from .source_support import source_support_entry, source_support_impact, suspend_source_support
 from .status import display_state_for
 
 # HTML fragments intentionally keep readable markup at the call site.
@@ -706,6 +708,33 @@ def _render_record(
     context: QueryContext,
     translator: Translator,
     lineage: FailureLineage | None = None,
+    pattern: FailurePattern | None = None,
+    cases: Sequence[FailureExperience] = (),
+    sample: bool = False,
+) -> str:
+    if pattern is not None:
+        inputs = tuple(
+            (identifier, matches[0].raw if len(matches := [item for item in cases if item.failure_id == identifier]) == 1 else None)
+            for identifier in pattern.failure_ids
+        )
+        readable = render_case_group(
+            record.raw, translator=translator, rule=pattern.rule, scope=pattern.input_scope,
+            sample_count=pattern.sample_count, inputs=inputs, query_context=str(context or ""),
+            complete=model.availability.complete, sample=sample,
+        )
+    else:
+        readable = render_attempt(
+            record.raw, translator=translator, lesson=record.layer is ReaderRecordLayer.FORMAL_MEMORY,
+            sample=sample,
+        )
+    with suspend_source_support():
+        technical = _render_technical_record(record, model, context=context, translator=translator, lineage=lineage)
+    return readable + f'<details><summary>{translator.html("plain.memory.technical")}</summary>{technical}</details>'
+
+
+def _render_technical_record(
+    record: MemoryFailureReaderRecord, model: ManagerReadModel, *,
+    context: QueryContext, translator: Translator, lineage: FailureLineage | None,
 ) -> str:
     claim_kind = "derived" if record.derived else "known"
     claim_copy = translator.html(
@@ -796,6 +825,21 @@ def _render_page(
             + tuple(view.records)
             + tuple(_pattern_record(pattern, model) for pattern in view.derived_patterns)
         )
+    # Apply the existing public parser's exact filters only to its own layer.
+    memory_ids = {entry.memory_id for entry in MemoryViewModel.from_read_model(model, filters=MemoryFilters.from_query(context)).entries}
+    failure_ids = {entry.failure_id for entry in FailureViewModel.from_read_model(model, filters=FailureFilters.from_query(context)).failures}
+    records = tuple(record for record in records if (
+        record.layer is ReaderRecordLayer.GUI_DERIVED
+        or (record.layer is ReaderRecordLayer.FORMAL_MEMORY and record.record_id in memory_ids)
+        or (record.layer is ReaderRecordLayer.FAILURE_RECORD and record.record_id in failure_ids)
+    ))
+    selected = query_values(context)
+    if selected.get("pattern_id"):
+        records = tuple(record for record in records if record.derived and record.record_id == selected["pattern_id"])
+    elif identifier := selected.get("failure_id") or selected.get("memory_id"):
+        records = tuple(record for record in records if not record.derived and record.record_id == identifier)
+    elif identifier := selected.get("record_id"):
+        records = tuple(record for record in records if record.record_id == identifier)
     title_key = "reader.failure.title" if failure_only else "reader.memory.title"
     banner = ""
     if projection.sample_data is not None:
@@ -856,21 +900,22 @@ def _render_page(
         if failure_only
         else ""
     )
+    patterns_by_id = {item.pattern_id: item for item in view.derived_patterns}
     details = (
         f'<section class="memory-reader-records" aria-labelledby="memory-reader-records-title">'
-        f'{layer_summary}'
-        f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>{empty_message}{partial_message}'
-        f'{"".join(_render_record(record, model, context=context, translator=translator, lineage=lineage_by_id.get(record.record_id)) for record in records)}'
+        f'<details><summary>{translator.html("plain.memory.technical")}</summary>{layer_summary}</details>'
+        f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>'
+        f'{translator.html("plain.memory.missing") if empty else ""}{empty_message}{partial_message}'
+        f'{"".join(_render_record(record, model, context=context, translator=translator, lineage=lineage_by_id.get(record.record_id), pattern=patterns_by_id.get(record.record_id) if record.derived else None, cases=view.failure_view.all_failures, sample=projection.sample_data is not None) for record in records)}'
         f'</section>'
         f'<details class="memory-reader-raw"><summary>{escape(translator.t("reader.raw_source"))}</summary>'
         f'<pre translate="no">{translator.source_text(model.to_json())}</pre></details>'
     )
-    surface = render_reader_surface(
-        projection,
-        page=page,
-        query_context=context,
-        translator=translator,
-    )
+    with suspend_source_support():
+        surface = render_reader_surface(
+            projection, page=page, query_context=context, translator=translator,
+        )
+    empty_sources = "".join(source_support_entry(ref.source_id) or "" for ref in model.source_refs) if empty else ""
     memory_state = (
         "empty"
         if empty_scope
@@ -905,7 +950,8 @@ def _render_page(
         f'data-reader-resource="{"failure" if failure_only else "memory"}" '
         f'data-status="{escape(model.availability.status.value, quote=True)}" '
         f'data-display-state="{display_state}" data-memory-state="{memory_state}">'
-        f'<h1>{escape(translator.t(title_key))}</h1>{banner}{surface}{details}</section>'
+        f'<h1>{escape(translator.t(title_key))}</h1>{banner}{source_support_impact()}{details}{empty_sources}'
+        f'<details><summary>{translator.html("plain.memory.technical")}</summary>{surface}</details></section>'
     )
 
 

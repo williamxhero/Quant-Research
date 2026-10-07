@@ -153,32 +153,32 @@ class SourceSupport:
     sample: bool = False
     entries: list[tuple[str, Mapping[str, object] | None]] = field(default_factory=list)
     items: tuple[Mapping[str, object], ...] = field(init=False)
-    computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool]] = field(
+    computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool, str | None]] = field(
         default_factory=dict
     )
 
     def computation(
-        self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool
+        self, inputs: tuple[Mapping[str, object], ...], filters: str, complete: bool,
+        description: str | None = None,
     ) -> str:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, None))
-        self.computations[index] = (inputs, filters, complete)
+        self.computations[index] = (inputs, filters, complete, description)
         return (
             f'<a id="{trigger_id}" href="#{panel_id}" data-source-support="{panel_id}" '
             f'aria-controls="{panel_id}">{self._t("count_inputs")}</a>'
         )
 
     def _computation_markup(self, index: int) -> str:
-        inputs, filters, complete = self.computations[index]
-        markup = self._sample(None)
-        for key in (
-            "count_unit",
-            "count_rule",
-            "count_dedup",
-            "count_complete" if complete else "count_partial",
-        ):
-            markup += f"<p>{self._t(key)}</p>"
+        inputs, filters, complete, description = self.computations[index]
+        markup = self._sample(None) + self.impact()
+        if description is None:
+            for key in ("count_unit", "count_rule", "count_dedup"):
+                markup += f"<p>{self._t(key)}</p>"
+        else:
+            markup += f"<p>{escape(description)}</p>"
+        markup += f'<p>{self._t("count_complete" if complete else "count_partial")}</p>'
         markup += (
             f"<p>{self._t('query')}</p>"
             f'<pre data-owner-text="true" translate="no">{escape(filters)}</pre>'
@@ -480,10 +480,11 @@ def source_support_entry(
 
 
 def source_support_computation(
-    inputs: tuple[Mapping[str, object], ...], *, filters: str, complete: bool
+    inputs: tuple[Mapping[str, object], ...], *, filters: str, complete: bool,
+    description: str | None = None,
 ) -> str:
     support = _CURRENT.get()
-    return "" if support is None else support.computation(inputs, filters, complete)
+    return "" if support is None else support.computation(inputs, filters, complete, description)
 
 
 def source_support_impact(record: Mapping[str, object] | None = None) -> str:
