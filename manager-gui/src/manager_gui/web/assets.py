@@ -241,6 +241,7 @@ a { color: inherit; }
   .event-drawer { padding-right: 18px; padding-left: 18px; }
 }
 @media (max-width: 480px) {
+  .topbar-meta { flex-wrap: wrap; }
   .brand-name { font-size: 14px; }
   .workspace-note { max-width: 160px; }
   .status-block { padding: 17px; }
