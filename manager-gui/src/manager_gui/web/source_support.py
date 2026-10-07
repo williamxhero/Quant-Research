@@ -152,6 +152,8 @@ class SourceSupport:
     translator: Translator
     sample: bool = False
     entries: list[tuple[str, Mapping[str, object] | None]] = field(default_factory=list)
+    fabricated_entries: set[int] = field(default_factory=set)
+    display_names: dict[int, str] = field(default_factory=dict)
     items: tuple[Mapping[str, object], ...] = field(init=False)
     computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool]] = field(
         default_factory=dict
@@ -201,8 +203,14 @@ class SourceSupport:
     def _t(self, key: str, **params: object) -> str:
         return escape(self.translator.t("support." + key, **params))
 
-    def _sample(self, record: Mapping[str, object] | None) -> str:
-        if self.sample or (record is not None and record.get("fabricated_example") is True):
+    def _sample(
+        self, record: Mapping[str, object] | None, *, fabricated_example: bool = False
+    ) -> str:
+        if (
+            self.sample
+            or fabricated_example
+            or (record is not None and record.get("fabricated_example") is True)
+        ):
             return f'<p class="sample-note">{escape(self.translator.t("plain.result.sample"))}</p>'
         return ""
 
@@ -212,6 +220,8 @@ class SourceSupport:
         record: Mapping[str, object] | None = None,
         *,
         record_id: str | None = None,
+        fabricated_example: bool = False,
+        display_name: str | None = None,
     ) -> str:
         if record is None and record_id:
             matches = [
@@ -229,7 +239,11 @@ class SourceSupport:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, record))
-        title = _text(record.get("title")) if record else None
+        if fabricated_example:
+            self.fabricated_entries.add(index)
+        if (name := _text(display_name)) is not None:
+            self.display_names[index] = name
+        title = self.display_names.get(index) or (_text(record.get("title")) if record else None)
         has_content = record is not None and _has_content(record)
         if title is None:
             label = self._t("open_unnamed" if has_content else "gap_unnamed")
@@ -289,7 +303,9 @@ class SourceSupport:
             issues.append("source_failure")
         return issues
 
-    def _original_markup(self, record: Mapping[str, object], panel_id: str) -> str:
+    def _original_markup(
+        self, record: Mapping[str, object], panel_id: str, *, fabricated_example: bool = False
+    ) -> str:
         originals = self._originals(record)
         if not originals:
             return ""
@@ -334,11 +350,14 @@ class SourceSupport:
                 else f"<p>{self._t('unlocated')}</p>"
             )
             original_id = f"{panel_id}-original-{index}"
+            sample = self._sample(
+                record, fabricated_example=fabricated_example
+            ) or self._sample(original)
             impacts = "".join(f'<p class="support-impact">{self._t(issue)}</p>' for issue in issues)
             parts.append(
                 f'{title_markup}{impacts}{related}<a href="#{original_id}" data-support-original>'
                 f'{self._t("original")}</a><section id="{original_id}" tabindex="-1">'
-                f"{self._sample(record) or self._sample(original)}<h3>{self._t('original')}</h3>"
+                f"{sample}<h3>{self._t('original')}</h3>"
                 f'<pre data-owner-text="true" translate="no">{escape(text)}</pre></section>'
             )
         return "".join(parts)
@@ -416,18 +435,23 @@ class SourceSupport:
             if f'id="{trigger_id}"' not in page:
                 continue
             panel_id, title_id = f"support-{index}", f"support-{index}-title"
-            title = _text(record.get("title")) if record else None
+            title = self.display_names.get(index) or (
+                _text(record.get("title")) if record else None
+            )
             heading = (
                 f'<span data-owner-text="true" translate="no">{escape(title)}</span>'
                 if title
                 else self._t("heading_unnamed")
             )
-            body = self._sample(record) + self.impact(record)
+            fabricated_example = index in self.fabricated_entries
+            body = self._sample(record, fabricated_example=fabricated_example) + self.impact(record)
             has_record = record is not None and _has_content(record)
             key = "record_original" if record and self._originals(record) else "structured"
             body += f"<p>{self._t(key if has_record else 'pointer')}</p>"
             if record is not None:
-                body += self._original_markup(record, panel_id)
+                body += self._original_markup(
+                    record, panel_id, fabricated_example=fabricated_example
+                )
                 body += (
                     f'<h3>{self._t("fields")}</h3><pre data-owner-text="true" translate="no">'
                     f"{escape(json.dumps(dict(record), ensure_ascii=False, indent=2))}</pre>"
@@ -472,11 +496,26 @@ def suspend_source_support() -> Iterator[None]:
 
 
 def source_support_entry(
-    source_id: str, *, record: Mapping[str, object] | None = None, record_id: str | None = None
+    source_id: str,
+    *,
+    record: Mapping[str, object] | None = None,
+    record_id: str | None = None,
+    fabricated_example: bool = False,
+    display_name: str | None = None,
 ) -> str | None:
     """Register a native entry in the current page; no source is fetched."""
     support = _CURRENT.get()
-    return None if support is None else support.reference(source_id, record, record_id=record_id)
+    return (
+        None
+        if support is None
+        else support.reference(
+            source_id,
+            record,
+            record_id=record_id,
+            fabricated_example=fabricated_example,
+            display_name=display_name,
+        )
+    )
 
 
 def source_support_computation(
