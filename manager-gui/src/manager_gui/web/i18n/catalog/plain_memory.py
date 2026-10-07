@@ -15,6 +15,16 @@ ENTRIES = {
         "页面比较已提供的金额：达到原定目标。",
         "GUI comparison of the supplied amounts: the original target was met.",
     ),
+    "plain.memory.state.conflicting": M(
+        "记录的目标结论与已提供金额矛盾；尚不能确定达标。",
+        "The recorded goal verdict conflicts with the supplied amounts; "
+        "achievement is not established.",
+    ),
+    "plain.memory.state.fields_conflict": M(
+        "已提供的执行或目标记录彼此矛盾；尚不能确定完成或达标。",
+        "Supplied execution or goal fields disagree; "
+        "completion and achievement are not established.",
+    ),
     "plain.memory.state.met": M(
         "记录明确说明已完成的测试达到原定目标。",
         "The record explicitly says the completed test met its original target.",
@@ -22,6 +32,11 @@ ENTRIES = {
     "plain.memory.missing": M(
         "没有提供与当前选择匹配的记录；这不等于没有做过测试。",
         "No matching record was supplied; this does not mean no test was run.",
+    ),
+    "plain.memory.goal_fields_gap": M(
+        "记录另有失败或错误标记。它不能说明测试未达金融目标，也不能用金额绕过这个差异而确认达标。",
+        "The record also contains a failure or error marker. It does not establish a missed "
+        "financial target, and the amounts cannot bypass this discrepancy to confirm achievement.",
     ),
     "plain.memory.target": M("测试前的原定目标", "Original target set before the test"),
     "plain.memory.target_unknown": M(
@@ -92,6 +107,10 @@ ENTRIES = {
         "No scope was supplied; full case coverage is not established.",
     ),
     "plain.memory.published_count": M("记录提供的数量", "Count supplied in the record"),
+    "plain.memory.count_mismatch": M(
+        "已发布记录数量与这里识别到的输入不一致；尚不能确认总量。",
+        "The published record count differs from the identified inputs; no total is confirmed.",
+    ),
     "plain.memory.count_unknown": M("记录未提供数量。", "No count was supplied."),
     "plain.memory.count_unit": M("记录中的数量指什么？", "What does the published count measure?"),
     "plain.memory.unit_unknown": M(
@@ -113,12 +132,29 @@ ENTRIES = {
         "{n} input records with supplied content are identified here.",
     ),
     "plain.memory.input_count_rule": M(
-        "页面只列出这组明确引用的输入记录；每个明确编号列一次，不用这个数量推断所有研究的数量或共同原因。未知编号和缺内容的引用保留为缺口；整理规则和已发布数量不由页面改写。",
-        "The GUI lists explicitly referenced input records once per explicit identifier. "
-        "This does not establish a full research total or a shared cause. Unknown identities and "
-        "references without content remain gaps; the published rule and count are not rewritten.",
+        "这里列出这组写明的案例。同一记录编号只计一次。缺编号或缺内容时，"
+        "数量仍不确定；现象相似不能证明原因相同。",
+        "These are the supplied cases named in this group. "
+        "Cases sharing the same recorded number are counted once. "
+        "Missing numbers or missing content leave the count uncertain; "
+        "a similar observation is not proof of the same cause.",
+    ),
+    "plain.memory.identity_unknown": M(
+        "输入编号未提供；不能把这个案例算作一条已明确识别的记录。",
+        "Input identity was not supplied; "
+        "this case cannot be counted as a uniquely identified record.",
     ),
     "plain.memory.cases": M("逐项查看已提供的案例", "Read each supplied case"),
+    "plain.memory.membership_gap": M(
+        "已提供的案例名单与编号名单不一致；这里保留写明的案例，但尚不能确认完整范围。",
+        "The supplied case list differs from the identifier list. "
+        "Named cases are retained here, but complete coverage is not established.",
+    ),
+    "plain.memory.input_conflict": M(
+        "同一记录编号对应不同的已提供内容；这里不把其中一条选作确定结论。",
+        "Different supplied contents share the same record number; "
+        "neither is selected as definitive.",
+    ),
     "plain.memory.input_missing": M(
         "引用的输入未提供内容：{identifier}", "Referenced input was not supplied: {identifier}"
     ),

@@ -72,7 +72,7 @@ def _fields(record: Mapping[str, object], translator: Translator) -> str:
                 if type(supplied) is bool
                 else translator.html("plain.result.missing")
             )
-        elif key == "currency" and supplied in {"CNY", "USD", "EUR"}:
+        elif key == "currency" and isinstance(supplied, str) and supplied in {"CNY", "USD", "EUR"}:
             content = translator.html("plain.result.unit." + str(supplied))
         else:
             content = (
@@ -97,7 +97,7 @@ def _financial_result(
         or not isinstance(currency, str)
         or value(record, "period") is None
         or type(costs) is not bool
-        or not source_support_usable(record)
+        or not source_support_usable(record, require_complete=True)
     ):
         return t(translator, "amount_unknown"), None
     # Precision follows supplied decimal lengths; no conversion or rate is inferred.
@@ -126,7 +126,32 @@ def _financial_result(
         return result + " " + translator.html("plain.result.target_cost_unknown"), None
     if target_cost != costs:
         return result + " " + translator.html("plain.result.target_cost_mismatch"), None
-    return result + " " + translator.html("plain.result.calculation"), "met" if profit >= target else "missed"
+    return result + " " + translator.html(
+        "plain.result.calculation"
+    ), "met" if profit >= target else "missed"
+
+
+_INPUT_IDS = ("record_id", "recordId", "participant_id", "id", "run_id", "failure_id", "memory_id")
+
+
+def _input_content(record: Mapping[str, object]) -> bool:
+    return any(
+        value(record, key) is not None
+        for key in (
+            "safe_summary",
+            "summary",
+            "text",
+            "description",
+            "reason",
+            "failure_reason",
+            "stop_reason",
+            "actual_result",
+            "execution_status",
+            "status",
+            "outcome",
+            "goal_outcome",
+        )
+    )
 
 
 def render_case_group(
@@ -140,43 +165,137 @@ def render_case_group(
     query_context: str,
     complete: bool,
     sample: bool = False,
+    candidates: tuple[Mapping[str, object], ...] = (),
 ) -> str:
     """Explain the supplied grouping, without recomputing its published outcome."""
     title = value(record, "title", "label", "name")
-    cases = []
-    missing = False
+    inline = value(record, "participants", "members", "records", "failures", "inputs")
+    extra_inputs: list[tuple[str, Mapping[str, object]]] = []
+    if isinstance(inline, (list, tuple)):
+        inline_records = tuple(item for item in inline if isinstance(item, Mapping))
+        candidates += inline_records
+        named = {identifier for identifier, _ in inputs}
+        for item in inline_records:
+            identity = value(item, *_INPUT_IDS)
+            identifier = identity if isinstance(identity, str) else ""
+            if not identifier or identifier not in named:
+                extra_inputs.append((identifier, item))
+                named.add(identifier)
+    membership_gap = bool(inputs and extra_inputs)
+    inputs += tuple(extra_inputs)
+    cases = [f"<p>{t(translator, 'membership_gap')}</p>"] if membership_gap else []
+    missing = membership_gap
     all_inputs = []
-    known = 0
+    known_ids: set[str] = set()
     for identifier, supplied in inputs:
-        content = supplied is not None and any(
-            value(supplied, key) is not None
-            for key in (
-                "safe_summary",
-                "summary",
-                "text",
-                "description",
-                "reason",
-                "stop_reason",
-                "actual_result",
-                "execution_status",
-                "status",
-                "outcome",
-                "goal_outcome",
-            )
-        )
+        matches: list[Mapping[str, object]] = []
+        for item in candidates:
+            if (
+                identifier in (item.get(key) for key in _INPUT_IDS)
+                and _input_content(item)
+                and item not in matches
+            ):
+                matches.append(item)
+        if supplied is None or not _input_content(supplied):
+            # An explicit reference can use a uniquely supplied record, never an arbitrary sibling.
+            supplied = matches[0] if len(matches) == 1 else supplied
+        if len(matches) > 1:
+            missing = True
+            cases.append(f"<p>{t(translator, 'input_conflict')}</p>")
+            for contender in matches:
+                if contender != supplied:
+                    cases.append(render_attempt(contender, translator=translator, sample=sample))
+                    all_inputs.append(contender)
+        content = supplied is not None and _input_content(supplied)
         if content and supplied is not None:
-            known += 1
+            missing = missing or not source_support_usable(supplied, require_complete=True)
+            explicit_id = value(
+                supplied,
+                "record_id",
+                "recordId",
+                "participant_id",
+                "id",
+                "run_id",
+                "failure_id",
+                "memory_id",
+            )
+            if isinstance(explicit_id, str) and explicit_id.strip():
+                known_ids.add(explicit_id)
+            else:
+                missing = True
+                cases.append(f"<p>{t(translator, 'identity_unknown')}</p>")
             cases.append(render_attempt(supplied, translator=translator, sample=sample))
             all_inputs.append(supplied)
         else:
             missing = True
-            cases.append(f"<p>{t(translator, 'input_missing', identifier=identifier)}</p>")
+            cases.append(
+                f"<p>{t(translator, 'input_missing', identifier='').rstrip()}{owner(identifier)}</p>"
+            )
             all_inputs.append(supplied if supplied is not None else {"record_id": identifier})
-    complete = complete and not missing
     published_unit = value(record, "count_unit", "sample_unit")
     dedup = value(record, "deduplication", "dedup_rule")
     filters = value(record, "filters", "applied_filters")
+    group_status = value(record, "status", "state")
+    unreadable_group = isinstance(group_status, str) and group_status in {
+        "blocked",
+        "stale",
+        "integrity_failure",
+        "api_unavailable",
+        "missing",
+        "incomparable",
+    }
+    group_impact = (
+        translator.html("support.impact." + group_status)
+        if unreadable_group and isinstance(group_status, str)
+        else ""
+    )
+    count_mismatch = (
+        published_unit == "records" and sample_count is not None and sample_count != len(known_ids)
+    )
+    count_gap = t(translator, "count_mismatch") if count_mismatch else ""
+    complete = bool(
+        complete
+        and not missing
+        and not unreadable_group
+        and not count_mismatch
+        and inputs
+        and rule
+        and scope
+        and sample_count is not None
+        and published_unit is not None
+        and dedup is not None
+        and filters is not None
+        and source_support_usable(record, require_complete=True)
+    )
     point = value(record, "observable_grouping_point", "observable_phenomenon")
+    aggregation = value(record, "aggregation", "derivation", "pattern_aggregation")
+    metadata = aggregation if isinstance(aggregation, Mapping) else {}
+    raw_rule = value(
+        record, "rule", "grouping_rule", "aggregation_rule", "derivation_rule", "pattern_rule"
+    )
+    if raw_rule is None:
+        raw_rule = value(
+            metadata, "rule", "grouping_rule", "aggregation_rule", "derivation_rule", "pattern_rule"
+        )
+    raw_scope = value(record, "input_scope", "scope", "source_scope")
+    if raw_scope is None:
+        raw_scope = value(metadata, "input_scope", "scope", "source_scope")
+    rule_content = (
+        owner(raw_rule)
+        if raw_rule is not None
+        else owner(rule)
+        if rule is not None
+        else t(translator, "rule_unknown")
+    )
+    scope_content = (
+        " · ".join(owner(item) for item in raw_scope)
+        if isinstance(raw_scope, (list, tuple))
+        else owner(raw_scope)
+        if raw_scope is not None
+        else " · ".join(owner(item) for item in scope)
+        if scope
+        else t(translator, "scope_unknown")
+    )
     sample_note = (
         translator.html("plain.result.sample")
         if sample or record.get("fabricated_example") is True
@@ -184,11 +303,8 @@ def render_case_group(
     )
     fields = (
         ("observable", owner(point) if point is not None else t(translator, "observable_unknown")),
-        ("rule", owner(rule) if rule is not None else t(translator, "rule_unknown")),
-        (
-            "scope",
-            " · ".join(owner(item) for item in scope) if scope else t(translator, "scope_unknown"),
-        ),
+        ("rule", rule_content),
+        ("scope", scope_content),
         (
             "published_count",
             owner(sample_count) if sample_count is not None else t(translator, "count_unknown"),
@@ -219,9 +335,9 @@ def render_case_group(
     return (
         '<section class="plain-memory-group">'
         f"<h3>{owner(title) if title is not None else t(translator, 'group_title')}</h3>"
-        f'<p class="sample-note">{sample_note}</p>{source_support_impact(record)}'
+        f'<p class="sample-note">{sample_note}</p>{source_support_impact(record, require_original=True)}<p>{group_impact}</p>'
         f"<p>{t(translator, 'similar_not_cause')}</p><dl>{rows}</dl>"
-        f"<p>{t(translator, 'identified', n=known)}</p>"
+        f"<p>{t(translator, 'identified', n=len(known_ids))}</p><p>{count_gap}</p>"
         f"<p>{translator.html('support.count_complete' if complete else 'support.count_partial')}</p>"
         f"<p>{t(translator, 'input_count_rule')}</p><p>{computation}</p>"
         f"<h4>{t(translator, 'cases')}</h4>{''.join(cases)}<p>{support}</p></section>"
@@ -240,6 +356,31 @@ def _selection(record: Mapping[str, object], translator: Translator) -> str:
         threshold = value(record, "selection_threshold")
         content += f"<p>{owner(threshold) if threshold is not None else t(translator, 'threshold_unknown')}</p>"
     return content
+
+
+def _disagree(record: Mapping[str, object], *keys: str) -> bool:
+    meanings = {
+        "completed": "ended",
+        "finished": "ended",
+        "stopped": "stopped",
+        "aborted": "stopped",
+        "cancelled": "stopped",
+        "interrupted": "stopped",
+        "not_tested": "not_run",
+        "not_run": "not_run",
+        "not_started": "not_run",
+        "not_evaluated": "not_run",
+        "met": "met",
+        "not_met": "missed",
+        "missed": "missed",
+    }
+    tokens = {
+        meanings[normalised]
+        for key in keys
+        if isinstance(raw := record.get(key), str)
+        if (normalised := raw.lower().replace("-", "_")) in meanings
+    }
+    return len(tokens) > 1
 
 
 def render_attempt(
@@ -266,10 +407,24 @@ def render_attempt(
             if goal == "met"
             else "ended_unknown"
         )
-    financial, calculated_goal = _financial_result(record, translator, token)
-    if calculated_goal and state == "ended_unknown":
+    fields_disagree = _disagree(
+        record, "execution_status", "test_status", "status", "state"
+    ) or _disagree(record, "goal_outcome", "target_outcome")
+    financial, calculated_goal = _financial_result(
+        record, translator, "" if fields_disagree else token
+    )
+    if calculated_goal and state in {"met", "missed"} and calculated_goal != state:
+        state = "conflicting"
+    outcome = str(value(record, "outcome", "result", "status") or "").lower().replace("-", "_")
+    failed_marker = outcome in {"failed", "failure", "error", "execution_error"}
+    goal_gap = t(translator, "goal_fields_gap") if failed_marker else ""
+    if failed_marker and state == "met":
+        state = "ended_unknown"
+    if calculated_goal and state == "ended_unknown" and not goal and not failed_marker:
         state = "calculated_met" if calculated_goal == "met" else "missed"
-    if not source_support_usable(record):
+    if fields_disagree:
+        state = "fields_conflict"
+    if not source_support_usable(record, require_complete=True):
         state = "unknown"
     reason = value(record, "failure_reason", "stop_reason", "reason")
     summary = value(
@@ -277,13 +432,13 @@ def render_attempt(
     )
     source = value(record, "source_ref", "source_id")
     identifier = value(record, "memory_id", "failure_id", "record_id", "id")
-    support = source_support_entry(str(source or identifier or ""), record=record) or ""
     target = value(record, "original_target", "target_before_test")
     actual = value(record, "actual_result", "result_summary")
     follow_up = value(record, "follow_up", "retest", "retry")
     limits = value(record, "limitations", "limitation", "bounds", "conditions")
     author = value(record, "author")
-    report_summary = value(record, "memory_type", "record_type") in {
+    record_kind = value(record, "memory_type", "record_type")
+    report_summary = isinstance(record_kind, str) and record_kind in {
         "report_summary",
         "report_ending_summary",
     }
@@ -314,11 +469,11 @@ def render_attempt(
         if sample or record.get("fabricated_example") is True
         else ""
     )
-    return (
+    explanation = (
         '<section class="plain-memory-record">'
         f"{sample_markup}<p>{nature}</p>{report_boundary}"
         f"<h3>{owner(title) if title is not None else t(translator, 'untitled')}</h3>"
-        f"{source_support_impact(record)}<p>{t(translator, 'state.' + state)}</p>"
+        f"{source_support_impact(record, require_original=True)}<p>{t(translator, 'state.' + state)}</p><p>{goal_gap}</p>"
         f"<p>{owner(summary) if summary is not None else t(translator, 'text_unknown')}</p>"
         f"<h4>{t(translator, 'reason')}</h4>"
         f"<p>{owner(reason) if reason is not None else t(translator, 'reason_unknown')}</p>"
@@ -337,5 +492,14 @@ def render_attempt(
         f"<p>{owner(origin) if origin is not None else t(translator, 'origin_unknown')}</p>"
         f"{_selection(record, translator)}<p>{t(translator, 'bounded')}</p>"
         f"<p>{owner(author) if author is not None else translator.html('plain.result.author_unknown')}</p>"
-        f"<p>{support}</p></section>"
+        "</section>"
     )
+    support = (
+        source_support_entry(
+            str(source or identifier or ""),
+            record=record,
+            explanation=explanation,
+        )
+        or ""
+    )
+    return explanation + f"<p>{support}</p>"

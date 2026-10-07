@@ -901,9 +901,20 @@ def _render_page(
         else ""
     )
     patterns_by_id = {item.pattern_id: item for item in view.derived_patterns}
+    # Keep the original navigation capabilities available without explaining unrelated siblings.
+    technical_navigation = "".join(
+        f'<p><a href="{escape(context_link(context, view="failure-patterns", pattern_id=item.pattern_id, memory_id=None, failure_id=None, record_id=None), quote=True)}">{translator.html("l4_memory.open_derived_pattern")}</a></p>'
+        for item in view.derived_patterns
+    ) + "".join(
+        f'<p><a href="{escape(context_link(context, view="memory", memory_id=item.memory_id, pattern_id=None, failure_id=None, record_id=None), quote=True)}">{translator.html("l4_memory.open_memory")}</a></p>'
+        for item in view.formal_memory if item.memory_id is not None
+    ) + "".join(
+        f'<p><a href="{escape(context_link(context, view="memory-failures", failure_id=identifier, memory_id=None, pattern_id=None, record_id=None), quote=True)}">{translator.html("l4_memory.open_memory_failure")}</a></p>'
+        for item in view.derived_patterns for identifier in item.failure_ids
+    )
     details = (
         f'<section class="memory-reader-records" aria-labelledby="memory-reader-records-title">'
-        f'<details><summary>{translator.html("plain.memory.technical")}</summary>{layer_summary}</details>'
+        f'<details><summary>{translator.html("plain.memory.technical")}</summary>{layer_summary}{technical_navigation}</details>'
         f'<h2 id="memory-reader-records-title">{escape(translator.t(title_key))}</h2>'
         f'{translator.html("plain.memory.missing") if empty else ""}{empty_message}{partial_message}'
         f'{"".join(_render_record(record, model, context=context, translator=translator, lineage=lineage_by_id.get(record.record_id), pattern=patterns_by_id.get(record.record_id) if record.derived else None, cases=view.failure_view.all_failures, sample=projection.sample_data is not None) for record in records)}'

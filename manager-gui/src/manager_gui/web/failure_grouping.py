@@ -665,6 +665,7 @@ def render_failure_grouping(
                 sample_count=group.sample_count,
                 inputs=tuple((item.record_id, item.raw) for item in group.participants),
                 query_context=str(query_context or ""), complete=model.availability.complete,
+                candidates=_records_for_derivation(_mapping(model.data) or {}),
                 sample=reader_projection is not None and reader_projection.sample_data is not None,
             )
             for group in groups
@@ -677,6 +678,9 @@ def render_failure_grouping(
                 view, query_context=query_context, include_raw_json=include_raw_json,
                 translator=selected_translator,
             )
+            technical = technical.replace(
+                '<h1 class="page-title" data-page-title tabindex="-1">', '<h2>',
+            ).replace('</h1>', '</h2>')
             if reader_projection is not None:
                 technical += render_reader_surface(
                     reader_projection, page=ReaderPage.FAILURE_GROUPING,
@@ -685,7 +689,7 @@ def render_failure_grouping(
         return (
             f'<section class="plain-memory-grouping"><h1 class="page-title" data-page-title tabindex="-1">'
             f'{selected_translator.html("plain.memory.group_title")}</h1>'
-            f'{source_support_impact()}{body}<details><summary>'
+            f'{source_support_impact()}<h2>{selected_translator.html("plain.memory.cases")}</h2>{body}<details><summary>'
             f'{selected_translator.html("plain.memory.technical")}</summary>{technical}</details></section>'
         )
     reader_surface = (

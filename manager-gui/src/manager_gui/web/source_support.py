@@ -152,6 +152,7 @@ class SourceSupport:
     translator: Translator
     sample: bool = False
     entries: list[tuple[str, Mapping[str, object] | None]] = field(default_factory=list)
+    explanations: dict[int, str] = field(default_factory=dict)
     items: tuple[Mapping[str, object], ...] = field(init=False)
     computations: dict[int, tuple[tuple[Mapping[str, object], ...], str, bool, str | None]] = field(
         default_factory=dict
@@ -212,6 +213,7 @@ class SourceSupport:
         record: Mapping[str, object] | None = None,
         *,
         record_id: str | None = None,
+        explanation: str | None = None,
     ) -> str:
         if record is None and record_id:
             matches = [
@@ -229,6 +231,9 @@ class SourceSupport:
         index = len(self.entries) + 1
         panel_id, trigger_id = f"support-{index}", f"support-trigger-{index}"
         self.entries.append((trigger_id, record))
+        if explanation is not None:
+            # GUI-rendered, escaped, ID-free prose; the original supplied mapping remains below.
+            self.explanations[index] = explanation
         title = _text(record.get("title")) if record else None
         has_content = record is not None and _has_content(record)
         if title is None:
@@ -270,6 +275,8 @@ class SourceSupport:
         ):
             issues.append("version_change")
         availability = original.get("availability")
+        if isinstance(availability, Mapping) and availability.get("complete") is False:
+            issues.append("impact.partial")
         status = availability.get("status") if isinstance(availability, Mapping) else availability
         statuses = (status, original.get("read_status"), original.get("verification_status"))
         failures = {
@@ -422,7 +429,7 @@ class SourceSupport:
                 if title
                 else self._t("heading_unnamed")
             )
-            body = self._sample(record) + self.impact(record)
+            body = self._sample(record) + self.impact(record) + self.explanations.get(index, "")
             has_record = record is not None and _has_content(record)
             key = "record_original" if record and self._originals(record) else "structured"
             body += f"<p>{self._t(key if has_record else 'pointer')}</p>"
@@ -472,11 +479,14 @@ def suspend_source_support() -> Iterator[None]:
 
 
 def source_support_entry(
-    source_id: str, *, record: Mapping[str, object] | None = None, record_id: str | None = None
+    source_id: str, *, record: Mapping[str, object] | None = None, record_id: str | None = None,
+    explanation: str | None = None,
 ) -> str | None:
     """Register a native entry in the current page; no source is fetched."""
     support = _CURRENT.get()
-    return None if support is None else support.reference(source_id, record, record_id=record_id)
+    return None if support is None else support.reference(
+        source_id, record, record_id=record_id, explanation=explanation,
+    )
 
 
 def source_support_computation(
@@ -487,11 +497,34 @@ def source_support_computation(
     return "" if support is None else support.computation(inputs, filters, complete, description)
 
 
-def source_support_impact(record: Mapping[str, object] | None = None) -> str:
+def source_support_impact(
+    record: Mapping[str, object] | None = None, *, require_original: bool = False,
+) -> str:
     support = _CURRENT.get()
-    return "" if support is None else support.impact(record)
+    if support is None:
+        return ""
+    markup = support.impact(record)
+    if require_original and record is not None and not _original_supplied(support, record):
+        markup += f'<p class="support-impact">{support._t("original_missing")}</p>'
+    return markup
 
 
-def source_support_usable(record: Mapping[str, object]) -> bool:
+def _original_supplied(support: SourceSupport, record: Mapping[str, object]) -> bool:
+    if _text(record.get("original_source_id")) is None:
+        return True
+    originals = support._originals(record)
+    return bool(originals) and all(
+        _text(item.get("text", item.get("content", item.get("original_text")))) is not None
+        for item in originals
+    )
+
+
+def source_support_usable(
+    record: Mapping[str, object], *, require_complete: bool = False,
+) -> bool:
     support = _CURRENT.get()
-    return True if support is None else support.usable(record)
+    return support is None or (
+        (not require_complete or (
+            support.model.availability.complete and _original_supplied(support, record)
+        )) and support.usable(record)
+    )
