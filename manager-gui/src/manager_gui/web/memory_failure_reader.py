@@ -836,8 +836,10 @@ def _render_page(
     selected = query_values(context)
     if selected.get("pattern_id"):
         records = tuple(record for record in records if record.derived and record.record_id == selected["pattern_id"])
-    elif identifier := selected.get("failure_id") or selected.get("memory_id"):
+    elif identifier := selected.get("failure_id"):
         records = tuple(record for record in records if not record.derived and record.record_id == identifier)
+    elif identifier := selected.get("memory_id"):
+        records = tuple(record for record in records if record.layer is ReaderRecordLayer.FORMAL_MEMORY and record.record_id == identifier)
     elif identifier := selected.get("record_id"):
         records = tuple(record for record in records if record.record_id == identifier)
     title_key = "reader.failure.title" if failure_only else "reader.memory.title"
