@@ -364,9 +364,12 @@ class SourceSupport:
                 else f"<h3>{self._t('title_missing')}</h3>"
             )
             if issues:
+                sample = self._sample(
+                    record, fabricated_example=fabricated_example
+                ) or self._sample(original)
                 parts.append(
                     f'{title_markup}<p>{self._t("unverified_content")}</p>'
-                    f'{self._sample(record) or self._sample(original)}'
+                    f'{sample}'
                     f'<pre data-owner-text="true" translate="no">{escape(text)}</pre>'
                 )
                 continue
