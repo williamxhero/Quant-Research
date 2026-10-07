@@ -129,6 +129,24 @@ ENTRIES = {
         "The supplied record is retained, but whether the current test met its target "
         "cannot be confirmed.",
     ),
+    "plain.result.follow_up_title": M("测试之后又做了什么？", "What happened after the test?"),
+    "plain.result.follow_up_missing": M(
+        "这条结果记录未说明之后是否修改办法或再次测试，不能据此判断有没有做过。",
+        "This result record does not say whether rules were changed or another test was run. "
+        "It does not establish that neither happened.",
+    ),
+    "plain.result.follow_up_unmapped": M(
+        "这条记录提供了后续内容，但本页还不能说明，请核对原始记录。",
+        "Follow-up content is present but cannot be explained here. Check the raw record.",
+    ),
+    "plain.result.limitations_title": M(
+        "这条记录另外写明的限制", "Other limits stated in this record"
+    ),
+    "plain.result.snapshot_unknown": M(
+        "记录的版本未提供。版本用来区分不同次保存的内容，因此暂时不能核对另一页是否同一份内容。",
+        "The record version was not provided. Versions distinguish saved content, "
+        "so matching the content on another page cannot be confirmed.",
+    ),
     "plain.result.snapshot_drift": M(
         "读到的记录与这次选择的版本不一致，目前不能核对这次结果。",
         "The record does not match the selected snapshot. This result cannot currently be checked.",

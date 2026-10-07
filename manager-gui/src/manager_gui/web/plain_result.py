@@ -27,6 +27,14 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _owner_texts(value: object) -> tuple[str, ...]:
+    if (text := _text(value)) is not None:
+        return (text,)
+    if isinstance(value, (list, tuple)):
+        return tuple(text for item in value if (text := _text(item)) is not None)
+    return ()
+
+
 def _number(value: object) -> Decimal | None:
     if type(value) not in {int, float}:
         return None
@@ -135,6 +143,7 @@ def _render_record(
         and not model.errors
         and source is not None
         and public_locator(source.locator) is not None
+        and model.snapshot_token is not None
     )
     result = t("amount_unknown")
     if not usable:
@@ -142,7 +151,7 @@ def _render_record(
     elif start is not None and end is not None and unit is not None and type(costs) is bool:
         cost = translator.t("plain.result.cost_included" if costs else "plain.result.cost_excluded")
         with localcontext() as arithmetic:
-            arithmetic.prec = max(len(format(start, "f")), len(format(end, "f"))) + 2
+            arithmetic.prec = len(format(start, "f")) + len(format(end, "f")) + 2
             profit = end - start
         short_unit = translator.t("plain.result.short.CNY") if currency == "CNY" else unit
         result = t(
@@ -181,6 +190,23 @@ def _render_record(
     )
     author = _text(record.get("author"))
     author_markup = t("author", author=author) if author else t("author_unknown")
+    follow_up_value = record.get("follow_up")
+    follow_up = _owner_texts(follow_up_value)
+    follow_up_markup = f"<h3>{t('follow_up_title')}</h3>"
+    if follow_up:
+        follow_up_markup += "".join(
+            f'<p data-owner-text="true">{escape(text)}</p>' for text in follow_up
+        )
+    else:
+        follow_up_markup += (
+            f"<p>{t('follow_up_unmapped' if follow_up_value else 'follow_up_missing')}</p>"
+        )
+    limitations = _owner_texts(record.get("limitations"))
+    limitations_markup = ""
+    if limitations:
+        limitations_markup = f"<h3>{t('limitations_title')}</h3>" + "".join(
+            f'<p data-owner-text="true">{escape(text)}</p>' for text in limitations
+        )
     rows = []
     for field in _FIELDS:
         value = record.get(field)
@@ -208,6 +234,8 @@ def _render_record(
         link = f"<p>{t('source_missing')}</p>"
     elif public_locator(source.locator) is None:
         link = f"<p>{t('unsafe')}</p>"
+    elif model.snapshot_token is None:
+        link = f"<p>{t('snapshot_unknown')}</p>"
     elif view == "stories" and _text(record.get("record_id")):
         target_url = context_link(
             query_context,
@@ -224,6 +252,7 @@ def _render_record(
     return (
         f"<article>{sample_markup}<h2>{title_markup}</h2>{definitions}"
         f'<p class="plain-outcome">{result}</p><p>{period_markup}</p><p>{t("limits")}</p>'
+        f"{limitations_markup}{follow_up_markup}"
         f"<h3>{t('source_text')}</h3>{summary_markup}<p>{author_markup}</p>"
         f"{fields}<p>{t('no_full_report')}</p>{link}</article>"
     )

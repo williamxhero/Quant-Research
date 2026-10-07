@@ -386,6 +386,11 @@ def _legacy_reader_compat(markup: str) -> str:
     ) + '</div>'
 
 
+@dataclass(frozen=True, slots=True)
+class _PlainResultPage:
+    markup: str
+
+
 class ManagerGUIApp:
     """Read-only shell renderer with an injectable public provider seam."""
 
@@ -564,9 +569,11 @@ class ManagerGUIApp:
         item = navigation_item(state.view)
         route = reader_route(state.view)
         translator = Translator(state.locale)
-        page = self._render_page(
+        rendered = self._render_page(
             state, model, normalized_url, translator=translator, reader_projection=projection
         )
+        plain_reading = isinstance(rendered, _PlainResultPage)
+        page = rendered.markup if isinstance(rendered, _PlainResultPage) else rendered
         if page is not None:
             page = annotate_reader_mount(
                 page,
@@ -583,6 +590,7 @@ class ManagerGUIApp:
             translator=translator,
             raw_url=normalized_url,
             reader_projection=projection,
+            plain_reading=plain_reading,
         )
 
     def render_json(self, url: str = "/") -> str:
@@ -629,7 +637,7 @@ class ManagerGUIApp:
         *,
         translator: Translator,
         reader_projection: ReaderProjection,
-    ) -> str | None:
+    ) -> str | _PlainResultPage | None:
         """Mount a page hook while leaving all shell chrome in this app."""
 
         cached = _CachedReadProvider(model)
@@ -658,7 +666,7 @@ class ManagerGUIApp:
                     sample=reader_projection.sample_data is not None,
                 )
                 if plain_markup is not None:
-                    return plain_markup + _legacy_reader_compat(legacy_markup)
+                    return _PlainResultPage(plain_markup + _legacy_reader_compat(legacy_markup))
             return legacy_markup
         if state.view is ViewId.STRATEGIES:
             if state.mode is ProjectionMode.READER:
@@ -764,7 +772,9 @@ class ManagerGUIApp:
                     model, view="evidence", query_context=url, translator=translator,
                     sample=reader_projection.sample_data is not None,
                 )
-                return (plain_markup or reader_markup) + _legacy_reader_compat(legacy_markup)
+                if plain_markup is not None:
+                    return _PlainResultPage(plain_markup + _legacy_reader_compat(legacy_markup))
+                return reader_markup + _legacy_reader_compat(legacy_markup)
             if state.mode is ProjectionMode.RAW:
                 return render_evidence_lineage_reader(
                     model,
@@ -934,6 +944,7 @@ class ManagerGUIApp:
         translator: Translator,
         raw_url: str,
         reader_projection: ReaderProjection,
+        plain_reading: bool,
     ) -> str:
         raw_json = escape(model.to_json(indent=2))
         label = navigation_label(item.view_id, translator)
@@ -945,7 +956,6 @@ class ManagerGUIApp:
         legacy_story_modes = {story_mode.value for story_mode in StoryMode}
         search_mode = raw_mode if raw_mode in legacy_story_modes else state.mode.value
         raw_view_selected = state.mode is ProjectionMode.RAW
-        plain_reading = bool(page and page.startswith('<section class="plain-result"'))
         inspector_hidden = " hidden" if (
             state.panel == "events" or raw_view_selected
             or (plain_reading and state.panel != "inspector")
