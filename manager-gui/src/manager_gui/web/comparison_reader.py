@@ -1203,6 +1203,11 @@ def render_comparison_reader(
         body = render_plain_comparison(reading_comparison, view.read_model, translator=selected)
         body += f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary><h2>{escape(selected.t("reader.comparison.title"))}</h2>{surface}{table}</details>'
     status = render_status_block(view.read_model, translator=selected)
+    if selected_mode is ProjectionMode.READER:
+        status = (
+            f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary>'
+            f'{status}</details>'
+        )
     refusal = (
         f'<p class="comparison-reader-refusal" data-comparison-refusal="true">{escape(selected.t("reader.comparison.refused"))}</p>'
         if view.comparison is not None and view.comparison.refused

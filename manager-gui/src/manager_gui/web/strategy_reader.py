@@ -887,9 +887,9 @@ def render_strategy_reader(
         (
             f'<section class="strategy-reader-page" data-integration-hook="{legacy_hook}" data-reader-hook="{STRATEGY_READER_HOOK}" data-reader-page="{ReaderPage(page).value}" data-genome-id="{escape(view.genome_id or "", quote=True)}"{comparison_attribute}>',
             f'<h1>{escape(selected.t("plain.strategy.title"))}</h1>',
-            status,
             render_plain_strategy(model, query_context="/?" + urlencode(_query_pairs(query_context)), translator=selected),
             f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary>',
+            status,
             f'<p class="strategy-reader-sentence" data-boundary="strategy-structure">{sentence}</p>',
             render_reader_surface(reader_projection, page=page, query_context=query_context, translator=selected),
             f'<section class="strategy-reader-structure" aria-labelledby="strategy-reader-structure-title"><h3 id="strategy-reader-structure-title">{escape(selected.t("strategy_reader.structure_title"))}</h3><p>{escape(selected.t("strategy_reader.structure_intro"))}</p>{_field_table(view, selected)}</section>',
