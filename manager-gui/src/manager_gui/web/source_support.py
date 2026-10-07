@@ -190,7 +190,7 @@ class SourceSupport:
         markup += (
             "<ol>"
             + "".join(
-                f'<li><pre data-owner-text="true" translate="no">'
+                f'<li>{self._sample(record)}<pre data-owner-text="true" translate="no">'
                 f"{escape(json.dumps(dict(record), ensure_ascii=False, indent=2))}</pre></li>"
                 for record in inputs
             )
