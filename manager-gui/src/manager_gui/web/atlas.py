@@ -11,6 +11,7 @@ not read private storage or infer conclusions from counts.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -25,6 +26,7 @@ from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import clear_filters_link
+from .source_support import source_support_computation, source_support_entry, source_support_impact
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
@@ -916,6 +918,65 @@ def render_atlas(
     )
     pieces.append("</div>")
     return "".join(pieces)
+
+
+def render_atlas_reading(
+    model: ManagerReadModel, *, query_context: QueryContext, translator: Translator, sample: bool
+) -> str:
+    """Concrete object entries and an auditable count of the supplied list only."""
+    view = AtlasViewModel.from_read_model(model, filters=AtlasFilters.from_query(query_context))
+    records = view.records
+    count = len({(record.record_type, record.record_id) for record in records})
+    payload = _mapping(model.data) or {}
+    pagination = _mapping(payload.get("pagination")) or {}
+    complete = model.availability.complete and not model.errors and not (
+        pagination.get("has_more") is True or pagination.get("next_cursor")
+    )
+    filters = json.dumps({
+        "applied": dict(view.filters.as_query()),
+        "retained_query": _query_pairs(query_context),
+    }, ensure_ascii=False)
+    computation = source_support_computation(
+        tuple(record.payload for record in records), filters=filters, complete=bool(complete)
+    )
+    sample_markup = (
+        f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>' if sample else ""
+    )
+    cards = []
+    for record in records:
+        if record.record_type not in {"campaign", "study", "strategy_family"}:
+            continue
+        title = _first_text(record.payload, "title", "name", "label")
+        name = title or translator.t("support.title_missing")
+        summary = _first_text(record.payload, "summary", "research_question", "description")
+        wording = (
+            f'<p data-owner-text="true" translate="no">{escape(summary)}</p>' if summary
+            else f'<p>{escape(translator.t("pipeline.object_result_missing"))}</p>'
+        )
+        support = source_support_entry(record.source or "", record=record.payload) or ""
+        card_sample = sample_markup if sample or record.payload.get("fabricated_example") is not True else (
+            f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>'
+        )
+        cards.append(
+            f'<article data-research-object="{escape(record.record_id, quote=True)}">{card_sample}'
+            f'<h2 data-owner-text="true">{escape(name)}</h2>{wording}<p>{support}</p>'
+            f'<a class="atlas-story-link" href="{escape(_story_link(record, query_context), quote=True)}">'
+            f'{escape(translator.t("pipeline.open_story", name=name))}</a></article>'
+        )
+    pointers = "".join(
+        f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
+    )
+    return (
+        '<section class="plain-result atlas-reading" data-integration-hook="atlas-view">'
+        f'<h1 data-page-title tabindex="-1">{escape(translator.t("pipeline.atlas_title"))}</h1>'
+        f'{sample_markup}{source_support_impact()}'
+        f'{_render_filters(view, query_context=query_context, translator=translator)}'
+        f'<p>{escape(translator.t("support.count", n=count))}</p>'
+        f'<p>{escape(translator.t("support.count_unit"))}</p>'
+        f'<p>{escape(translator.t("support.count_complete" if complete else "support.count_partial"))}</p>'
+        f'<p>{computation}</p>{"".join(cards) or escape(translator.t("pipeline.no_research_objects"))}'
+        f'{pointers}</section>'
+    )
 
 
 def atlas_view(

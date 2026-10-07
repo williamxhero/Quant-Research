@@ -45,6 +45,7 @@ from ..reader import (
 from ..reader.mode import ProjectionMode, ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
+from .source_support import source_support_entry
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import display_state_for, render_status_block
@@ -1020,6 +1021,9 @@ def _render_sources(refs: Sequence[SourceReference], *, context: QueryContext, t
         return f'<span class="comparison-source-missing">{escape(translator.t("reader.comparison.not_recorded"))}</span>'
     items: list[str] = []
     for reference in refs:
+        if support := source_support_entry(reference.source_id):
+            items.append(support)
+            continue
         source_id = _machine(reference.source_id)
         evidence_href = context_link(context, view=ViewId.EVIDENCE, source_id=reference.source_id)
         target = public_locator(reference.locator)

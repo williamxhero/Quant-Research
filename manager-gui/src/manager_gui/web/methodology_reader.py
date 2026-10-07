@@ -34,6 +34,7 @@ from ..reader import (
 from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
+from .source_support import source_support_entry
 from .methodology import (
     METHODOLOGY_RESOURCE,
     MethodologyFixtureProvider,
@@ -305,6 +306,9 @@ def _source_markup(view: MethodologyReaderViewModel, context: QueryContext, tran
         return f'<p class="methodology-reader-no-source">{escape(translator.t("reader.methodology.no_source"))}</p>'
     items: list[str] = []
     for ref in view.source_refs:
+        if support := source_support_entry(ref.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         locator = public_locator(ref.locator)
         value = f'<span translate="no">{escape(ref.source_id)}</span>'
         if locator:

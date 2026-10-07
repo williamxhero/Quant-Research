@@ -42,6 +42,7 @@ from .i18n import Translator
 from .i18n.catalog.reader import render_reader_reason
 from .lineage import LineageQuery, LineageViewModel, render_lineage
 from .locators import public_locator
+from .source_support import source_support_entry
 from .navigation import ViewId, context_link
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import display_state_for
@@ -773,6 +774,9 @@ def _source_markup(
         return escape(translator.t("reader.evidence_lineage.no_source"))
     items: list[str] = []
     for ref in refs:
+        if support := source_support_entry(ref.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         local = context_link(context, view=ViewId.EVIDENCE, source_id=ref.source_id, reader_step=f"source:{ref.source_id}")
         link = public_locator(ref.locator)
         external = (

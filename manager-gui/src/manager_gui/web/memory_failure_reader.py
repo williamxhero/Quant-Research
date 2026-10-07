@@ -45,6 +45,7 @@ from .failure_patterns import (
 from .i18n import Translator
 from .i18n.catalog.reader import render_claim_explanation
 from .locators import public_locator
+from .source_support import source_support_entry
 from .memory import MemoryEntry, MemoryViewModel, render_memory_text
 from .navigation import context_link
 from .reader_surface import ReaderPage, render_reader_surface
@@ -614,6 +615,9 @@ def _record_source_links(record: MemoryFailureReaderRecord, model: ManagerReadMo
     index = {ref.source_id: ref for ref in model.source_refs}
     rendered: list[str] = []
     for source_id in record.source_ids:
+        if support := source_support_entry(source_id, record=record.raw):
+            rendered.append(support)
+            continue
         source = index.get(source_id)
         if source is None:
             rendered.append(

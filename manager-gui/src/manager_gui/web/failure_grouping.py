@@ -32,6 +32,7 @@ from ..provider import ManagerDataProvider
 from ..reader import ReaderProjection
 from .i18n import Translator
 from .locators import public_locator
+from .source_support import source_support_entry
 from .memory import memory_source_link, render_memory_text, render_memory_value
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_operational_state, render_status_block
@@ -602,6 +603,9 @@ def _render_refs(refs: Sequence[GroupingSourceRef], *, translator: Translator, c
         return translator.html("l4_memory.none_recorded")
     parts: list[str] = []
     for ref in refs:
+        if support := source_support_entry(ref.source_id):
+            parts.append(support)
+            continue
         label = render_memory_value(ref.source_id, translator)
         if target := public_locator(ref.locator):
             target = memory_source_link(target, context)

@@ -23,6 +23,7 @@ from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
 from .navigation import context_link
+from .source_support import source_support_entry
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
@@ -986,11 +987,16 @@ def _render_links(
     *,
     translator: Translator,
     query_context: Mapping[str, object] | str | None = None,
+    record: Mapping[str, object] | None = None,
 ) -> str:
     if not links:
         return f'<span class="source-missing">{escape(translator.t("story.source_missing"))}</span>'
     rendered: list[str] = []
     for link in links:
+        if link.source_id or link.kind in {"source", "report", "artifact"}:
+            if support := source_support_entry(link.source_id or "", record=record):
+                rendered.append(support)
+                continue
         label = _render_link_label(link, translator=translator)
         if link.target:
             rendered.append(
@@ -1063,7 +1069,7 @@ def _render_narrative_chapter(
                 f'<span><strong>{escape(translator.t("reader.derivation"))}:</strong> '
                 f'<code translate="no">{escape(translator.t("reader.derivation.unrecorded"))}</code></span></p>'
                 f'<p class="story-entry-temporal">{_render_temporal(entry, translator=translator)}</p>'
-                f'<p class="story-entry-sources">{_render_links(entry.links, translator=translator, query_context=query_context)}</p></article>'
+                f'<p class="story-entry-sources">{_render_links(entry.links, translator=translator, query_context=query_context, record=entry.raw)}</p></article>'
             )
         body = "".join(entries)
     return (
@@ -1132,7 +1138,7 @@ def _render_timeline_event(
         f'<strong>{_owner_or_catalog(entry.title, "story.entry.title_missing", translator=translator, fixture=fixture)}</strong> '
         f'{_render_outcome(entry.outcome, translator=translator)}'
         f'<p>{_owner_or_catalog(entry.summary, "story.entry.summary_missing", translator=translator, fixture=fixture)}</p>'
-        f'<p>{_render_links(entry.links, translator=translator, query_context=query_context)}</p></li>'
+        f'<p>{_render_links(entry.links, translator=translator, query_context=query_context, record=entry.raw)}</p></li>'
     )
 
 

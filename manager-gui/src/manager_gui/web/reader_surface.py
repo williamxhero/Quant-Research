@@ -26,6 +26,7 @@ from .i18n.catalog.reader import (
 )
 from .locators import public_locator
 from .navigation import context_link
+from .source_support import source_support_entry
 
 
 class ReaderPage(StrEnum):
@@ -189,6 +190,8 @@ def _source_context_link(
     source_id: str,
     translator: Translator,
 ) -> str:
+    if support := source_support_entry(source_id):
+        return support
     target = context_link(query_context, view="evidence", source_id=source_id)
     return (
         f'<a class="reader-evidence-link" data-reader-source-id="{escape(source_id, quote=True)}" '
@@ -206,6 +209,9 @@ def _source_links(
         return f'<p class="reader-no-sources">{escape(translator.t("reader.no_sources"))}</p>'
     items = []
     for reference in projection.source_refs:
+        if support := source_support_entry(reference.source_id):
+            items.append(f"<li>{support}</li>")
+            continue
         evidence = _source_context_link(
             query_context, source_id=reference.source_id, translator=translator
         )

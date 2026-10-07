@@ -23,7 +23,7 @@ from ..reader import (
     render_sample_banner,
 )
 from .assets import CSS, render_js
-from .atlas import render_atlas_view
+from .atlas import render_atlas_reading, render_atlas_view
 from .comparison import (
     COMPARISON_RESOURCE,
     ComparisonFixtureState,
@@ -119,6 +119,7 @@ from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE
 from .search_reader import project_search_reader, render_search_reader
+from .source_support import support_scope
 from .status import render_status_block
 from .strategy_reader import project_strategy_reader, render_strategy_reader
 
@@ -369,6 +370,12 @@ def _legacy_reader_compat(markup: str) -> str:
     def _heading(match: re.Match[str]) -> str:
         return f'<span{match.group(1)} hidden>{match.group(2)}</span>'
 
+    # The visible page owns support anchors. Discard hidden compatibility
+    # entries rather than leave their coordinated references pointing nowhere.
+    markup = re.sub(
+        r'<a\b[^>]*data-source-support="[^"]*"[^>]*>(.*?)</a>',
+        r'<span>\1</span>', markup, flags=re.DOTALL,
+    )
     # Match the HTML ``id`` attribute itself, not the ``id`` suffix in
     # data-record-id/data-source-id attributes.
     markup = re.sub(r'(?<![-\w])id="([^"]+)"', r'id="legacy-\1"', markup)
@@ -569,11 +576,16 @@ class ManagerGUIApp:
         item = navigation_item(state.view)
         route = reader_route(state.view)
         translator = Translator(state.locale)
-        rendered = self._render_page(
-            state, model, normalized_url, translator=translator, reader_projection=projection
-        )
-        plain_reading = isinstance(rendered, _PlainResultPage)
-        page = rendered.markup if isinstance(rendered, _PlainResultPage) else rendered
+        with support_scope(
+            model, normalized_url, translator, sample=projection.sample_data is not None
+        ) as support:
+            rendered = self._render_page(
+                state, model, normalized_url, translator=translator, reader_projection=projection
+            )
+            plain_reading = isinstance(rendered, _PlainResultPage)
+            page = rendered.markup if isinstance(rendered, _PlainResultPage) else rendered
+            if page is not None:
+                page += support.render(page)
         if page is not None:
             page = annotate_reader_mount(
                 page,
@@ -642,6 +654,14 @@ class ManagerGUIApp:
 
         cached = _CachedReadProvider(model)
         if state.view is ViewId.ATLAS:
+            if state.mode is ProjectionMode.READER:
+                return _PlainResultPage(render_atlas_reading(
+                    model, query_context=url, translator=translator,
+                    sample=reader_projection.sample_data is not None,
+                ) + _legacy_reader_compat(render_atlas_view(
+                    cached, query_context=url, snapshot_token=model.snapshot_token,
+                    translator=translator, reader_projection=reader_projection,
+                )))
             return render_atlas_view(
                 cached,
                 query_context=url,

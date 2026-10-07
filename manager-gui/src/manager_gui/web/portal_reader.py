@@ -34,6 +34,7 @@ from ..reader.mode import ReaderURLState
 from .i18n import Translator
 from .i18n.catalog.l5_portal_reader import ENTRIES as PORTAL_READER_CATALOG
 from .navigation import ViewId, context_link
+from .source_support import source_support_entry
 from .portal import (
     PORTAL_RESOURCE,
     PortalArtifactState,
@@ -324,6 +325,9 @@ def _context_markup(
 ) -> str:
     source_links = []
     for source in view.source_refs:
+        if support := source_support_entry(source.source_id):
+            source_links.append(f"<li>{support}</li>")
+            continue
         target = context_link(query_context, view=ViewId.EVIDENCE, source_id=source.source_id)
         source_links.append(
             f'<li><a data-link-kind="source-ref" href="{escape(target, quote=True)}" translate="no">'

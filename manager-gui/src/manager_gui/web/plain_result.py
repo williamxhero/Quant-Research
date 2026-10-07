@@ -10,6 +10,7 @@ from .i18n import Translator
 from .locators import public_locator
 from .navigation import context_link, query_values
 from .research_story import ResearchStoryViewModel
+from .source_support import source_support_entry, source_support_impact, source_support_usable
 
 _FIELDS = (
     "starting_amount",
@@ -144,6 +145,7 @@ def _render_record(
         and source is not None
         and public_locator(source.locator) is not None
         and model.snapshot_token is not None
+        and source_support_usable(record)
     )
     result = t("amount_unknown")
     if not usable:
@@ -246,12 +248,17 @@ def _render_record(
         )
         link_key = "open" if start is not None or end is not None else "open_record"
         link = f'<p><a href="{escape(target_url, quote=True)}">{t(link_key)}</a></p>'
-    sample_markup = f'<p class="sample-note">{t("sample")}</p>' if sample else ""
+    sample_markup = (
+        f'<p class="sample-note">{t("sample")}</p>'
+        if sample or record.get("fabricated_example") is True else ""
+    )
+    sample_markup += source_support_impact(record)
     if not model.availability.complete:
         sample_markup += f"<p>{t('partial')}</p>"
+    support = source_support_entry(str(record.get("source_ref") or ""), record=record) or ""
     return (
         f"<article>{sample_markup}<h2>{title_markup}</h2>{definitions}"
-        f'<p class="plain-outcome">{result}</p><p>{period_markup}</p><p>{t("limits")}</p>'
+        f'<p class="plain-outcome">{result}</p><p>{support}</p><p>{period_markup}</p><p>{t("limits")}</p>'
         f"{limitations_markup}{follow_up_markup}"
         f"<h3>{t('source_text')}</h3>{summary_markup}<p>{author_markup}</p>"
         f"{fields}<p>{t('no_full_report')}</p>{link}</article>"

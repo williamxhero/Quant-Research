@@ -59,6 +59,7 @@ from .i18n import CatalogError, Translator, merge
 from .i18n.catalog import CATALOG
 from .i18n.catalog.l4_lineage import ENTRIES as LINEAGE_CATALOG
 from .locators import public_locator
+from .source_support import source_support_entry
 from .navigation import PageWindow, context_link, query_values
 from .status import render_operational_state, render_status_block
 
@@ -1439,6 +1440,9 @@ def _render_sources(refs: Sequence[LineageSourceRef], *, translator: Translator)
         return escape(translator.t("lineage.not_recorded"))
     parts: list[str] = []
     for ref in refs:
+        if support := source_support_entry(ref.source_id):
+            parts.append(support)
+            continue
         origin = " · ".join(part for part in (ref.owner, ref.kind) if part)
         label = _owner(ref.source_id) + (f" ({_owner(origin)})" if origin else "")
         target = public_locator(ref.locator)
