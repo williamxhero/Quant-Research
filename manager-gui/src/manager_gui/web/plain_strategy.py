@@ -57,13 +57,27 @@ def _t(translator: Translator, key: str, **params: object) -> str:
     return escape(translator.t("plain.strategy." + key, **params))
 
 
-def _support(record: Mapping[str, object], model: ManagerReadModel) -> str:
+def _support(
+    record: Mapping[str, object],
+    model: ManagerReadModel,
+    *,
+    fabricated_example: bool = False,
+    display_name: str | None = None,
+) -> str:
     # Supply the actual adjacent record, including nested rule/axis content.
     # Never ask container traversal to guess a side from a shared source pointer.
     source = _wording(record, "source_ref", "source_id")
     if source is None and len(model.source_refs) == 1:
         source = model.source_refs[0].source_id
-    return source_support_entry(source or "", record=record) or ""
+    return (
+        source_support_entry(
+            source or "",
+            record=record,
+            fabricated_example=fabricated_example,
+            display_name=display_name or _wording(record, "title", "name", "label"),
+        )
+        or ""
+    )
 
 
 def _pointers(model: ManagerReadModel) -> str:
@@ -313,9 +327,19 @@ def _conditions(
                     "limitations": ("limitations", "limitations_note", "limits"),
                 },
                 translator,
-                interpret_outcome=not descriptor and source_support_usable(item),
+                interpret_outcome=(
+                    not descriptor and source_support_usable(record) and source_support_usable(item)
+                ),
             )
-            content += _support(item, model) + "</section>"
+            content += (
+                _support(
+                    item,
+                    model,
+                    fabricated_example=record.get("fabricated_example") is True,
+                    display_name=wording or translator.t("plain.strategy.condition_unnamed"),
+                )
+                + "</section>"
+            )
     if not count:
         content += f"<p>{_t(translator, 'conditions_unknown')}</p>"
     return content
@@ -354,7 +378,23 @@ def _revisions(
             },
             translator,
         )
-        content += _support(item, model)
+        content += _support(
+            item,
+            model,
+            fabricated_example=record.get("fabricated_example") is True,
+            display_name=_wording(
+                item,
+                "title",
+                "name",
+                "label",
+                "revision_id",
+                "revisionId",
+                "revision",
+                "id",
+                "record_id",
+            )
+            or translator.t("plain.strategy.revision"),
+        )
     if not revisions:
         content += f"<p>{_t(translator, 'revisions_unknown')}</p>"
     return content
@@ -422,6 +462,7 @@ def render_plain_comparison(
             usable = (
                 model.availability.complete
                 and all(source_support_usable(side) for side in sides)
+                and all(source_support_usable(_mapping(side.get("axes"))) for side in sides)
                 and source_support_usable(axis.raw)
                 and all(
                     source_support_usable(_mapping(value))
@@ -440,7 +481,8 @@ def render_plain_comparison(
                 sides, names, (axis.left_value, axis.right_value), strict=True
             ):
                 body += (
-                    f"<div><dt>{_owner(name)}</dt><dd>{source_support_impact(_mapping(value))}"
+                    f"<div><dt>{_owner(name)}</dt><dd>{source_support_impact(_mapping(side.get('axes')))}"
+                    f"{source_support_impact(_mapping(value))}"
                     f"{_comparison_value(value, key, translator)}</dd></div>"
                 )
                 # Keep explicit declarations or the actual side record as support,
