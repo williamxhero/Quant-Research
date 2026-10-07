@@ -46,6 +46,7 @@ from ..reader.mode import ProjectionMode, ReaderURLState
 from .i18n import Translator
 from .locators import public_locator
 from .navigation import ViewId, context_link
+from .plain_strategy import render_plain_comparison
 from .reader_surface import ReaderPage, render_reader_surface
 from .source_support import source_support_entry
 from .status import display_state_for, render_status_block
@@ -1166,7 +1167,8 @@ def render_comparison_reader(
                 f'<p class="comparison-reader-boundary" data-statistics="not-generated">{escape(selected.t("reader.comparison.no_statistics"))}</p>'
                 f'</section>'
             )
-        body = surface + table
+        body = render_plain_comparison(view.comparison, view.read_model, translator=selected)
+        body += f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary><h2>{escape(selected.t("reader.comparison.title"))}</h2>{surface}{table}</details>'
     status = render_status_block(view.read_model, translator=selected)
     refusal = (
         f'<p class="comparison-reader-refusal" data-comparison-refusal="true">{escape(selected.t("reader.comparison.refused"))}</p>'
@@ -1198,7 +1200,7 @@ def render_comparison_reader(
         f'data-display-state="{display_state_for(view.read_model).value}" '
         f'data-comparison-result="{escape(result, quote=True)}">{legacy_marker}'
         f'<p class="eyebrow">{escape(selected.t("comparison.eyebrow"))}</p>'
-        f'<h1 data-page-title tabindex="-1">{escape(selected.t("reader.comparison.title"))}</h1>'
+        f'<h1 data-page-title tabindex="-1">{escape(selected.t("plain.strategy.comparison_title" if selected_mode is ProjectionMode.READER else "reader.comparison.title"))}</h1>'
         f'{status}{refusal}{body}{_render_related_links(view, context=query_context, translator=selected)}'
         f'</section>'
     )

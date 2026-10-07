@@ -35,6 +35,7 @@ from .comparison import genome_comparison_link
 from .conditions import ConditionCategory, genome_conditions_link
 from .genome import BEHAVIOR_PROJECTION_FIELDS, GenomeViewModel, genome_link
 from .i18n import Translator
+from .plain_strategy import render_plain_strategy
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
@@ -889,8 +890,10 @@ def render_strategy_reader(
     return "".join(
         (
             f'<section class="strategy-reader-page" data-integration-hook="{legacy_hook}" data-reader-hook="{STRATEGY_READER_HOOK}" data-reader-page="{ReaderPage(page).value}" data-genome-id="{escape(view.genome_id or "", quote=True)}"{comparison_attribute}>',
-            f'<h1>{escape(selected.t("strategy_reader.title"))}</h1>',
+            f'<h1>{escape(selected.t("plain.strategy.title"))}</h1>',
             status,
+            render_plain_strategy(model, query_context="/?" + urlencode(_query_pairs(query_context)), translator=selected),
+            f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary>',
             f'<p class="strategy-reader-sentence" data-boundary="strategy-structure">{sentence}</p>',
             render_reader_surface(reader_projection, page=page, query_context=query_context, translator=selected),
             f'<section class="strategy-reader-structure" aria-labelledby="strategy-reader-structure-title"><h3 id="strategy-reader-structure-title">{escape(selected.t("strategy_reader.structure_title"))}</h3><p>{escape(selected.t("strategy_reader.structure_intro"))}</p>{_field_table(view, selected)}</section>',
@@ -898,6 +901,7 @@ def render_strategy_reader(
             _condition_section(view, selected),
             _comparison_section(view, selected),
             _revision_section(view, query_context, selected),
+            "</details>",
             _links(view, query_context, selected, ReaderPage(page)),
             "</section>",
         )
