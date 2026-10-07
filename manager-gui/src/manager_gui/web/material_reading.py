@@ -4,7 +4,23 @@ import json
 from collections.abc import Mapping
 from html import escape
 
+from .documents import _document_type
 from .i18n import Translator
+
+MATERIAL_RECORD_KINDS = {
+    "test_report": "report",
+    "report": "report",
+    "test-report": "report",
+    "plan": "plan",
+    "test_plan": "plan",
+    "strategy_rules": "rules",
+    "strategy_description": "rules",
+    "rules": "rules",
+    "comparison": "comparison",
+    "comparison_table": "comparison",
+    "record": "record",
+    "summary": "summary",
+}
 
 
 def render_material_details(record: Mapping[str, object], translator: Translator) -> str:
@@ -12,56 +28,59 @@ def render_material_details(record: Mapping[str, object], translator: Translator
         return escape(translator.t("material." + key))
 
     def value(*keys: str) -> str | None:
-        return next(
-            (
-                record[key]
-                for key in keys
-                if isinstance(record.get(key), str) and record[key].strip()
-            ),
-            None,
-        )
+        for key in keys:
+            candidate = record.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
+        return None
 
     def owner(text: object) -> str:
         wording = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False)
         return f'<span data-owner-text="true" translate="no">{escape(wording)}</span>'
 
     kind = value("document_type", "record_type", "type", "kind", "category")
-    kinds = {
-        "test_report": "report",
-        "report": "report",
-        "test-report": "report",
-        "plan": "plan",
-        "test_plan": "plan",
-        "strategy_rules": "rules",
-        "strategy_description": "rules",
-        "rules": "rules",
-        "comparison": "comparison",
-        "comparison_table": "comparison",
-        "record": "record",
-        "summary": "summary",
-    }
-    category = kinds.get(kind or "")
+    document_type = _document_type(kind)
+    category = (
+        document_type.value if document_type is not None else MATERIAL_RECORD_KINDS.get(kind or "")
+    )
     body = '<section class="material-reading">'
     if record.get("fabricated_example") is True:
         body += f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>'
-    kind_markup = t(category) if category else owner(kind) if kind else t("category_unknown")
+    # Closed UI categories use the existing catalog; unknown owner wording stays raw.
+    kind_markup = (
+        escape(translator.label("documents.type", document_type.value))
+        if document_type is not None
+        else t(category) if category else owner(kind) if kind else t("category_unknown")
+    )
     body += f"<p>{t('category')}: {kind_markup}</p>"
     if category == "report":
         body += (
             f'<p class="plain-definition"><strong>{t("report_question")}</strong>'
             f'{t("report_definition")}</p>'
         )
-    if category in {"plan", "rules", "comparison", "summary"}:
+    if category in {
+        "plan", "rules", "comparison", "summary", "design", "retrospective",
+        "raw-evidence", "future-idea", "external-source",
+    }:
         body += (
             f'<p class="plain-definition"><strong>{t(category + "_question")}</strong>'
             f'{t(category + "_definition")}</p>'
         )
     for label, keys, missing in (
         ("author", ("author",), "author_unknown"),
-        ("date", ("date", "published_at", "created_at"), "date_unknown"),
+        (
+            "date",
+            ("date", "published_at", "publishedAt", "released_at", "created_at"),
+            "date_unknown",
+        ),
         ("scope", ("scope",), "scope_unknown"),
         ("period", ("period",), "period_unknown"),
-        ("version", ("version", "revision", "document_version"), "version_unknown"),
+        (
+            "version",
+            ("version", "revision", "document_version", "publication_version", "source_version",
+             "source_revision"),
+            "version_unknown",
+        ),
     ):
         text = value(*keys)
         body += f"<p>{t(label)}: {owner(text) if text else t(missing)}</p>"

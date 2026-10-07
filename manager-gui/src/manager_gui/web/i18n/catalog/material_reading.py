@@ -46,6 +46,35 @@ ENTRIES = {
         "摘要只是一段概述，不证明已经核对原文。",
         "A summary is an overview, not proof that the original was checked.",
     ),
+    "material.design_question": M("设计说明什么？", "What does a design describe?"),
+    "material.design_definition": M(
+        "设计说明打算怎样测试和使用哪些条件，不证明已经执行或得到结果。",
+        "A design describes intended tests and conditions, not proof of execution or results.",
+    ),
+    "material.retrospective_question": M("复盘回顾什么？", "What does a retrospective review?"),
+    "material.retrospective_definition": M(
+        "复盘回顾已记录的过程与问题；它不能代替原始记录，也不证明研究成功。",
+        "A retrospective reviews the recorded process and problems; "
+        "it does not replace original records or prove research success.",
+    ),
+    "material.raw-evidence_question": M("什么叫原始证据？", "What is raw evidence?"),
+    "material.raw-evidence_definition": M(
+        "原始证据是供核对的来源记录，不是对结果的解释；名称不证明内容已经核验。",
+        "Raw evidence is source material to check, not an interpretation of results; "
+        "the category does not prove the content was verified.",
+    ),
+    "material.future-idea_question": M("什么叫未来设想？", "What is a future idea?"),
+    "material.future-idea_definition": M(
+        "未来设想是尚未承诺实施的想法，不是已经执行的研究或结果。",
+        "A future idea is an idea not yet committed for implementation, "
+        "not executed research or a result.",
+    ),
+    "material.external-source_question": M("什么叫外部资料？", "What is an external source?"),
+    "material.external-source_definition": M(
+        "外部资料来自研究记录之外；引用它不表示已经核验或采纳其中的结论。",
+        "An external source comes from outside the research record; "
+        "citing it does not mean its conclusions were verified or adopted.",
+    ),
     "material.author": M("作者", "Author"),
     "material.author_unknown": M("作者未提供", "Author not supplied"),
     "material.date": M("材料日期", "Material date"),

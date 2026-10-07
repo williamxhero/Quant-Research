@@ -523,8 +523,12 @@ def _event_markup(view: HistoryReaderViewModel, context: QueryContext, translato
         impact = source_support_impact(raw)
         if not source_support_usable(raw):
             impact += f'<p>{escape(translator.t("reader.history.unusable"))}</p>'
+        sample = (
+            f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>'
+            if fixture or raw.get("fabricated_example") is True else ""
+        )
         rows.append(
-            f'<li class="history-reader-event" data-event-id="{escape(event.event_id, quote=True)}" data-event-type="{escape(event.event_type.value, quote=True)}" data-reader-state="{view.read_model.availability.status.value}">'
+            f'<li class="history-reader-event" data-event-id="{escape(event.event_id, quote=True)}" data-event-type="{escape(event.event_type.value, quote=True)}" data-reader-state="{view.read_model.availability.status.value}">{sample}'
             f'<p>{escape(translator.t("reader.history.event_time"))}: <time datetime="{escape(event.source_event_time, quote=True)}" translate="no">{escape(event.source_event_time)}</time> · {escape(translator.t("reader.history.known_at"))}: {_machine(event.known_at, translator)}</p>'
             f'<span class="history-reader-event-type">{escape(translator.label("history.event_type", event.event_type.value))}</span>'
             f'<strong>{title_markup}</strong><p>{detail_markup}</p>'

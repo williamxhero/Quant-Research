@@ -367,14 +367,12 @@ def _reference_links(
 ) -> str:
     links: list[str] = []
     for ref in refs:
-        document = isinstance(ref, MethodologyDocumentRef)
-        kind = "document" if document else "record"
-        title = ref.title if document else ref.label
-        href = context_link(
-            context,
-            view=ViewId.SOURCE_DOCUMENTS if document else ViewId.HISTORY,
-            **({"document_id": ref.document_id} if document else {"record_id": ref.record_id}),
-        )
+        if isinstance(ref, MethodologyDocumentRef):
+            kind, title = "document", ref.title
+            href = context_link(context, view=ViewId.SOURCE_DOCUMENTS, document_id=ref.document_id)
+        else:
+            kind, title = "record", ref.label
+            href = context_link(context, view=ViewId.HISTORY, record_id=ref.record_id)
         label = (
             escape(translator.t("reader.methodology.read_" + kind)) + " " + _owner(title, translator)
             if title else escape(translator.t("reader.methodology.read_" + kind + "_unnamed"))

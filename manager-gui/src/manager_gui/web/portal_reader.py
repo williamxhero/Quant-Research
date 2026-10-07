@@ -40,6 +40,7 @@ from .portal import (
     PortalArtifactState,
     PortalViewModel,
     ReportSourceProvider,
+    _portal_index_items,
     render_portal,
     report_source_view,
 )
@@ -376,8 +377,18 @@ def _object_markup(
     artifact = kind == "generated-artifact"
     id_key = "artifact_id" if artifact else "source_publication_id"
     id_keys = ("artifact_id", "artifactId", "id") if artifact else ("publication_id", "publicationId", "source_publication_id", "sourcePublicationId", "id", "source_ref", "source_id")
-    identifier = next((record[key] for key in id_keys if isinstance(record.get(key), str) and record[key].strip()), None)
-    title = record.get("title")
+    identifier = None
+    for key in id_keys:
+        candidate = record.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            identifier = candidate
+            break
+    title = None
+    for key in ("title", "name", "label"):
+        candidate = record.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            title = candidate
+            break
     heading = _machine(title, translator) if title else escape(translator.t("reader.portal.untitled_material"))
     link = ""
     if isinstance(identifier, str) and identifier:
@@ -389,15 +400,20 @@ def _object_markup(
         )
     failed = _verification_failed(record)
     usable = source_support_usable(record) and not failed
-    has_original = any(isinstance(record.get(name), str) and record[name].strip() for name in ("text", "content", "original_text", "original_source_id"))
-    key = "verify_failed" if failed else "original_blocked" if not usable else None if has_original else "original_missing"
+    has_original = False
+    for name in ("text", "content", "original_text", "original_source_id"):
+        candidate = record.get(name)
+        if isinstance(candidate, str) and candidate.strip():
+            has_original = True
+            break
+    readability_key = "verify_failed" if failed else "original_blocked" if not usable else None if has_original else "original_missing"
     source_id = record.get("source_ref", record.get("source_id", identifier))
     support = (
         source_support_entry(source_id, record=record)
         if usable and isinstance(source_id, str) and source_id
         else None
     )
-    readability = f'<p>{escape(translator.t("reader.portal." + key))}</p>' if key else ""
+    readability = f'<p>{escape(translator.t("reader.portal." + readability_key))}</p>' if readability_key else ""
     state = "integrity-failure" if failed else artifact_state.value if artifact else "published"
     return (
         f'<article class="portal-{kind}" data-{"artifact-id" if artifact else "source-publication-id"}="{escape(str(identifier or ""), quote=True)}" '
@@ -408,19 +424,6 @@ def _object_markup(
         f'<p>{escape(translator.t("reader.portal.artifact_object" if artifact else "reader.portal.publication_object"))}</p>'
         f'{link}</details></article>'
     )
-
-
-def _supplied_records(payload: Mapping[str, object]) -> tuple[Mapping[str, object], ...]:
-    """Read the existing public list containers only; never fetch another index."""
-    for key in ("reports", "report_index", "reportIndex", "entries", "items"):
-        value = payload.get(key)
-        if isinstance(value, Mapping):
-            return _supplied_records(value) or (value,)
-        if isinstance(value, (list, tuple)):
-            records = tuple(record for record in value if isinstance(record, Mapping))
-            if records:
-                return records
-    return ()
 
 
 def _material_gap(view: PortalReaderViewModel, translator: Translator, query_context: QueryContext) -> str:
@@ -443,7 +446,7 @@ def _metadata_markup(
     payload = view.read_model.data
     if not isinstance(payload, Mapping):
         return _material_gap(view, translator, query_context)
-    records = _supplied_records(payload)
+    records = _portal_index_items(payload)
     if not records and not any(key in payload for key in ("reports", "report_index", "reportIndex", "entries", "items")):
         records = (payload,) if payload else ()
     if not records:
@@ -466,10 +469,10 @@ def _metadata_markup(
     cards = []
     for index in order:
         supplied_record = records[index]
-        # The public list may wrap its material in a report field. Keep the
-        # actual mapping for both the shared body and support, not a typed copy.
+        # Match the existing Portal parser's wrapper/child precedence while
+        # retaining supplied fields for reading and support, not a typed copy.
         nested = supplied_record.get("report")
-        record = nested if isinstance(nested, Mapping) else supplied_record
+        record = {**supplied_record, **nested} if isinstance(nested, Mapping) else supplied_record
         entry = view.reports[index] if index < len(view.reports) else None
         state = entry.artifact_state if entry is not None else view.artifact_state
         title = record.get("title") or (entry.title if entry is not None else None)
@@ -500,13 +503,15 @@ def _metadata_markup(
             ("source-publication", ("source_publication", "sourcePublication", "report_source", "reportSource", "publication", "source")),
             ("generated-artifact", ("generated_artifact", "generatedArtifact", "report_artifact", "reportArtifact", "artifact", "generated")),
         ):
-            item = next((record[key] for key in keys if isinstance(record.get(key), Mapping)), None)
-            if item is not None:
-                markup = _object_markup(item, kind=kind, artifact_state=state, report_id=str(report_id) if report_id else None, query_context=query_context, translator=translator)
-                if index in matches and kind == requested_kind:
-                    selected_object += markup
-                else:
-                    objects += markup
+            for key in keys:
+                item = record.get(key)
+                if isinstance(item, Mapping):
+                    markup = _object_markup(item, kind=kind, artifact_state=state, report_id=str(report_id) if report_id else None, query_context=query_context, translator=translator)
+                    if index in matches and kind == requested_kind:
+                        selected_object += markup
+                    else:
+                        objects += markup
+                    break
         cards.append(
             f'<article class="portal-report-entry" data-report-id="{escape(str(report_id or ""), quote=True)}" data-portal-state="{state.value}">'
             f'<h2>{heading}</h2>{selected_object}{render_material_details(record, translator)}{readability}{support or ""}{objects}</article>'

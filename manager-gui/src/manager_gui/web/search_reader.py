@@ -44,6 +44,7 @@ from .search import (
     _localized_fixture_text,
     _query_from_context,
     _search_hidden_controls,
+    _search_value_label,
     _search_values,
     _source_ids,
     render_search_view,
@@ -369,12 +370,12 @@ def _content_markup(view: SearchViewModel, context: QueryContext, translator: Tr
         for field_name in hit.matched_fields:
             text = getattr(hit, "record_type" if field_name == "type" else field_name, None)
             if isinstance(text, str):
-                text = _localized_fixture_text(text, translator=translator, fixture=fixture) or text
-                body += f"<p><strong>{escape(translator.label('l5_search_field', field_name))}</strong>: {owner(text)}</p>"
+                text = _search_value_label(translator, field_name, text, fixture=fixture) or text
+                display_value = escape(text) if fixture and field_name in {"type", "status"} else owner(text)
+                body += f"<p><strong>{escape(translator.label('l5_search_field', field_name))}</strong>: {display_value}</p>"
         if raw is not None:
             body += source_support_impact(raw)
-            if hit.result_kind == "document":
-                body += render_material_details(raw, translator)
+            body += render_material_details(raw, translator)
             source = hit.source_ids[0] if len(hit.source_ids) == 1 else ""
             fields = tuple(
                 (alias, translator.t("material.summary") if name == "safe_summary"

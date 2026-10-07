@@ -17,7 +17,7 @@ from html import escape
 from ..models import ManagerReadModel, ReadModelStatus
 from .i18n import Translator
 from .locators import public_locator
-from .material_reading import render_material_details
+from .material_reading import MATERIAL_RECORD_KINDS, render_material_details
 from .navigation import query_values
 
 # These are existing public payload containers, not an owner schema or a search
@@ -265,8 +265,12 @@ class SourceSupport:
             issues.append("conflict")
         if original.get("available") is False or original.get("approved") is False:
             issues.append("restricted")
-        locator = _text(original.get("locator", original.get("source_locator")))
-        if locator and public_locator(locator) is None:
+        locators = (
+            _text(original.get(key))
+            for key in ("locator", "source_locator", "source_url", "url", "href", "uri",
+                        "artifact_locator")
+        )
+        if any(locator and public_locator(locator) is None for locator in locators):
             issues.append("unsafe")
         original_snapshot = original.get("snapshot_token")
         if original_snapshot is not None and (
@@ -298,7 +302,8 @@ class SourceSupport:
             "failure",
         }
         if any(
-            isinstance(value, str) and value.replace("-", "_") in failures for value in statuses
+            isinstance(value, str) and value.strip().lower().replace("-", "_") in failures
+            for value in statuses
         ):
             issues.append("source_failure")
         return issues
@@ -466,13 +471,10 @@ class SourceSupport:
                             f"<h4>{escape(label)}</h4>"
                             f'<pre data-owner-text="true" translate="no">{escape(content)}</pre>'
                         )
-                if "document_type" in record or record.get("record_type") in {
-                    "test_report",
-                    "report",
-                    "plan",
-                    "strategy_rules",
-                    "comparison_table",
-                }:
+                record_type = record.get("record_type")
+                if "document_type" in record or (
+                    isinstance(record_type, str) and record_type in MATERIAL_RECORD_KINDS
+                ):
                     body += render_material_details(record, self.translator)
                 body += self._original_markup(record, panel_id)
                 body += (
