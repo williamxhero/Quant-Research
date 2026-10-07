@@ -35,6 +35,11 @@ from .comparison import genome_comparison_link
 from .conditions import ConditionCategory, genome_conditions_link
 from .genome import BEHAVIOR_PROJECTION_FIELDS, GenomeViewModel, genome_link
 from .i18n import Translator
+from .plain_strategy import (
+    CONDITION_COLLECTION_KEYS,
+    REVISION_COLLECTION_KEYS,
+    render_plain_strategy,
+)
 from .reader_surface import ReaderPage, render_reader_surface
 from .status import render_status_block
 
@@ -231,15 +236,7 @@ def _condition_items(data: object) -> tuple[Mapping[str, object], ...]:
         "counterexamples": "counterexample",
         "descriptors": "descriptor",
     }
-    for key in (
-        "conditions",
-        "condition_evidence",
-        "applicability_conditions",
-        "invalidation_conditions",
-        "failure_conditions",
-        "counterexamples",
-        "descriptors",
-    ):
+    for key in CONDITION_COLLECTION_KEYS:
         for entry in _sequence(item.get(key)):
             mapped = _mapping(entry)
             if mapped is None:
@@ -258,7 +255,7 @@ def _revision_items(data: object) -> tuple[Mapping[str, object], ...]:
     if item is None:
         return ()
     values: list[Mapping[str, object]] = []
-    for key in ("revisions", "strategy_revisions", "evolution", "revision_tree", "history"):
+    for key in REVISION_COLLECTION_KEYS:
         raw = item.get(key)
         nested = _mapping(raw)
         entries = _sequence(nested.get("revisions")) if nested is not None else _sequence(raw)
@@ -889,7 +886,9 @@ def render_strategy_reader(
     return "".join(
         (
             f'<section class="strategy-reader-page" data-integration-hook="{legacy_hook}" data-reader-hook="{STRATEGY_READER_HOOK}" data-reader-page="{ReaderPage(page).value}" data-genome-id="{escape(view.genome_id or "", quote=True)}"{comparison_attribute}>',
-            f'<h1>{escape(selected.t("strategy_reader.title"))}</h1>',
+            f'<h1>{escape(selected.t("plain.strategy.title"))}</h1>',
+            render_plain_strategy(model, query_context="/?" + urlencode(_query_pairs(query_context)), translator=selected),
+            f'<details><summary>{escape(selected.t("plain.strategy.supplement"))}</summary>',
             status,
             f'<p class="strategy-reader-sentence" data-boundary="strategy-structure">{sentence}</p>',
             render_reader_surface(reader_projection, page=page, query_context=query_context, translator=selected),
@@ -898,6 +897,7 @@ def render_strategy_reader(
             _condition_section(view, selected),
             _comparison_section(view, selected),
             _revision_section(view, query_context, selected),
+            "</details>",
             _links(view, query_context, selected, ReaderPage(page)),
             "</section>",
         )
