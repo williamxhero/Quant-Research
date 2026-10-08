@@ -250,11 +250,24 @@ def _candidate_revision_text(value: object) -> str | None:
     return None
 
 
+def _genome_items(values: Sequence[object]) -> tuple[Mapping[str, object], ...]:
+    items = []
+    for value in values:
+        item = _mapping(value)
+        if item is None:
+            continue
+        kind = _first_text(item, "record_type", "object_type", "type", "kind", "schema")
+        if kind and "genome" not in kind.lower() and not _first_text(item, "genome_id", "genomeId"):
+            continue
+        items.append(item)
+    return tuple(items)
+
+
 def _raw_genome_items(data: object) -> tuple[Mapping[str, object], ...]:
     """Extract only explicit Genome objects from common catalog envelopes."""
 
     if isinstance(data, Sequence) and not isinstance(data, (str, bytes, bytearray)):
-        return tuple(item for value in data if (item := _mapping(value)) is not None)
+        return _genome_items(data)
     item = _mapping(data)
     if item is None:
         return ()
@@ -263,7 +276,7 @@ def _raw_genome_items(data: object) -> tuple[Mapping[str, object], ...]:
     for key in ("genomes", "items", "records", "objects"):
         values = _sequence(item.get(key))
         if values:
-            return tuple(entry for value in values if (entry := _mapping(value)) is not None)
+            return _genome_items(values)
     for key in ("catalog", "data"):
         nested = _mapping(item.get(key))
         if nested is not None:

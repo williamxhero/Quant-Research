@@ -17,7 +17,7 @@ from urllib.request import urlopen
 import pytest
 from strategy_workspace import WorkspaceClient, WorkspaceError
 
-from manager_gui.models import ReadModelStatus
+from manager_gui.models import Availability, Derivation, ManagerReadModel, ReadModelStatus
 from manager_gui.web import ManagerGUIApp, create_server
 from manager_gui.web.navigation import ViewId
 from manager_gui.workspace import WorkspaceDataProvider
@@ -318,6 +318,85 @@ def test_provider_that_ignores_requested_token_cannot_expose_latest(workspace):
     assert rejected.snapshot_token == "unavailable"
     assert rejected.data == {}
     assert "冻结报告正文" not in app.render("/?snapshot_token=unavailable")
+
+
+@pytest.mark.parametrize(
+    "token_query",
+    [
+        "snapshot_token=",
+        "snapshot_token=%20",
+        "snapshot_token=frozen-read&snapshot_token=unknown",
+        "snapshot_token=frozen-read&snapshot=unknown",
+    ],
+)
+def test_resource_read_failure_does_not_override_invalid_token_rejection(token_query):
+    class FailedProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            raise OSError("Public Memory read failed")
+
+    with serving(FailedProvider()) as (app, get):
+        query = "?view=memory-failures&" + token_query
+        expected = app.render_json(query).encode()
+        model = json.loads(expected)
+        assert model["availability"]["status"] == "stale"
+        assert model["errors"][0]["code"] == "snapshot_drift"
+        assert model["data"] == {}
+        assert get("/api/read-model" + query) == expected
+        assert json.loads(get("/api/export" + query))["read_model"] == model
+        assert 'data-status="stale"' in get("/" + query).decode()
+
+
+def test_resource_read_failure_preserves_requested_view_and_existing_failure_envelope():
+    class FailedProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            assert resource == "memory" and snapshot_token == "frozen-read"
+            raise WorkspaceError("owner_unavailable", "Public Memory read failed")
+
+    with serving(FailedProvider()) as (app, get):
+        base = "?view=memory-failures&snapshot_token=frozen-read"
+        expected = app.render_json(base).encode()
+        model = json.loads(expected)
+        assert model["availability"]["status"] == "api_unavailable"
+        assert model["snapshot_token"] == "frozen-read"
+        assert model["data"] == {} and model["source_refs"] == []
+        assert model["errors"][0]["code"] == "provider_read_failed"
+        assert model["errors"][0]["details"]["owner_code"] == "owner_unavailable"
+        for lang in ("zh-CN", "en"):
+            for mode in ("reader", "expert", "raw"):
+                query = base + f"&lang={lang}&mode={mode}"
+                assert get("/api/read-model" + query) == get("/api/read-model" + query) == expected
+                assert json.loads(get("/api/export" + query))["read_model"] == model
+                document = get("/" + query)
+                assert document == get("/" + query) == app.render("/" + query).encode()
+                assert "Public Memory read failed" in document.decode()
+                assert 'data-resource-reading="memory"' in document.decode()
+                assert 'data-sample-banner="fixture"' not in document.decode()
+
+
+def test_resource_notice_cannot_turn_an_unhonored_token_into_confirmed_empty():
+    latest = ManagerReadModel(
+        {"memory_entries": [], "failures": []},
+        (),
+        None,
+        "latest-read",
+        Derivation("direct"),
+        Availability(ReadModelStatus.KNOWN, True),
+    )
+
+    class IgnoringProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            return latest
+
+    with serving(IgnoringProvider()) as (app, get):
+        query = "?view=memory-failures&lang=en&snapshot_token=old-read"
+        model = json.loads(get("/api/read-model" + query))
+        assert model["availability"]["status"] == "stale"
+        assert model["snapshot_token"] == "old-read" and model["data"] == {}
+        assert json.loads(get("/api/export" + query))["read_model"] == model
+        document = get("/" + query).decode()
+        assert 'data-status="stale"' in document
+        assert "Public read confirmed: no records" not in document
+        assert json.loads(app.render_json(query)) == model
 
 
 def test_publication_and_original_bind_verifiable_versions_to_identity(workspace):
