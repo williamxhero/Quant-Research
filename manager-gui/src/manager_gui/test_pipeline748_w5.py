@@ -19,6 +19,68 @@ from manager_gui.testing.acceptance import reading_answer
 from manager_gui.workspace import WorkspaceDataProvider
 
 
+@pytest.mark.parametrize("view", [
+    "atlas", "stories", "strategies", "strategy-conditions", "strategy-genome-comparison",
+    "memory", "memory-failures", "failure-patterns", "evidence", "lineage",
+    "evidence-object-comparison", "derived-failure-grouping", "methodology", "history",
+    "source-documents", "search", "portal",
+])
+@pytest.mark.parametrize("lang", ["zh-CN", "en"])
+@pytest.mark.parametrize("mode", ["reader", "expert", "raw"])
+def test_one_render_parses_the_frozen_canonical_input_only_once(large_public_app, view, lang, mode):
+    import cProfile
+    import pstats
+
+    profile = cProfile.Profile()
+    with profile:
+        document = large_public_app.render(f"/?view={view}&lang={lang}&mode={mode}")
+    code = ManagerReadModel.from_json.__func__.__code__
+    key = (code.co_filename, code.co_firstlineno, code.co_name)
+    assert pstats.Stats(profile).stats[key][1] == 1
+    assert f'data-reader-route="{view}"' in document
+
+
+def test_canonical_readback_validates_its_data_once(large_public_app):
+    import cProfile
+    import pstats
+
+    raw = large_public_app.render_json("/?view=search")
+    profile = cProfile.Profile()
+    with profile:
+        restored = ManagerReadModel.from_json(raw)
+    validations = [value[1] for key, value in pstats.Stats(profile).stats.items()
+                   if key[2] == "_json_value" and key[0].endswith("models.py")]
+    assert sum(validations) == 1
+    assert restored.to_json(indent=2) == raw
+
+
+@pytest.mark.parametrize("field", ["data", "source_refs", "as_of", "snapshot_token"])
+def test_reused_raw_validation_still_rejects_projection_provenance_drift(large_public_app, field):
+    from dataclasses import replace
+
+    projection = large_public_app.reader_projection("/?view=search")
+    replacement = {"data": {}, "source_refs": (), "as_of": "changed",
+                   "snapshot_token": "different-view"}[field]
+    with pytest.raises(ValueError):
+        replace(projection, **{field: replacement})
+
+
+@pytest.mark.parametrize("malformation", ["schema", "nan", "truncated"])
+def test_raw_input_cannot_reuse_validation_for_invalid_bytes(large_public_app, malformation):
+    from manager_gui.reader import RawSource
+
+    payload = json.loads(large_public_app.render_json("/?view=search"))
+    if malformation == "schema":
+        payload["schema"] = "not-canonical-v0"
+    elif malformation == "nan":
+        payload["data"] = {"amount": float("nan")}
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    if malformation == "truncated":
+        raw = raw[:-1]
+    with pytest.raises((TypeError, ValueError)):
+        RawSource(raw)
+
+
 def test_large_public_original_does_not_expand_initial_atlas_html(tmp_path):
     from manager_gui.web import ManagerGUIApp
 

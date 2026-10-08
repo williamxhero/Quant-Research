@@ -341,7 +341,7 @@ class ManagerReadModel:
             ReadModelError.from_dict(_mapping(entry, "errors[]")) for entry in raw_errors
         )
         return cls(
-            data=_json_value(item.get("data"), "data"),
+            data=cast(JSONValue, item.get("data")),
             source_refs=refs,
             as_of=_optional_text(item.get("as_of"), "as_of"),
             snapshot_token=_optional_text(item.get("snapshot_token"), "snapshot_token"),
