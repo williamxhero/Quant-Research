@@ -63,6 +63,12 @@ class WorkspaceDataProvider:
             "publications_observed": len(self._input["records"]),
             "global_catalog": False,
             "cross_resource_atomic_snapshot": False,
+            "lineage_root_limit": 10,
+            "lineage_depth": 1,
+            "lineage_page_size": 100,
+            "artifact_byte_limit": 2_000_000,
+            "runs_limit_reached": len(self._input["runs"]) == limit,
+            "publications_limit_reached": len(self._input["records"]) == limit,
         }
         self._errors = []
         self._relations = []
@@ -138,7 +144,9 @@ class WorkspaceDataProvider:
             result = run.get("result") or {}
             refs.extend(result.get("artifacts", []))
             if result.get("schema") in {
-                "quant-research.result.v2", "quant-research.result.v3", "quant-research.result.v4",
+                "quant-research.result.v2",
+                "quant-research.result.v3",
+                "quant-research.result.v4",
             }:
                 parts = [result.get("discovery") or {}, *(result.get("formal") or {}).values()]
                 refs.extend(ref for part in parts for ref in part.get("artifacts", []))
@@ -147,7 +155,25 @@ class WorkspaceDataProvider:
             if not isinstance(identifier, str):
                 self._errors.append(ReadModelError("invalid_artifact_ref", "No published digest."))
                 continue
-            if any(source["artifact_id"] == identifier for source in self._sources):
+            existing_source = next(
+                (source for source in self._sources if source["artifact_id"] == identifier),
+                None,
+            )
+            if existing_source is not None:
+                if any(
+                    existing_source["raw_source"].get(key) != ref.get(key)
+                    for key in ("uri", "sha256", "bytes", "media_type")
+                ):
+                    existing_source["read_status"] = "integrity_failure"
+                    existing_source.pop("text", None)
+                    existing_source["reason"] = "Published artifact references conflict."
+                    self._errors.append(
+                        ReadModelError(
+                            "artifact_ref_conflict",
+                            existing_source["reason"],
+                            identifier,
+                        )
+                    )
                 continue
             source = {
                 "artifact_id": identifier,
@@ -249,14 +275,16 @@ class WorkspaceDataProvider:
                 "raw_source": run,
             }
             if run.get("result") is not None:
-                self._results.append({
-                    "record_id": identifier,
-                    "record_type": "run_result",
-                    "schema": run["result"].get("schema"),
-                    "title": identifier,
-                    "source_ref": identifier,
-                    "raw_source": run["result"],
-                })
+                self._results.append(
+                    {
+                        "record_id": identifier,
+                        "record_type": "run_result",
+                        "schema": run["result"].get("schema"),
+                        "title": identifier,
+                        "source_ref": identifier,
+                        "raw_source": run["result"],
+                    }
+                )
             self._records.append(item)
             self._chapters["attempts"].append(
                 {key: value for key, value in item.items() if key != "state"}
@@ -450,7 +478,8 @@ class WorkspaceDataProvider:
             "atlas": {"records": self._records},
             "stories": self._chapters,
             "evidence": {
-                "records": self._results + [
+                "records": self._results
+                + [
                     item
                     for chapter in ("evidence", "conclusions")
                     for item in self._chapters[chapter]
@@ -465,7 +494,10 @@ class WorkspaceDataProvider:
                 "nodes": [],
                 "edges": [],
                 "relations": self._relations,
-                "pagination": {"complete": False, "has_more": True},
+                "pagination": {
+                    "complete": False,
+                    "has_more": any(page["next_cursor"] for page in self._input["lineage_pages"]),
+                },
             },
         }[resource]
         return ManagerReadModel(
@@ -486,7 +518,12 @@ class WorkspaceDataProvider:
                 if resource == "lineage" and self._lineage_error
                 else ReadModelStatus.KNOWN,
                 False,
-                "Bounded public reads; not a global catalog or an atomic owner snapshot.",
+                f"Bounded public reads: list limit {self._scope['list_limit']}; "
+                f"{self._scope['runs_observed']} runs and "
+                f"{self._scope['publications_observed']} listed publications. "
+                "Lineage: at most 10 public roots, ancestors, depth 1, first 100-record page "
+                "per root; no relation/type filter. Artifact reads: at most 2000000 bytes each. "
+                "Application-frozen input, not a global catalog or an atomic owner snapshot.",
             ),
             errors=deepcopy(tuple(self._errors)),
         )
