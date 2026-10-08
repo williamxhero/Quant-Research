@@ -416,6 +416,8 @@ def reader_contract_payload(
 def render_reader_contract(
     projection: ReaderProjection,
     mode: ProjectionMode | str,
+    *,
+    deferred_url: str | None = None,
 ) -> str:
     """Expose Reader v1 fields to future page consumers through HTML only.
 
@@ -424,10 +426,15 @@ def render_reader_contract(
     no client-side behavior or generated prose is introduced by this seam.
     """
 
-    payload = reader_contract_payload(projection, mode)
     selected = ProjectionMode(mode)
-    encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True)
-    encoded = encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    encoded = ""
+    if deferred_url is None:
+        payload = reader_contract_payload(projection, mode)
+        encoded = json.dumps(payload, ensure_ascii=False, allow_nan=False, sort_keys=True)
+        encoded = encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    source = (
+        f' data-reader-contract-url="{escape(deferred_url, quote=True)}"' if deferred_url else ""
+    )
     gaps = len(projection.limitations) + len(projection.unknowns)
     sample = "true" if projection.sample_data is not None else "false"
     return (
@@ -438,7 +445,7 @@ def render_reader_contract(
         f'data-reader-claims="{len(projection.claims)}" data-reader-gaps="{gaps}" '
         f'data-reader-source-refs="{len(projection.source_refs)}" '
         f'data-reader-sample="{sample}" hidden>'
-        f'<script id="reader-contract" type="application/json">{encoded}</script>'
+        f'<script id="reader-contract" type="application/json"{source}>{encoded}</script>'
         "</section>"
     )
 

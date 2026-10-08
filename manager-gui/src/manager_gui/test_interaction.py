@@ -339,8 +339,10 @@ def test_keyboard_script_contract_covers_navigation_escape_focus_return_and_no_t
     assert "navigator.clipboard" in JS and "execCommand" in JS  # copy has a safe fallback
     assert 'event.key === "Tab"' not in JS  # a non-modal drawer must not trap focus
     assert "new Blob" in JS  # export is a local download, never a network mutation
-    assert "fetch(" not in JS
-    assert 'method: "POST"' not in JS
+    assert JS.count("fetch(") == JS.count("method: 'GET'")
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        assert f'method: "{method}"' not in JS
+        assert f"method: '{method}'" not in JS
 
 
 # --- export ------------------------------------------------------------------------
@@ -679,7 +681,11 @@ def test_static_client_script_has_explicit_locale_message_injection_hook() -> No
         "copy_unavailable",
         "export_success",
         "export_unavailable",
+        "load_pending",
+        "load_unavailable",
     }
+    assert messages["load_pending"] == "Loading content from the current read view…"
+    assert "verification is incomplete" in messages["load_unavailable"]
     rendered = render_js(translator=EN_TRANSLATOR)
     assert "__MANAGER_GUI_MESSAGES__" not in rendered
     assert '"copy_success":"Copied opaque reference"' in rendered

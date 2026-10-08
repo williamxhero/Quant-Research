@@ -19,6 +19,172 @@ from manager_gui.testing.acceptance import reading_answer
 from manager_gui.workspace import WorkspaceDataProvider
 
 
+def test_large_public_original_does_not_expand_initial_atlas_html(tmp_path):
+    from manager_gui.web import ManagerGUIApp
+
+    root = tmp_path / "isolated-workspace"
+    owner = WorkspaceClient(root)
+    owner.init()
+    owner.publish_record(
+        {
+            "record_id": "large-report",
+            "record_type": "apex-research.study-report-source.v1",
+            "payload": {
+                "schema": "apex-research.study-report-source.v1",
+                "title": "Large public report",
+                "description": "Metadata is not the original report.",
+                "subject_id": "study-large",
+                "version": "v1",
+            },
+        },
+        artifacts=[{"source": b"public original & < > " * 80000, "media_type": "text/plain"}],
+    )
+    app = ManagerGUIApp(provider=WorkspaceDataProvider(root))
+    document = app.render("/?view=atlas&lang=zh-CN&mode=reader")
+    assert len(document.encode("utf-8")) <= 20_000_000
+    assert "Large public report" in document
+    import re
+    from html import unescape
+
+    urls = re.findall(r'data-demand-url="([^"]+)"', document)
+    contents = [app.render(unescape(url)) for url in urls]
+    assert any("Metadata is not the original report." in content for content in contents)
+    assert any("public original &amp; &lt; &gt;" in content for content in contents)
+
+
+@pytest.fixture(scope="module")
+def large_public_app(tmp_path_factory):
+    from manager_gui.web import ManagerGUIApp
+
+    root = tmp_path_factory.mktemp("demand-workspace")
+    owner = WorkspaceClient(root)
+    owner.init()
+    owner.publish_record(
+        {
+            "record_id": "demand-report",
+            "record_type": "apex-research.study-report-source.v1",
+            "payload": {
+                "schema": "apex-research.study-report-source.v1",
+                "title": "Demand report",
+                "description": "Only a description",
+                "version": "v3",
+            },
+        },
+        artifacts=[{"source": b"DEMAND_ORIGINAL & < > " * 80000, "media_type": "text/plain"}],
+    )
+    owner.publish_record({
+        "record_id": "second-report", "record_type": "apex-research.study-report-source.v1",
+        "payload": {"schema": "apex-research.study-report-source.v1", "title": "Second report"},
+    })
+    return ManagerGUIApp(provider=WorkspaceDataProvider(root))
+
+
+def test_demanded_count_pagination_preserves_entry_context_and_all_inputs(large_public_app):
+    import re
+    from html import unescape
+
+    url = "/?view=atlas&lang=en&mode=reader&filter=x&filter=&filter=x&page=1"
+    document = large_public_app.render(url)
+    target = unescape(re.findall(r'data-demand-url="([^"]+)"', document)[0])
+    first = large_public_app.render(target)
+    second = large_public_app.render(target + "&ui_page=2")
+    assert first != second
+    assert ("Second report" in first) != ("Second report" in second)
+    assert ("Demand report" in first) != ("Demand report" in second)
+    assert "filter=x&amp;filter=&amp;filter=x" in target.replace("&", "&amp;")
+    assert "ui_page=2" in first
+    assert large_public_app.render_json(url) == large_public_app.render_json(target + "&ui_page=2")
+
+
+def test_demanded_public_original_has_a_readable_body_not_just_metadata(large_public_app):
+    import re
+    from html import unescape
+
+    document = large_public_app.render("/?view=atlas&lang=en&mode=reader")
+    target = unescape(re.findall(r'data-demand-url="([^"]+)"', document)[1])
+    content = large_public_app.render(target)
+    assert "data-support-original" in content
+    assert 'translate="no">DEMAND_ORIGINAL &amp; &lt; &gt; ' in content
+    assert "demand-report" not in re.search(
+        r'data-support-original>.*?</a><section[^>]*>.*?<pre[^>]*>(.*?)</pre>', content, re.S,
+    ).group(1)
+
+
+@pytest.mark.parametrize("lang", ["zh-CN", "en"])
+@pytest.mark.parametrize("mode", ["reader", "expert", "raw"])
+def test_demand_transport_keeps_published_reader_and_canonical_contract(
+    large_public_app, lang, mode,
+):
+    import re
+    from html import unescape
+
+    from manager_gui.reader.mode import reader_contract_payload
+    from manager_gui.web import create_server
+
+    url = f"/?view=atlas&lang={lang}&mode={mode}&filter=x&filter=&root="
+    document = large_public_app.render(url)
+    target = unescape(re.search(r'data-reader-contract-url="([^"]+)"', document).group(1))
+    server = create_server(app=large_public_app, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urlopen(base + target) as response:
+            raw = response.read()
+            assert response.headers["Content-Type"].startswith("application/json")
+        payload = json.loads(raw)
+        assert payload == reader_contract_payload(large_public_app.reader_projection(url), mode)
+        canonical = json.loads(large_public_app.render_json(url))
+        assert payload["projection"]["raw_source"]["sha256"] == hashlib.sha256(
+            large_public_app.reader_projection(url).raw_source.raw_bytes
+        ).hexdigest()
+        assert payload["projection"]["data"] == canonical["data"]
+        assert payload["projection"]["snapshot_token"] == canonical["snapshot_token"]
+        from urllib.request import Request
+        with urlopen(Request(base + target, method="HEAD")) as response:
+            assert response.read() == b""
+            assert int(response.headers["Content-Length"]) == len(raw)
+        assert large_public_app.render_json(url) == large_public_app.render_json(target)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize("selection", ["not-a-number", "-1", "999999"])
+def test_invalid_demand_selection_cannot_substitute_another_original(large_public_app, selection):
+    content = large_public_app.render(f"/?view=atlas&lang=en&ui_support={selection}")
+    assert "verification is incomplete" in content
+    assert "DEMAND_ORIGINAL" not in content
+    assert "data-support-original" not in content
+
+
+def test_demanded_raw_pagination_retains_full_canonical_text(large_public_app):
+    import re
+    from html import unescape
+
+    url = "/?view=atlas&mode=raw"
+    text = large_public_app.reader_projection(url).raw_source.raw_bytes.decode("utf-8")
+    fragments = []
+    for page in range(1, (len(text) + 99999) // 100000 + 1):
+        document = large_public_app.render(url + f"&ui_raw=1&ui_page={page}")
+        fragments.append(unescape(re.search(r'<pre[^>]*>(.*?)</pre>', document, re.S).group(1)))
+        assert len(document.encode("utf-8")) < 1_000_000
+    assert "".join(fragments) == text
+
+
+@pytest.mark.parametrize("view", ["atlas", "stories", "evidence", "lineage", "history",
+                                  "source-documents", "search", "portal"])
+@pytest.mark.parametrize("lang", ["zh-CN", "en"])
+@pytest.mark.parametrize("mode", ["reader", "expert", "raw"])
+def test_large_pages_defer_originals_in_all_languages_and_modes(large_public_app, view, lang, mode):
+    document = large_public_app.render(f"/?view={view}&lang={lang}&mode={mode}")
+    assert len(document.encode("utf-8")) <= 20_000_000
+    assert "DEMAND_ORIGINAL" not in document
+    assert f'data-reader-route-mode="{mode}"' in document
+    assert f'<html lang="{lang}">' in document
+
+
 def test_unavailable_catalog_answer_never_certifies_absence():
     coverage = {
         "resource": "memory",

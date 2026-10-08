@@ -2239,10 +2239,13 @@ def render_lineage(
             )
             pieces.append(window.render(query_context, view=route, translator=selected_translator))
     if include_raw_json:
-        pieces.append(
+        from .source_support import deferred_raw_markup
+
+        deferred = deferred_raw_markup()
+        pieces.append(deferred if deferred is not None else (
             f'<details class="raw-json lineage-raw-json"><summary>{escape(selected_translator.t("lineage.raw_json"))}</summary>'
             f"<pre>{escape(view.raw_json)}</pre></details>"
-        )
+        ))
     pieces.append("</section>")
     return "".join(pieces)
 

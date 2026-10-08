@@ -334,6 +334,49 @@ JS_TEMPLATE = r"""
     }
   });
 
+  window.managerGUIReaderContract = async () => {
+    const contract = document.getElementById('reader-contract');
+    if (!contract) throw new Error();
+    if (!contract.textContent && contract.dataset.readerContractUrl) {
+      const response = await fetch(contract.dataset.readerContractUrl, { method: 'GET', cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      const payload = await response.text();
+      JSON.parse(payload);
+      contract.textContent = payload;
+    }
+    return JSON.parse(contract.textContent);
+  };
+
+  async function loadDemand(panel, url = panel.dataset.demandUrl) {
+    if (!url || panel.dataset.loading === 'true') return;
+    panel.dataset.loading = 'true';
+    panel.setAttribute('aria-busy', 'true');
+    let status = panel.querySelector('[data-demand-status]');
+    if (!status) {
+      status = document.createElement('p');
+      status.dataset.demandStatus = '';
+      status.setAttribute('role', 'status');
+      panel.appendChild(status);
+    }
+    status.textContent = messages.load_pending;
+    try {
+      const target = new URL(url, window.location.href);
+      if (target.origin !== window.location.origin || target.pathname !== '/') throw new Error();
+      const response = await fetch(target, { method: 'GET', cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      const fragment = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const content = fragment.querySelector('.source-support, .demand-raw');
+      if (!content) throw new Error();
+      panel.innerHTML = content.innerHTML;
+      delete panel.dataset.demandUrl;
+    } catch (error) {
+      status.textContent = messages.load_unavailable;
+    } finally {
+      delete panel.dataset.loading;
+      panel.removeAttribute('aria-busy');
+    }
+  }
+
   const supportPanels = [...document.querySelectorAll('.source-support')];
   let activeSupport = null;
   let supportTrigger = null;
@@ -360,13 +403,22 @@ JS_TEMPLATE = r"""
       link.setAttribute('aria-expanded', 'true');
       panel.focus();
       panel.scrollIntoView({ block: 'start' });
+      loadDemand(panel);
     });
   });
-  document.querySelectorAll('[data-support-close]').forEach(link => {
-    link.addEventListener('click', event => {
+  document.addEventListener('click', event => {
+    const close = event.target.closest('[data-support-close]');
+    if (close) {
       event.preventDefault();
       closeSupport();
-    });
+      return;
+    }
+    const link = event.target.closest('.source-support .pagination-link, .demand-raw .pagination-link, [data-demand-open]');
+    if (!link) return;
+    const panel = link.closest('.source-support, .demand-raw');
+    if (!panel) return;
+    event.preventDefault();
+    loadDemand(panel, link.href);
   });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && activeSupport) {
@@ -441,14 +493,19 @@ JS_TEMPLATE = r"""
   }
 
   document.querySelectorAll("[data-export-current-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const payload = button.dataset.exportPayload;
-      if (!payload) {
-        announce("export_unavailable");
-        return;
-      }
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
       try {
-        const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
+        const payload = button.dataset.exportPayload;
+        let blob;
+        if (payload) {
+          blob = new Blob([payload], { type: "application/json;charset=utf-8" });
+        } else {
+          const response = await fetch(button.dataset.exportUrl, { method: 'GET', cache: 'no-store' });
+          if (!response.ok) throw new Error();
+          blob = await response.blob();
+        }
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = button.dataset.exportFilename || "manager-gui-current-view.json";
@@ -459,6 +516,9 @@ JS_TEMPLATE = r"""
         announce("export_success");
       } catch (error) {
         announce("export_unavailable");
+      } finally {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
       }
     });
   });
@@ -478,12 +538,16 @@ JS_MESSAGE_KEYS = (
     "copy_unavailable",
     "export_success",
     "export_unavailable",
+    "load_pending",
+    "load_unavailable",
 )
 _JS_MESSAGE_CATALOG = {
     "copy_success": "client.copy_success",
     "copy_unavailable": "client.copy_unavailable",
     "export_success": "client.export_success",
     "export_unavailable": "client.export_unavailable",
+    "load_pending": "client.load_pending",
+    "load_unavailable": "client.load_unavailable",
 }
 
 
