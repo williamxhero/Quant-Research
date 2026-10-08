@@ -115,6 +115,7 @@ from .portal_reader import project_portal_reader, render_portal_reader
 from .reader_shell import annotate_reader_mount, reader_route
 from .reader_surface import ReaderPage
 from .research_story import StoryMode, render_research_story
+from .resource_reading import RESOURCES, render_resource_reading
 from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE
@@ -586,6 +587,13 @@ class ManagerGUIApp:
             plain_reading = isinstance(rendered, _PlainResultPage)
             page = rendered.markup if isinstance(rendered, _PlainResultPage) else rendered
             if page is not None:
+                resource = self._resource_for_view(state.view)
+                if self._provider is not None and resource in RESOURCES:
+                    page = render_resource_reading(
+                        model, resource=resource,
+                        title=navigation_label(state.view, translator),
+                        page=page, translator=translator,
+                    )
                 page += support.render(page)
         if page is not None:
             page = annotate_reader_mount(

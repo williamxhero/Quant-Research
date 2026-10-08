@@ -154,6 +154,7 @@ from . import (  # noqa: E402
     plain_memory,
     plain_result,
     plain_strategy,
+    resource_reading,
     source_support,
 )
 
@@ -161,6 +162,7 @@ REGISTRY.register(material_reading.ENTRIES)
 REGISTRY.register(plain_memory.ENTRIES)
 REGISTRY.register(plain_result.ENTRIES)
 REGISTRY.register(plain_strategy.ENTRIES)
+REGISTRY.register(resource_reading.ENTRIES)
 REGISTRY.register(source_support.ENTRIES)
 
 
