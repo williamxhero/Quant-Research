@@ -25,7 +25,7 @@ _COLLECTIONS = {
         "descriptors",
     ),
     "genome_comparison": ("comparisons",),
-    "memory": ("memory_entries", "entries", "failures", "failure_records"),
+    "memory": ("memory_entries", "entries"),
     "failure_patterns": ("patterns", "failure_patterns", "derived_patterns"),
     "failure_grouping": (
         "groups",
@@ -72,13 +72,14 @@ def _has_entries(model: ManagerReadModel, resource: str, view: str) -> bool:
     )
 
 
-def _empty_collection(model: ManagerReadModel, resource: str) -> bool:
+def _empty_collection(model: ManagerReadModel, resource: str, view: str) -> bool:
     root = model.data if isinstance(model.data, Mapping) else {}
-    values = [root[key] for key in _COLLECTIONS[resource] if key in root]
+    keys = ("failures", "failure_records") if view == "memory-failures" else _COLLECTIONS[resource]
+    values = [root[key] for key in keys if key in root]
     return bool(values) and all(isinstance(value, list) and not value for value in values)
 
 
-def _message(model: ManagerReadModel, *, has_entries: bool, resource: str) -> str:
+def _message(model: ManagerReadModel, *, has_entries: bool, resource: str, view: str) -> str:
     status = model.availability.status
     if status is ReadModelStatus.API_UNAVAILABLE:
         return (
@@ -100,7 +101,7 @@ def _message(model: ManagerReadModel, *, has_entries: bool, resource: str) -> st
         return "partial"
     if has_entries:
         return "supplied"
-    if status is ReadModelStatus.KNOWN and _empty_collection(model, resource):
+    if status is ReadModelStatus.KNOWN and _empty_collection(model, resource, view):
         return "confirmed_empty"
     return "object_fields" if model.data else "missing"
 
@@ -115,7 +116,7 @@ def render_resource_reading(
     translator: Translator,
 ) -> str:
     has_entries = _has_entries(model, resource, view)
-    message = _message(model, has_entries=has_entries, resource=resource)
+    message = _message(model, has_entries=has_entries, resource=resource, view=view)
     reason = (
         f'<p data-owner-text="true" translate="no">{escape(model.availability.reason)}</p>'
         if model.availability.reason

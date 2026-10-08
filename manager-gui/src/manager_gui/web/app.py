@@ -12,7 +12,7 @@ from html import escape, unescape
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..fixtures import FixtureState, build_fixture
-from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
+from ..models import Availability, Derivation, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
 from ..reader import (
     ProjectionMode,
@@ -446,7 +446,25 @@ class ManagerGUIApp:
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
         resource = self._resource_for_view(state.view)
-        return provider.read(resource, snapshot_token=state.snapshot_token)
+        try:
+            return provider.read(resource, snapshot_token=state.snapshot_token)
+        except Exception as exc:
+            if self._provider is None or resource not in RESOURCES:
+                raise
+            return ManagerReadModel(
+                {}, (), None, state.snapshot_token, Derivation("direct"),
+                Availability(
+                    ReadModelStatus.API_UNAVAILABLE, False,
+                    "Public resource read failed; absence is not confirmed.",
+                ),
+                (ReadModelError(
+                    "provider_read_failed", str(exc) or type(exc).__name__,
+                    details={
+                        "exception_type": type(exc).__name__,
+                        "owner_code": str(exc.code) if hasattr(exc, "code") else None,
+                    },
+                ),),
+            )
 
     def reader_projection(self, url: str = "/") -> ReaderProjection:
         """Project the current public v0 read into the UI-only Reader contract."""

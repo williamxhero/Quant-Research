@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Thread
+from urllib.request import urlopen
 
 import pytest
-from strategy_workspace import WorkspaceClient
+from strategy_workspace import WorkspaceClient, WorkspaceError
 
 from manager_gui.models import (
     Availability,
@@ -14,6 +17,7 @@ from manager_gui.models import (
     SourceReference,
 )
 from manager_gui.web import ManagerGUIApp
+from manager_gui.web.server import create_server
 from manager_gui.workspace import WorkspaceDataProvider
 
 VIEWS = (
@@ -406,3 +410,247 @@ def test_unrelated_public_records_are_not_promoted_to_semantic_resources(view, r
         assert "对象存在，但所需字段或集合未记录" in html
         assert records[0]["record_id"] in html
         assert "公共读取已确认：当前范围没有记录" not in html
+
+
+@pytest.mark.parametrize(
+    ("view", "data"),
+    (("memory", {"failures": []}), ("memory-failures", {"memory_entries": []})),
+)
+def test_empty_sibling_collection_does_not_confirm_the_selected_collection(view, data):
+    app = ManagerGUIApp(PublicResourceProvider("memory", resource_model(data)))
+    html = app.render(f"/?view={view}")
+    assert "公共读取已确认：当前范围没有记录" not in html
+    assert "对象存在，但所需字段或集合未记录" in html
+
+
+@pytest.fixture
+def http_server():
+    servers = []
+
+    def start(provider):
+        server = create_server(provider=provider, port=0)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append((server, thread))
+        return f"http://127.0.0.1:{server.server_port}"
+
+    yield start
+    for server, thread in servers:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+
+
+def http_get(url):
+    with urlopen(url, timeout=15) as response:
+        assert response.status == 200
+        return response.read().decode("utf-8")
+
+
+@pytest.mark.parametrize(("view", "resource"), VIEWS)
+@pytest.mark.parametrize("lang", ("zh-CN", "en"))
+def test_workspace_provider_http_capability_gap_and_stale_token(
+    workspace_provider, http_server, view, resource, lang
+):
+    base = http_server(workspace_provider)
+    query = f"?view={view}&lang={lang}&scope=isolated-http"
+    html = http_get(base + "/" + query)
+    assert f'data-resource-reading="{resource}"' in html
+    assert (
+        "当前公共接口无法列出" if lang == "zh-CN" else "The current public interface cannot list"
+    ) in html
+    model = json.loads(http_get(base + "/api/read-model" + query))
+    assert model["availability"]["status"] == "api_unavailable"
+    assert json.loads(http_get(base + "/api/export" + query))["read_model"] == model
+    stale_query = query + "&snapshot_token=unknown-public-view"
+    assert ("读取结果已过时" if lang == "zh-CN" else "The read result is stale") in http_get(
+        base + "/" + stale_query
+    )
+    assert (
+        json.loads(http_get(base + "/api/read-model" + stale_query))["availability"]["status"]
+        == "stale"
+    )
+
+
+@pytest.mark.parametrize(("view", "resource"), VIEWS)
+@pytest.mark.parametrize("lang", ("zh-CN", "en"))
+@pytest.mark.parametrize("scenario", ("confirmed_empty", "read_error", "live"))
+def test_public_resource_http_empty_error_and_nonempty_reads(
+    http_server, view, resource, lang, scenario
+):
+    data = LIVE_INPUTS[view] if scenario == "live" else {COLLECTIONS[view]: []}
+    errors = (
+        (ReadModelError("owner_read_failed", "Owner failed to read source-17", "public-record-17"),)
+        if scenario == "read_error"
+        else ()
+    )
+    model = resource_model(data, errors=errors)
+    base = http_server(PublicResourceProvider(resource, model))
+    for mode in ("reader", "expert", "raw"):
+        query = f"?view={view}&lang={lang}&mode={mode}&snapshot_token=public-read-17"
+        html = http_get(base + "/" + query)
+        assert f'data-resource-reading="{resource}"' in html
+        expected = {
+            "confirmed_empty": (
+                "公共读取已确认：当前范围没有记录",
+                "Public read confirmed: no records in the current scope",
+            ),
+            "read_error": ("公共读取失败", "Public reading failed"),
+            "live": ("按本次公共输入呈现记录", "Records are shown from the supplied public input"),
+        }[scenario][lang == "en"]
+        assert expected in html
+        assert 'data-sample-banner="fixture"' not in html
+        assert json.loads(http_get(base + "/api/read-model" + query)) == model.to_dict()
+        assert json.loads(http_get(base + "/api/export" + query))["read_model"] == model.to_dict()
+
+
+def test_workspace_public_inputs_do_not_create_semantic_records_or_use_writes(
+    tmp_path, monkeypatch
+):
+    client = WorkspaceClient(tmp_path)
+    client.init()
+    client.publish_record(
+        {
+            "record_id": "report-source-17",
+            "record_type": "apex-research.study-report-source.v1",
+            "payload": {
+                "schema": "apex-research.study-report-source.v1",
+                "summary": "Report is not Memory",
+                "method_protocol": "Report is not a method",
+            },
+        }
+    )
+
+    def forbidden_write(*args, **kwargs):
+        pytest.fail("W3 used an owner write or unapproved read")
+
+    for name in (
+        "init",
+        "register_package",
+        "publish_record",
+        "submit_run",
+        "propose_genome",
+        "publish_genome",
+        "genome_operation",
+        "get_genome",
+        "inspect_package",
+        "validate_parameters",
+        "verify_artifact",
+        "doctor",
+    ):
+        monkeypatch.setattr(WorkspaceClient, name, forbidden_write)
+
+    monkeypatch.setattr(
+        WorkspaceClient,
+        "list_runs",
+        lambda self, **kw: [
+            {
+                "run_id": "failed-run-116",
+                "status": "failed",
+                "request": {"strategy_package": "package-26"},
+                "result": {
+                    "schema": "quant-research.result.v1",
+                    "summary": "Run failure is not failure experience",
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        WorkspaceClient,
+        "get_registered_package",
+        lambda self, ref: {
+            "package_ref": ref,
+            "title": "Package is not a Genome or a method",
+        },
+    )
+    provider = WorkspaceDataProvider(tmp_path)
+    atlas = provider.read("atlas").data
+    assert atlas["public_input"]["packages"][0]["package_ref"] == "package-26"
+    assert atlas["public_input"]["runs"][0]["status"] == "failed"
+    assert atlas["public_input"]["records"][0]["record_id"] == "report-source-17"
+    app = ManagerGUIApp(provider)
+    for view, _ in VIEWS:
+        html = app.render(f"/?view={view}")
+        assert "当前公共接口无法列出" in html
+        assert "公共读取已确认：当前范围没有记录" not in html
+        model = json.loads(app.render_json(f"/?view={view}"))
+        assert model["data"] == {}
+        assert model["availability"]["status"] == "api_unavailable"
+
+
+def test_no_inputs_produce_no_groups_and_concurrent_languages_do_not_change_facts():
+    model = resource_model(
+        {
+            "rule": "bucket explicit terminal outcome by outcome and protocol",
+            "input_scope": ["empty-public-input"],
+            "records": [],
+        }
+    )
+    app = ManagerGUIApp(PublicResourceProvider("failure_grouping", model))
+    urls = [
+        f"/?view=derived-failure-grouping&lang={lang}&mode={mode}"
+        for lang in ("zh-CN", "en")
+        for mode in ("reader", "expert", "raw")
+    ]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        pages = list(pool.map(app.render, urls))
+    for page in pages:
+        assert 'data-group-outcome="failure"' not in page
+        assert 'data-group-outcome="success"' not in page
+        assert "empty-public-input" in page
+    assert len({app.render_json(url) for url in urls}) == 1
+
+
+@pytest.mark.parametrize(("view", "resource"), VIEWS)
+@pytest.mark.parametrize(
+    "failure",
+    (
+        OSError("Public connection failed"),
+        WorkspaceError("owner_unavailable", "Public owner read failed"),
+    ),
+)
+def test_provider_read_exceptions_use_existing_error_envelope_instead_of_http_500(
+    http_server, view, resource, failure
+):
+    class FailedPublicProvider:
+        def read(self, requested="atlas", *, snapshot_token=None):
+            assert requested == resource
+            raise failure
+
+    app = ManagerGUIApp(FailedPublicProvider())
+    model = json.loads(app.render_json(f"/?view={view}"))
+    assert model["availability"]["status"] == "api_unavailable"
+    assert model["availability"]["complete"] is False
+    assert model["errors"][0]["message"] == str(failure)
+    assert model["data"] == {}
+    base = http_server(FailedPublicProvider())
+    for mode in ("reader", "expert", "raw"):
+        html = http_get(base + f"/?view={view}&mode={mode}")
+        assert "公共读取失败" in html
+        assert 'data-sample-banner="fixture"' not in html
+    assert json.loads(http_get(base + f"/api/read-model?view={view}")) == model
+    assert json.loads(http_get(base + f"/api/export?view={view}"))["read_model"] == model
+
+
+@pytest.mark.parametrize(("view", "resource"), VIEWS)
+@pytest.mark.parametrize(
+    "status",
+    (ReadModelStatus.STALE, ReadModelStatus.INTEGRITY_FAILURE, ReadModelStatus.INCOMPARABLE),
+)
+def test_unusable_nonempty_inputs_preserve_identity_and_unknown_fields(view, resource, status):
+    model = resource_model(LIVE_INPUTS[view], status=status, complete=False)
+    app = ManagerGUIApp(PublicResourceProvider(resource, model))
+    for lang in ("zh-CN", "en"):
+        for mode in ("reader", "expert", "raw"):
+            url = f"/?view={view}&lang={lang}&mode={mode}&scope=isolated-unusable"
+            html = app.render(url)
+            assert f'data-status="{status.value}"' in html
+            assert "public-record-17" in html
+            assert "isolated-unusable" in html
+            assert "公共读取已确认：当前范围没有记录" not in html
+            assert ">USD<" not in html and ">CNY<" not in html
+            if view == "strategies" and lang == "en" and mode == "reader":
+                assert "CNY cannot be assumed" in html
+            assert json.loads(app.render_json(url)) == model.to_dict()
+            assert json.loads(app.render_export(url))["read_model"] == model.to_dict()
