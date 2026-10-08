@@ -103,7 +103,7 @@ def read_guard(workspace, monkeypatch):
             )
 
     active = True
-    root = str(workspace.resolve()).casefold() + os.sep
+    root = workspace.resolve()
 
     def filesystem_sentinel(event, args):
         if not active:
@@ -111,12 +111,15 @@ def read_guard(workspace, monkeypatch):
         if event == "open":
             path, _, flags = args
             mutating = flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
+            paths = (path,) if mutating else ()
         elif event in {"os.mkdir", "os.remove", "os.rmdir", "os.rename"}:
-            path, mutating = args[0], True
+            paths = args[:2] if event == "os.rename" else args[:1]
         else:
             return
-        if isinstance(path, (str, bytes, os.PathLike)) and mutating:
-            assert not str(Path(os.fsdecode(path)).resolve()).casefold().startswith(root)
+        for path in paths:
+            if isinstance(path, (str, bytes, os.PathLike)):
+                candidate = Path(os.fsdecode(path)).resolve()
+                assert candidate != root and root not in candidate.parents
 
     sys.addaudithook(filesystem_sentinel)
     try:
@@ -143,6 +146,17 @@ def serving(provider):
         thread.join(timeout=5)
         server.server_close()
         assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("event", ["open", "os.mkdir", "os.rename"])
+def test_read_only_filesystem_sentinel_is_active(workspace, read_guard, event):
+    args = {
+        "open": (str(workspace / "would-write"), "wb", os.O_CREAT),
+        "os.mkdir": (str(workspace), 0o777, -1),
+        "os.rename": (str(workspace.parent / "outside"), str(workspace / "would-write"), -1, -1),
+    }[event]
+    with pytest.raises(AssertionError):
+        sys.audit(event, *args)
 
 
 @pytest.mark.parametrize("failure", ["unavailable", "integrity", "tampered-bytes"])
