@@ -39,6 +39,25 @@ _REPORT_SCHEMAS = frozenset(
     }
 )
 
+_VIEW_RESOURCES = (
+    "atlas",
+    "stories",
+    "genomes",
+    "genome_conditions",
+    "genome_comparison",
+    "memory",
+    "failure_patterns",
+    "evidence",
+    "lineage",
+    "evidence_comparison",
+    "failure_grouping",
+    "methodology",
+    "history",
+    "source_documents",
+    "search",
+    "report_source",
+)
+
 
 def _digest(value: Any) -> str:
     return hashlib.sha256(
@@ -58,6 +77,14 @@ class WorkspaceDataProvider:
             "records": self._client.list_records(limit=limit),
         }
         self._scope = {
+            "application_read_view": {
+                "kind": "application-frozen-public-input",
+                "workspace": "workspace-" + _digest(str(Path(root).resolve())),
+                "resources": list(_VIEW_RESOURCES),
+                "lifetime": "provider instance; unavailable after replacement",
+                "observation_time": "not supplied by public reads",
+                "owner_transport_bytes": False,
+            },
             "list_limit": limit,
             "runs_observed": len(self._input["runs"]),
             "publications_observed": len(self._input["records"]),
@@ -181,6 +208,7 @@ class WorkspaceDataProvider:
                 "title": ref.get("name"),
                 "locator": ref.get("uri"),
                 "raw_source": ref,
+                "source_revision": identifier,
                 "read_status": "api_unavailable",
             }
             self._sources.append(source)
@@ -242,7 +270,13 @@ class WorkspaceDataProvider:
                     ReadModelError("artifact_integrity_failed", str(exc), identifier)
                 )
         self._token = "workspace-view-" + _digest(
-            {"root": str(Path(root).resolve()), "input": self._input, "scope": self._scope}
+            {
+                "root": str(Path(root).resolve()),
+                "input": self._input,
+                "scope": self._scope,
+                "sources": self._sources,
+                "errors": [error.to_dict() for error in self._errors],
+            }
         )
         self._records = []
         self._refs = []
@@ -272,6 +306,8 @@ class WorkspaceDataProvider:
                 "state": run["status"],
                 "execution_status": run["status"],
                 "source_ref": identifier,
+                "source_revision": _digest(run),
+                "snapshot_token": self._token,
                 "raw_source": run,
             }
             if run.get("result") is not None:
@@ -282,6 +318,8 @@ class WorkspaceDataProvider:
                         "schema": run["result"].get("schema"),
                         "title": identifier,
                         "source_ref": identifier,
+                        "source_revision": _digest(run),
+                        "snapshot_token": self._token,
                         "raw_source": run["result"],
                     }
                 )
@@ -312,6 +350,8 @@ class WorkspaceDataProvider:
                 "schema": payload.get("schema"),
                 "title": payload.get("title") or identifier,
                 "source_ref": identifier,
+                "source_revision": _digest(publication),
+                "snapshot_token": self._token,
                 "raw_source": publication,
                 "mapping_supported": supported,
             }
@@ -319,6 +359,7 @@ class WorkspaceDataProvider:
             if len(artifacts) == 1 and isinstance(artifacts[0].get("sha256"), str):
                 item["original_source_id"] = artifacts[0]["sha256"]
                 item["original_snapshot_token"] = self._token
+                item["original_source_revision"] = artifacts[0]["sha256"]
             if supported:
                 for key in (
                     "summary",
@@ -428,9 +469,12 @@ class WorkspaceDataProvider:
                     "document_type": "raw-evidence",
                     "title": source.get("title") or source["artifact_id"],
                     "source_ref": source["source_id"],
+                    "source_revision": source["source_revision"],
+                    "snapshot_token": self._token,
                     "source_locator": source.get("locator"),
                     "original_source_id": source["source_id"],
                     "original_snapshot_token": self._token,
+                    "original_source_revision": source["source_revision"],
                     "read_status": source["read_status"],
                     "raw_source": source["raw_source"],
                 }
@@ -444,7 +488,7 @@ class WorkspaceDataProvider:
                 {},
                 (),
                 None,
-                snapshot_token,
+                snapshot_token if snapshot_token.strip() else None,
                 Derivation("direct"),
                 Availability(ReadModelStatus.STALE, False, "Unknown application read-view token."),
                 (ReadModelError("snapshot_drift", "The requested read view is unavailable."),),
@@ -472,7 +516,13 @@ class WorkspaceDataProvider:
                 self._token,
                 Derivation("direct"),
                 Availability(ReadModelStatus.API_UNAVAILABLE, False, reason),
-                (ReadModelError("api_unavailable", reason),),
+                (
+                    ReadModelError(
+                        "api_unavailable",
+                        reason,
+                        details=deepcopy({"coverage": {**self._scope, "resource": resource}}),
+                    ),
+                ),
             )
         content = {
             "atlas": {"records": self._records},
@@ -506,7 +556,7 @@ class WorkspaceDataProvider:
                     **content,
                     "sources": self._sources,
                     "public_input": self._input,
-                    "coverage": self._scope,
+                    "coverage": {**self._scope, "resource": resource},
                 }
             ),
             source_refs=tuple(self._refs),

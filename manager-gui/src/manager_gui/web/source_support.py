@@ -291,6 +291,24 @@ class SourceSupport:
         )
         if any(locator and public_locator(locator) is None for locator in locators):
             issues.append("unsafe")
+        revision = original.get("source_revision")
+        if revision is not None:
+            source_id = original.get("source_ref", original.get("source_id"))
+            refs = tuple(ref for ref in self.model.source_refs if ref.source_id == source_id)
+            if len(refs) != 1 or refs[0].revision != revision:
+                issues.append("version_change")
+        if original.get("original_source_id"):
+            linked = self._originals(original)
+            if not linked or any(
+                not _text(item.get("text", item.get("content", item.get("original_text"))))
+                for item in linked
+            ):
+                issues.append("original_missing")
+            expected_revision = original.get("original_source_revision")
+            if expected_revision is not None and any(
+                item.get("source_revision") != expected_revision for item in linked
+            ):
+                issues.append("version_change")
         original_snapshot = original.get("snapshot_token")
         if original_snapshot is not None and (
             expected != original_snapshot or original_snapshot != self.model.snapshot_token

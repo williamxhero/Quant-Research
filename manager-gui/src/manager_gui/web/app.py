@@ -446,33 +446,52 @@ class ManagerGUIApp:
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
         resource = self._resource_for_view(state.view)
-        try:
-            return provider.read(resource, snapshot_token=state.snapshot_token)
-        except Exception as exc:
-            if self._provider is None or resource not in RESOURCES:
-                raise
-            return ManagerReadModel(
-                data={},
-                source_refs=(),
-                as_of=None,
-                snapshot_token=state.snapshot_token,
-                derivation=Derivation("direct"),
-                availability=Availability(
-                    ReadModelStatus.API_UNAVAILABLE,
-                    False,
-                    "Public resource read failed; absence is not confirmed.",
-                ),
-                errors=(
-                    ReadModelError(
-                        "provider_read_failed",
-                        str(exc) or type(exc).__name__,
-                        details={
-                            "exception_type": type(exc).__name__,
-                            "owner_code": str(exc.code) if hasattr(exc, "code") else None,
-                        },
+        tokens = tuple(value for key, value in state.context if key in {"snapshot_token", "snapshot"})
+        if self._provider is not None and (
+            any(not token.strip() for token in tokens) or len(set(tokens)) > 1
+        ):
+            reason = "Blank or conflicting application read-view tokens."
+        else:
+            try:
+                model = provider.read(resource, snapshot_token=state.snapshot_token)
+            except Exception as exc:
+                if self._provider is None or resource not in RESOURCES:
+                    raise
+                return ManagerReadModel(
+                    data={},
+                    source_refs=(),
+                    as_of=None,
+                    snapshot_token=state.snapshot_token,
+                    derivation=Derivation("direct"),
+                    availability=Availability(
+                        ReadModelStatus.API_UNAVAILABLE,
+                        False,
+                        "Public resource read failed; absence is not confirmed.",
                     ),
-                ),
-            )
+                    errors=(
+                        ReadModelError(
+                            "provider_read_failed",
+                            str(exc) or type(exc).__name__,
+                            details={
+                                "exception_type": type(exc).__name__,
+                                "owner_code": str(exc.code) if hasattr(exc, "code") else None,
+                            },
+                        ),
+                    ),
+                )
+            if (
+                self._provider is None
+                or state.snapshot_token is None
+                or model.snapshot_token == state.snapshot_token
+            ):
+                return model
+            reason = "The provider cannot honor the requested application read view."
+        requested = state.snapshot_token
+        return ManagerReadModel(
+            {}, (), None, requested if requested and requested.strip() else None,
+            Derivation("direct"), Availability(ReadModelStatus.STALE, False, reason),
+            (ReadModelError("snapshot_drift", reason),),
+        )
 
     def reader_projection(self, url: str = "/") -> ReaderProjection:
         """Project the current public v0 read into the UI-only Reader contract."""
@@ -599,6 +618,12 @@ class ManagerGUIApp:
         state = self.request_state(url)
         normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
+        if self._provider is not None and model.snapshot_token and state.snapshot_token is None:
+            parts = urlsplit(normalized_url)
+            pairs = parse_qsl(parts.query, keep_blank_values=True)
+            pairs.append(("snapshot_token", model.snapshot_token))
+            normalized_url = urlunsplit(parts._replace(query=urlencode(pairs)))
+            state = replace(state, context=(*state.context, ("snapshot_token", model.snapshot_token)))
         projection = self._project_reader_model(state, model)
         item = navigation_item(state.view)
         route = reader_route(state.view)
