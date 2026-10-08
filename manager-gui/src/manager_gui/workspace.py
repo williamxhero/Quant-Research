@@ -222,6 +222,12 @@ class WorkspaceDataProvider:
                 for key in (
                     "summary", "description", "body", "reason", "limitations", "decision",
                     "evidence_level", "author", "scope", "period", "version", "sections",
+                    "registration", "research", "study_id", "strategy_family", "run_id",
+                    "evidence", "unresolved_explanations", "next_actions", "clauses",
+                    "findings", "data_roles", "real_constraints", "method_protocol",
+                    "sources", "source_record_ids", "workspace_run_ids", "protocol",
+                    "trials", "gate_results", "research_metrics", "report_kind",
+                    "subject_id", "payload_schema", "renderer_version", "identity",
                 ):
                     if key in payload:
                         item[key] = deepcopy(payload[key])
@@ -229,6 +235,10 @@ class WorkspaceDataProvider:
                     item["summary"] = payload["body"]
                 elif isinstance(payload.get("reason"), str):
                     item["summary"] = payload["reason"]
+                if schema == "apex-research.study-status-event.v1":
+                    if "status" in payload:
+                        item["study_status"] = payload["status"]
+                    item["source_event_time"] = publication.get("created_at")
                 chapter = _CHAPTER_BY_SCHEMA.get(schema)
                 if chapter is not None:
                     self._chapters[chapter].append(item)
@@ -261,6 +271,19 @@ class WorkspaceDataProvider:
                 identifier, "strategy-workspace", "publication", f"workspace://record/{identifier}",
                 schema=publication["record_type"], revision=_digest(publication),
             ))
+
+        for source in self._sources:
+            self._documents.append({
+                "document_id": "artifact-document-" + source["artifact_id"],
+                "document_type": "raw-evidence",
+                "title": source.get("title") or source["artifact_id"],
+                "source_ref": source["source_id"],
+                "source_locator": source.get("locator"),
+                "original_source_id": source["source_id"],
+                "original_snapshot_token": self._token,
+                "read_status": source["read_status"],
+                "raw_source": source["raw_source"],
+            })
 
     def read(
         self, resource: str = "atlas", *, snapshot_token: str | None = None
