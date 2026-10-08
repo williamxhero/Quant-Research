@@ -510,19 +510,19 @@ class WorkspaceDataProvider:
                 "verify_artifact and doctor are not approved."
             )
             return ManagerReadModel(
-                deepcopy(
-                    {
-                        "public_input": self._input,
-                        "sources": self._sources,
-                        "coverage": {**self._scope, "resource": resource},
-                    }
-                ),
-                tuple(self._refs),
+                {},
+                (),
                 None,
                 self._token,
                 Derivation("direct"),
                 Availability(ReadModelStatus.API_UNAVAILABLE, False, reason),
-                (ReadModelError("api_unavailable", reason),),
+                (
+                    ReadModelError(
+                        "api_unavailable",
+                        reason,
+                        details=deepcopy({"coverage": {**self._scope, "resource": resource}}),
+                    ),
+                ),
             )
         content = {
             "atlas": {"records": self._records},

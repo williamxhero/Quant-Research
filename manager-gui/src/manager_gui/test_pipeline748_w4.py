@@ -216,11 +216,28 @@ def test_source_failure_is_part_of_read_view_version(workspace, monkeypatch):
     assert second.data["sources"][0]["read_status"] == "integrity_failure"
 
 
+@pytest.mark.parametrize("resource", ["genomes", "methodology", "memory"])
+def test_unmapped_resources_keep_empty_data_and_declare_the_view_in_failure_details(
+    workspace, resource
+):
+    model = WorkspaceDataProvider(workspace).read(resource)
+    assert model.data == {}
+    assert model.source_refs == ()
+    assert model.errors[0].details["coverage"]["resource"] == resource
+    assert set(model.errors[0].details["coverage"]["application_read_view"]["resources"]) == set(
+        RESOURCES
+    )
+
+
 @pytest.mark.parametrize("resource", RESOURCES)
 def test_all_resources_declare_the_same_bounded_application_view(workspace, resource):
     provider = WorkspaceDataProvider(workspace)
     model = provider.read(resource)
-    scope = model.data["coverage"]
+    scope = (
+        model.data["coverage"]
+        if model.availability.status is ReadModelStatus.KNOWN
+        else model.errors[0].details["coverage"]
+    )
     view = scope["application_read_view"]
     assert view["kind"] == "application-frozen-public-input"
     assert set(view["resources"]) == set(RESOURCES)
@@ -300,6 +317,16 @@ def test_publication_and_original_bind_verifiable_versions_to_identity(workspace
     assert original["source_revision"] == refs[original["source_id"]].revision
     assert report["raw_source"]["payload"]["subject_id"] == report["subject_id"] == "study-1"
     assert report["original_source_id"] == original["source_id"]
+
+
+@pytest.mark.parametrize("lang,label", [("en", "Workspace read view"), ("zh-CN", "工作区只读视图")])
+def test_owner_page_names_application_view_not_fixture_snapshot(workspace, lang, label):
+    app = ManagerGUIApp(WorkspaceDataProvider(workspace))
+    document = app.render("/?view=portal&lang=" + lang)
+    note = unescape(re.search(r'<span class="workspace-note">(.*?)</span>', document)[1])
+    assert label in note
+    assert "fixture workspace" not in note and "样例数据" not in note
+    assert app.read_model(app.request_state("/")).snapshot_token in note
 
 
 def test_page_export_and_navigation_pin_the_observed_input(workspace):

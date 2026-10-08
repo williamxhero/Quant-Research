@@ -169,15 +169,25 @@ def run_server(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="manager-gui-web",
-        description="Run the read-only, fixture-backed Manager GUI WebUI shell.",
+        description="Run the read-only Manager GUI with fixture or Workspace data.",
     )
     parser.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8765, help="bind port (default: 8765)")
     parser.add_argument(
+        "--provider",
+        choices=["fixture", "workspace"],
+        default="fixture",
+        help="data provider (default: fixture); workspace requires --workspace-root",
+    )
+    parser.add_argument(
+        "--workspace-root",
+        help="existing Workspace root; only valid with --provider workspace",
+    )
+    parser.add_argument(
         "--fixture",
         choices=[state.value for state in FixtureState],
-        default=FixtureState.PARTIAL.value,
-        help="fixture availability state (default: partial)",
+        default=None,
+        help="fixture availability state (default: partial); invalid with workspace provider",
     )
     parser.add_argument(
         "--lang",
@@ -189,8 +199,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    run_server(host=args.host, port=args.port, fixture=args.fixture, default_locale=args.lang)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    provider = None
+    if args.provider == "workspace":
+        if args.fixture is not None:
+            parser.error("--fixture conflicts with --provider workspace")
+        if not args.workspace_root:
+            parser.error("--provider workspace requires --workspace-root")
+        try:
+            from strategy_workspace import WorkspaceError
+        except ImportError as exc:
+            parser.error(f"Workspace provider dependency unavailable: {exc}")
+        from ..workspace import WorkspaceDataProvider
+
+        try:
+            provider = WorkspaceDataProvider(args.workspace_root)
+        except WorkspaceError as exc:
+            parser.error(f"Workspace provider startup failed [{exc.code}]: {exc}")
+        except (OSError, ValueError) as exc:
+            parser.error(f"Workspace provider startup failed: {exc}")
+    elif args.workspace_root is not None:
+        parser.error("--workspace-root requires --provider workspace")
+    run_server(
+        host=args.host,
+        port=args.port,
+        fixture=args.fixture or FixtureState.PARTIAL,
+        provider=provider,
+        default_locale=args.lang,
+    )
     return 0
 
 

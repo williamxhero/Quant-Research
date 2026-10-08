@@ -1006,7 +1006,8 @@ class ManagerGUIApp:
         workspace_note = (
             translator.t("plain.result.sample" if reader_projection.sample_data else "plain.result.scope")
             if plain_reading else translator.t(
-                "shell.workspace_snapshot", snapshot=model.snapshot_token or translator.t("shell.snapshot_missing")
+                "shell.workspace_snapshot" if reader_projection.sample_data else "shell.owner_workspace_snapshot",
+                snapshot=model.snapshot_token or translator.t("shell.snapshot_missing")
             )
         )
         drawer_hidden = "" if state.panel == "events" or raw_view_selected else " hidden"

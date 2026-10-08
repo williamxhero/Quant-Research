@@ -16,6 +16,10 @@ ENTRIES: Mapping[str, M] = {
         "{term:fixture} · {term:snapshot} {snapshot}",
         "{term:fixture} workspace · {term:snapshot} {snapshot}",
     ),
+    "shell.owner_workspace_snapshot": M(
+        "工作区只读视图 · {term:snapshot} {snapshot}",
+        "Workspace read view · {term:snapshot} {snapshot}",
+    ),
     "shell.read_only": M("只读", "READ ONLY"),
     "shell.read_only_aria": M("只读，已禁用变更", "Read-only; mutations are disabled"),
     "shell.global_search": M("全局搜索", "Global search"),
