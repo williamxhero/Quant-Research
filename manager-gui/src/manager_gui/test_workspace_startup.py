@@ -13,6 +13,8 @@ from urllib.request import urlopen
 import pytest
 from strategy_workspace import WorkspaceClient
 
+from manager_gui.web.navigation import ViewId
+
 
 @pytest.fixture
 def workspace_root(tmp_path):
@@ -60,3 +62,24 @@ def test_cli_workspace_starts_existing_root_without_writes(workspace_root):
             assert model["schema"] == "manager-gui.manager-read-model.v0"
             assert model["snapshot_token"].startswith("workspace-view-")
     assert inventory(workspace_root) == before
+
+
+def test_workspace_identity_is_not_fixture_identity_on_any_route(workspace_root):
+    with cli_server("--provider", "workspace", "--workspace-root", workspace_root) as base:
+        for view in ViewId:
+            for mode in ("reader", "expert", "raw"):
+                for lang in ("zh-CN", "en"):
+                    url = f"{base}/?view={view.value}&mode={mode}&lang={lang}"
+                    with urlopen(url, timeout=5) as response:
+                        document = response.read().decode("utf-8")
+                    for forbidden in (
+                        "编造的示例",
+                        "fabricated example",
+                        "样例数据",
+                        "Sample data",
+                        "fixture workspace",
+                        "fixture-backed",
+                        'data-sample-banner="fixture"',
+                    ):
+                        assert forbidden not in document, (view, mode, lang, forbidden)
+                    assert "workspace-view-" in document
