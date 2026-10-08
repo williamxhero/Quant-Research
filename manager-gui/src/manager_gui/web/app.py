@@ -590,7 +590,7 @@ class ManagerGUIApp:
                 resource = self._resource_for_view(state.view)
                 if self._provider is not None and resource in RESOURCES:
                     page = render_resource_reading(
-                        model, resource=resource,
+                        model, resource=resource, view=state.view.value,
                         title=navigation_label(state.view, translator),
                         page=page, translator=translator,
                     )
