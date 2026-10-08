@@ -13,12 +13,13 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from html import escape
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ..models import ManagerReadModel, ReadModelStatus
 from .i18n import Translator
 from .locators import public_locator
 from .material_reading import MATERIAL_RECORD_KINDS, render_material_details
-from .navigation import query_values
+from .navigation import PageWindow, query_values
 
 # These are existing public payload containers, not an owner schema or a search
 # through arbitrary nested configuration. Relationships are never inherited.
@@ -105,6 +106,37 @@ _POINTER_FIELDS = frozenset(
 )
 
 
+def demand_link(context: str, **updates: object) -> str:
+    pairs = [
+        (key, value) for key, value in parse_qsl(urlsplit(context).query, keep_blank_values=True)
+        if key not in updates
+    ]
+    pairs.extend((key, str(value)) for key, value in updates.items() if value is not None)
+    return "/?" + urlencode(pairs)
+
+
+def demand_window(context: str, *, total: int) -> PageWindow:
+    return PageWindow.from_query(
+        {"page": query_values(context).get("ui_page", "1"), "page_size": "1"}, total=total,
+    )
+
+
+def demand_pagination(context: str, window: PageWindow, translator: Translator) -> str:
+    pages = max(1, window.total)
+    links = []
+    for key, relation, page in (("previous", "prev", window.page - 1),
+                                ("next", "next", window.page + 1)):
+        if 1 <= page <= pages:
+            label = escape(translator.t("pagination." + key))
+            url = demand_link(context, ui_page=page)
+            links.append(f'<a class="pagination-link" rel="{relation}" '
+                         f'href="{escape(url, quote=True)}">{label}</a>')
+    summary = escape(translator.t(
+        "pagination.summary", page=window.page, pages=pages, n=window.total,
+    ))
+    return f'<nav class="page-pagination">{summary}{"".join(links)}</nav>'
+
+
 def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
@@ -152,6 +184,7 @@ class SourceSupport:
     query_context: str
     translator: Translator
     sample: bool = False
+    deferred: bool = False
     entries: list[tuple[str, Mapping[str, object] | None]] = field(default_factory=list)
     explanations: dict[int, str] = field(default_factory=dict)
     fabricated_entries: set[int] = field(default_factory=set)
@@ -189,15 +222,20 @@ class SourceSupport:
             f'<pre data-owner-text="true" translate="no">{escape(filters)}</pre>'
         )
         markup += f"<h3>{self._t('all_inputs', n=len(inputs))}</h3>"
+        context = demand_link(self.query_context, ui_support=index)
+        window = demand_window(context, total=len(inputs))
+        visible = inputs[window.start:window.stop] if self.deferred else inputs
         markup += (
             "<ol>"
             + "".join(
                 f'<li>{self._sample(record)}<pre data-owner-text="true" translate="no">'
                 f"{escape(json.dumps(dict(record), ensure_ascii=False, indent=2))}</pre></li>"
-                for record in inputs
+                for record in visible
             )
             + "</ol>"
         )
+        if self.deferred:
+            markup += demand_pagination(context, window, self.translator)
         return markup
 
     def __post_init__(self) -> None:
@@ -357,6 +395,9 @@ class SourceSupport:
         self, record: Mapping[str, object], panel_id: str, *, fabricated_example: bool = False
     ) -> str:
         originals = self._originals(record)
+        direct = not originals and _text(record.get("text")) is not None
+        if direct:
+            originals = (record,)
         if not originals:
             return ""
         conflict = (
@@ -366,7 +407,8 @@ class SourceSupport:
         )
         parts = [f'<p class="support-impact">{self._t("conflict")}</p>'] if conflict else []
         for index, original in enumerate(originals, 1):
-            issues = self._read_issues(original, record.get("original_snapshot_token"))
+            expected = record.get("snapshot_token" if direct else "original_snapshot_token")
+            issues = self._read_issues(original, expected)
             if issues:
                 parts.extend(f'<p class="support-impact">{self._t(issue)}</p>' for issue in issues)
             text = _text(
@@ -493,9 +535,11 @@ class SourceSupport:
             )
         return markup
 
-    def render(self, page: str) -> str:
+    def render(self, page: str, *, selected_index: int | None = None) -> str:
         panels = []
         for index, (trigger_id, record) in enumerate(self.entries, 1):
+            if selected_index is not None and index != selected_index:
+                continue
             # Hidden legacy markup has separate, prefixed IDs. Do not make its
             # discarded support entries part of the visible reading experience.
             if f'id="{trigger_id}"' not in page:
@@ -509,6 +553,16 @@ class SourceSupport:
                 if title
                 else self._t("heading_unnamed")
             )
+            if self.deferred and selected_index is None:
+                url = demand_link(self.query_context, ui_support=index, ui_page=None)
+                panels.append(
+                    f'<section class="source-support" id="{panel_id}" tabindex="-1" '
+                    f'aria-labelledby="{title_id}" data-demand-url="{escape(url, quote=True)}">'
+                    f'<h2 id="{title_id}">{heading}</h2>'
+                    f'<a href="{escape(url, quote=True)}">{self._t("fields")}</a>'
+                    f'<a href="#{trigger_id}" data-support-close>{self._t("close")}</a></section>'
+                )
+                continue
             fabricated_example = index in self.fabricated_entries
             body = (
                 self._sample(record, fabricated_example=fabricated_example)
@@ -569,8 +623,9 @@ def support_scope(
     *,
     sample: bool = False,
     active: bool = True,
+    deferred: bool = False,
 ) -> Iterator[SourceSupport]:
-    support = SourceSupport(model, query_context, translator, sample)
+    support = SourceSupport(model, query_context, translator, sample, deferred)
     token = _CURRENT.set(support if active else None)
     try:
         yield support
@@ -585,6 +640,21 @@ def suspend_source_support() -> Iterator[None]:
         yield
     finally:
         _CURRENT.reset(token)
+
+
+def deferred_raw_markup() -> str | None:
+    support = _CURRENT.get()
+    if support is None or not support.deferred:
+        return None
+    url = demand_link(support.query_context, ui_raw=1, ui_page=None)
+    api = "/api/read-model?" + urlsplit(support.query_context).query
+    return (
+        f'<section class="demand-raw" data-demand-url="{escape(url, quote=True)}">'
+        f'<a href="{escape(url, quote=True)}" data-demand-open>'
+        f'{escape(support.translator.t("shell.view_raw_json"))}</a>'
+        f'<a href="{escape(api, quote=True)}" target="_blank" rel="noopener">'
+        f'{escape(support.translator.t("reader.raw_source"))}</a></section>'
+    )
 
 
 def source_support_entry(

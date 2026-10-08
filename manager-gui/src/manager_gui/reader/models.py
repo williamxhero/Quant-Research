@@ -387,12 +387,15 @@ class RawSource:
     """The exact v0 transport bytes, or v0 canonical serialization if none supplied."""
 
     raw_bytes: bytes
+    _model: ManagerReadModel = field(init=False, repr=False, compare=False)
     schema: ClassVar[str] = MANAGER_READ_MODEL_SCHEMA
 
     def __post_init__(self) -> None:
         if not isinstance(self.raw_bytes, bytes):
             raise ValueError("raw_bytes must be immutable bytes")
-        ManagerReadModel.from_json(self.raw_bytes.decode("utf-8"))
+        object.__setattr__(
+            self, "_model", ManagerReadModel.from_json(self.raw_bytes.decode("utf-8")),
+        )
 
     @property
     def sha256(self) -> str:
@@ -488,7 +491,7 @@ class ReaderProjection:
             raise ValueError("Reader projection must name its GUI derivation rule and version")
         if not set(self.derivation.inputs) <= set(source_index):
             raise ValueError("projection derivation inputs must name source_refs")
-        original = ManagerReadModel.from_json(self.raw_source.raw_bytes.decode("utf-8"))
+        original = self.raw_source._model
         if (
             _thaw(self.data) != original.data
             or self.source_refs != original.source_refs
@@ -607,7 +610,7 @@ def project_read_model(
     """
 
     raw = RawSource(model.to_json().encode("utf-8") if raw_bytes is None else raw_bytes)
-    original = ManagerReadModel.from_json(raw.raw_bytes.decode("utf-8"))
+    original = raw._model
     if original.to_dict() != model.to_dict():
         raise ValueError("raw_bytes must describe the supplied v0 envelope")
     return ReaderProjection(

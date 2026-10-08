@@ -27,6 +27,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         if path in {"/", "/index.html"}:
+            if self.server.app.request_state(self.path).context_value("ui_reader") == "1":
+                self._send_text(
+                    self.server.app.render_reader_json(self.path),
+                    "application/json; charset=utf-8",
+                )
+                return
             self._send_text(self.server.app.render(self.path), "text/html; charset=utf-8")
             return
         if path == "/api/read-model":
@@ -52,6 +58,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         path = urlsplit(self.path).path
         if path in {"/", "/index.html"}:
+            if self.server.app.request_state(self.path).context_value("ui_reader") == "1":
+                self._send_text(
+                    self.server.app.render_reader_json(self.path),
+                    "application/json; charset=utf-8",
+                    head_only=True,
+                )
+                return
             self._send_text(
                 self.server.app.render(self.path),
                 "text/html; charset=utf-8",

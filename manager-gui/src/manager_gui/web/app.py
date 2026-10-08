@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, replace
 from html import escape, unescape
@@ -22,6 +23,7 @@ from ..reader import (
     render_reader_contract,
     render_sample_banner,
 )
+from ..reader.mode import reader_contract_payload
 from .assets import CSS, render_js
 from .atlas import render_atlas_reading, render_atlas_view
 from .comparison import (
@@ -120,7 +122,13 @@ from .s4_fixtures import S4_FIXTURE_STATES, S4_RESOURCES, build_s4_fixture
 from .s6_fixtures import S6_RESOURCES, build_s6_fixture
 from .search import SEARCH_RESOURCE
 from .search_reader import project_search_reader, render_search_reader
-from .source_support import support_scope
+from .source_support import (
+    deferred_raw_markup,
+    demand_link,
+    demand_pagination,
+    demand_window,
+    support_scope,
+)
 from .status import render_status_block
 from .strategy_reader import project_strategy_reader, render_strategy_reader
 
@@ -625,12 +633,24 @@ class ManagerGUIApp:
             normalized_url = urlunsplit(parts._replace(query=urlencode(pairs)))
             state = replace(state, context=(*state.context, ("snapshot_token", model.snapshot_token)))
         projection = self._project_reader_model(state, model)
+        deferred = len(projection.raw_source.raw_bytes) > 1_000_000
         item = navigation_item(state.view)
         route = reader_route(state.view)
         translator = Translator(state.locale)
+        if state.context_value("ui_raw") == "1":
+            text = projection.raw_source.raw_bytes.decode("utf-8")
+            window = demand_window(normalized_url, total=(len(text) + 99999) // 100000)
+            chunk = text[window.start * 100000:window.stop * 100000]
+            return (
+                '<section class="demand-raw">'
+                f'<pre class="raw-json" translate="no">{escape(chunk)}</pre>'
+                + demand_pagination(normalized_url, window, translator)
+                + '</section>'
+            )
         with support_scope(
             model, normalized_url, translator, sample=projection.sample_data is not None,
-            active=state.mode is ProjectionMode.READER,
+            active=deferred or state.mode is ProjectionMode.READER,
+            deferred=deferred,
         ) as support:
             rendered = self._render_page(
                 state, model, normalized_url, translator=translator, reader_projection=projection
@@ -644,6 +664,21 @@ class ManagerGUIApp:
                         model, resource=resource, view=state.view.value,
                         title=navigation_label(state.view, translator),
                         page=page, translator=translator,
+                    )
+                if deferred and state.mode is not ProjectionMode.READER:
+                    page += "".join(
+                        f'<p>{support.reference(ref.source_id)}</p>' for ref in model.source_refs
+                    )
+                selected = state.context_value("ui_support")
+                if selected is not None:
+                    try:
+                        index = int(selected)
+                    except ValueError:
+                        index = 0
+                    return support.render(page, selected_index=index) or (
+                        '<section class="source-support">'
+                        f'<p role="status">{escape(translator.t("client.load_unavailable"))}</p>'
+                        f'{render_status_block(model, translator=translator)}</section>'
                     )
                 page += support.render(page)
         if page is not None:
@@ -663,6 +698,14 @@ class ManagerGUIApp:
             raw_url=normalized_url,
             reader_projection=projection,
             plain_reading=plain_reading,
+        )
+
+    def render_reader_json(self, url: str) -> str:
+        state = self.request_state(url)
+        projection = self._project_reader_model(state, self.read_model(state))
+        return json.dumps(
+            reader_contract_payload(projection, state.mode),
+            ensure_ascii=False, allow_nan=False, sort_keys=True,
         )
 
     def render_json(self, url: str = "/") -> str:
@@ -713,6 +756,15 @@ class ManagerGUIApp:
         """Mount a page hook while leaving all shell chrome in this app."""
 
         cached = _CachedReadProvider(model)
+        if state.mode is ProjectionMode.RAW:
+            raw = deferred_raw_markup()
+            if raw is not None:
+                item = navigation_item(state.view)
+                return (
+                    f'<section data-integration-hook="{escape(item.integration_hook, quote=True)}">'
+                    f'<h1 data-page-title tabindex="-1">{escape(navigation_label(state.view, translator))}</h1>'
+                    f'{render_status_block(model, translator=translator)}{raw}</section>'
+                )
         if state.view is ViewId.ATLAS:
             if state.mode is ProjectionMode.READER:
                 return render_atlas_reading(
@@ -1023,7 +1075,20 @@ class ManagerGUIApp:
         reader_projection: ReaderProjection,
         plain_reading: bool,
     ) -> str:
-        raw_json = escape(model.to_json(indent=2))
+        deferred = len(reader_projection.raw_source.raw_bytes) > 1_000_000
+        query = urlsplit(raw_url).query
+        raw_endpoint = "/api/read-model?" + query
+        raw_url_paged = demand_link(raw_url, ui_raw=1, ui_page=None)
+        raw_json = (
+            '<section class="demand-raw">'
+            f'<a href="{escape(raw_url_paged, quote=True)}" data-demand-open>'
+            f'{escape(translator.t("shell.view_raw_json"))}</a>'
+            f'<a href="{escape(raw_endpoint, quote=True)}" target="_blank" rel="noopener">'
+            f'{escape(translator.t("reader.raw_source"))}</a></section>'
+            if deferred else
+            f'<pre class="raw-json" aria-label="{escape(translator.t("shell.raw_json_aria"), quote=True)}">'
+            f'{escape(model.to_json(indent=2))}</pre>'
+        )
         label = navigation_label(item.view_id, translator)
         description = navigation_description(item.view_id, translator)
         raw_mode = next(
@@ -1092,7 +1157,7 @@ class ManagerGUIApp:
             translator=translator,
             view=state.view.value,
             snapshot_token=model.snapshot_token,
-            model=model,
+            model=None if deferred else model,
         )
         navigation = (
             f'<nav class="nav-strip" aria-label="{escape(translator.t("nav.aria"), quote=True)}">'
@@ -1117,7 +1182,10 @@ class ManagerGUIApp:
             },
             current_attribute="true",
         )
-        reader_contract = render_reader_contract(reader_projection, state.mode)
+        reader_contract = render_reader_contract(
+            reader_projection, state.mode,
+            deferred_url=demand_link(raw_url, ui_reader=1) if deferred else None,
+        )
         sample_banner = render_sample_banner(
             reader_projection,
             locale=state.locale.value,
@@ -1186,7 +1254,7 @@ class ManagerGUIApp:
   </div>
   <aside class="event-drawer" id="event-drawer" tabindex="-1"{drawer_hidden} aria-labelledby="event-title">
     <div class="panel-heading"><h2 id="event-title">{escape(translator.t("shell.events_raw_json"))}</h2><button class="panel-button drawer-close" type="button" data-close-panels aria-label="{escape(translator.t("shell.close_panels"), quote=True)}">{escape(translator.t("shell.close"))}</button></div>
-    <pre class="raw-json" aria-label="{escape(translator.t("shell.raw_json_aria"), quote=True)}">{raw_json}</pre>
+    {raw_json}
   </aside>
 </div>
 {render_js(translator=translator)}
