@@ -256,7 +256,7 @@ def _genome_items(values: Sequence[object]) -> tuple[Mapping[str, object], ...]:
         item = _mapping(value)
         if item is None:
             continue
-        kind = _first_text(item, "record_type", "object_type", "type", "kind")
+        kind = _first_text(item, "record_type", "object_type", "type", "kind", "schema")
         if kind and "genome" not in kind.lower() and not _first_text(item, "genome_id", "genomeId"):
             continue
         items.append(item)

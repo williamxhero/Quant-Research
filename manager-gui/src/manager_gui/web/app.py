@@ -452,18 +452,26 @@ class ManagerGUIApp:
             if self._provider is None or resource not in RESOURCES:
                 raise
             return ManagerReadModel(
-                {}, (), None, state.snapshot_token, Derivation("direct"),
-                Availability(
-                    ReadModelStatus.API_UNAVAILABLE, False,
+                data={},
+                source_refs=(),
+                as_of=None,
+                snapshot_token=state.snapshot_token,
+                derivation=Derivation("direct"),
+                availability=Availability(
+                    ReadModelStatus.API_UNAVAILABLE,
+                    False,
                     "Public resource read failed; absence is not confirmed.",
                 ),
-                (ReadModelError(
-                    "provider_read_failed", str(exc) or type(exc).__name__,
-                    details={
-                        "exception_type": type(exc).__name__,
-                        "owner_code": str(exc.code) if hasattr(exc, "code") else None,
-                    },
-                ),),
+                errors=(
+                    ReadModelError(
+                        "provider_read_failed",
+                        str(exc) or type(exc).__name__,
+                        details={
+                            "exception_type": type(exc).__name__,
+                            "owner_code": str(exc.code) if hasattr(exc, "code") else None,
+                        },
+                    ),
+                ),
             )
 
     def reader_projection(self, url: str = "/") -> ReaderProjection:

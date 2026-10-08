@@ -135,7 +135,14 @@ def render_resource_reading(
         f"<p>{translator.html('resource_reading.unknown_fields')}</p>"
         f"{reason}{'<ul>' + errors + '</ul>' if errors else ''}</section>"
     )
-    if has_entries:
+    # The layered Memory page can claim both catalogs empty only after both were enumerated.
+    memory_empty = (
+        resource == "memory"
+        and message == "confirmed_empty"
+        and _empty_collection(model, resource, "memory")
+        and _empty_collection(model, resource, "memory-failures")
+    )
+    if has_entries or memory_empty:
         return notice + page
     return (
         f'<section class="resource-reading-page"><h1>{escape(title)}</h1>{notice}'

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from threading import Thread
 from urllib.request import urlopen
 
@@ -115,7 +116,7 @@ def test_only_explicit_successful_complete_collection_reads_confirm_no_records(
     url = f"/?view={view}&lang={lang}&mode={mode}&snapshot_token=public-read-17"
     html = app.render(url)
     expected = (
-        "公共读取已确认：当前范围没有记录"
+        "公共读取确认：当前范围没有记录"
         if lang == "zh-CN"
         else "Public read confirmed: no records in the current scope"
     )
@@ -188,7 +189,7 @@ def test_missing_blocked_stale_integrity_incomparable_and_errors_are_not_empty(
     for mode in ("reader", "expert", "raw"):
         html = app.render(f"/?view={view}&lang={lang}&mode={mode}")
         assert (zh if lang == "zh-CN" else en) in html
-        assert "公共读取已确认：当前范围没有记录" not in html
+        assert "公共读取确认：当前范围没有记录" not in html
         assert "Public read confirmed: no records in the current scope" not in html
         assert 'data-sample-banner="fixture"' not in html
         for error in errors:
@@ -200,7 +201,7 @@ def test_present_object_without_collection_fields_is_not_an_empty_collection(vie
     model = resource_model({"record_id": "public-record-17", "title": "Fieldless public object"})
     html = ManagerGUIApp(PublicResourceProvider(resource, model)).render(f"/?view={view}")
     assert "对象存在，但所需字段或集合未记录" in html
-    assert "公共读取已确认：当前范围没有记录" not in html
+    assert "公共读取确认：当前范围没有记录" not in html
     assert "Fieldless public object" in html
 
 
@@ -317,7 +318,7 @@ def test_new_public_resource_records_are_rendered_without_example_defaults(
         else "Records are shown from the supplied public input"
     )
     assert expected in html
-    assert "公共读取已确认：当前范围没有记录" not in html
+    assert "公共读取确认：当前范围没有记录" not in html
     assert "fixture://" not in html
     assert 'data-sample-banner="fixture"' not in html
     assert "filter=a" in html and "filter=b" in html
@@ -409,7 +410,7 @@ def test_unrelated_public_records_are_not_promoted_to_semantic_resources(view, r
         assert "按本次公共输入呈现记录" not in html
         assert "对象存在，但所需字段或集合未记录" in html
         assert records[0]["record_id"] in html
-        assert "公共读取已确认：当前范围没有记录" not in html
+        assert "公共读取确认：当前范围没有记录" not in html
 
 
 @pytest.mark.parametrize(
@@ -419,7 +420,7 @@ def test_unrelated_public_records_are_not_promoted_to_semantic_resources(view, r
 def test_empty_sibling_collection_does_not_confirm_the_selected_collection(view, data):
     app = ManagerGUIApp(PublicResourceProvider("memory", resource_model(data)))
     html = app.render(f"/?view={view}")
-    assert "公共读取已确认：当前范围没有记录" not in html
+    assert "公共读取确认：当前范围没有记录" not in html
     assert "对象存在，但所需字段或集合未记录" in html
 
 
@@ -493,7 +494,7 @@ def test_public_resource_http_empty_error_and_nonempty_reads(
         assert f'data-resource-reading="{resource}"' in html
         expected = {
             "confirmed_empty": (
-                "公共读取已确认：当前范围没有记录",
+                "公共读取确认：当前范围没有记录",
                 "Public read confirmed: no records in the current scope",
             ),
             "read_error": ("公共读取失败", "Public reading failed"),
@@ -573,7 +574,7 @@ def test_workspace_public_inputs_do_not_create_semantic_records_or_use_writes(
     for view, _ in VIEWS:
         html = app.render(f"/?view={view}")
         assert "当前公共接口无法列出" in html
-        assert "公共读取已确认：当前范围没有记录" not in html
+        assert "公共读取确认：当前范围没有记录" not in html
         model = json.loads(app.render_json(f"/?view={view}"))
         assert model["data"] == {}
         assert model["availability"]["status"] == "api_unavailable"
@@ -648,9 +649,81 @@ def test_unusable_nonempty_inputs_preserve_identity_and_unknown_fields(view, res
             assert f'data-status="{status.value}"' in html
             assert "public-record-17" in html
             assert "isolated-unusable" in html
-            assert "公共读取已确认：当前范围没有记录" not in html
+            assert "公共读取确认：当前范围没有记录" not in html
             assert ">USD<" not in html and ">CNY<" not in html
             if view == "strategies" and lang == "en" and mode == "reader":
                 assert "CNY cannot be assumed" in html
             assert json.loads(app.render_json(url)) == model.to_dict()
             assert json.loads(app.render_export(url))["read_model"] == model.to_dict()
+
+
+@pytest.mark.parametrize("view", ("strategies", "memory", "evidence-object-comparison"))
+@pytest.mark.parametrize("lang", ("zh-CN", "en"))
+@pytest.mark.parametrize(
+    "source_status", ("api_unavailable", "stale", "integrity_failure", "incomparable")
+)
+def test_unusable_original_support_is_not_promoted_to_verified_evidence(view, lang, source_status):
+    data = deepcopy(LIVE_INPUTS[view])
+    if view == "strategies":
+        records = data["genomes"]
+    elif view == "memory":
+        records = data["memory_entries"]
+    else:
+        records = [data["left"], data["right"]]
+    for record in records:
+        record.update(
+            {
+                "source_ref": "public-record-17",
+                "original_source_id": "public-original-17",
+                "original_snapshot_token": "public-read-17",
+            }
+        )
+    data["sources"] = [
+        {
+            "source_id": "public-original-17",
+            "title": "Unusable original support",
+            "text": "Retained original wording is not a verified finding",
+            "read_status": source_status,
+            "snapshot_token": "public-read-17",
+        }
+    ]
+    resource = dict(VIEWS)[view]
+    model = resource_model(data)
+    app = ManagerGUIApp(PublicResourceProvider(resource, model))
+    html = app.render(f"/?view={view}&lang={lang}&mode=reader")
+    expected = (
+        "对应文字不能作为已核验支持"
+        if lang == "zh-CN"
+        else "the corresponding text is not verified support"
+    )
+    assert expected in html
+    assert "public-original-17" in html
+    assert json.loads(app.render_json(f"/?view={view}")) == model.to_dict()
+
+
+@pytest.mark.parametrize(
+    ("view", "resource", "record"),
+    (
+        (
+            "strategies",
+            "genomes",
+            {"record_id": "package-schema-only", "schema": "quant-research.strategy-package.v1"},
+        ),
+        (
+            "memory-failures",
+            "memory",
+            {
+                "record_id": "result-schema-only",
+                "schema": "quant-research.result.v4",
+                "failure_category": "runtime_failure",
+                "outcome": "execution_error",
+            },
+        ),
+    ),
+)
+def test_package_and_run_result_schemas_do_not_supply_semantic_identity(view, resource, record):
+    model = resource_model({"records": [record]})
+    html = ManagerGUIApp(PublicResourceProvider(resource, model)).render(f"/?view={view}")
+    assert "按本次公共输入呈现记录" not in html
+    assert "对象存在，但所需字段或集合未记录" in html
+    assert record["record_id"] in html

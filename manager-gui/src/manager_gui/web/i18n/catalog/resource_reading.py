@@ -7,12 +7,12 @@ ENTRIES = {
         "is not a complete catalog and cannot establish that no records exist.",
     ),
     "resource_reading.confirmed_empty": M(
-        "公共读取已确认：当前范围没有记录。这只描述本次读取范围，不代表其他范围或未来也没有记录。",
+        "公共读取确认：当前范围没有记录。这只描述本次读取范围，不代表其他范围或未来也没有记录。",
         "Public read confirmed: no records in the current scope. This describes only this read's "
         "scope, not other scopes or future records.",
     ),
     "resource_reading.missing": M(
-        "字段或集合未记录，不能当成已确认的空集合。",
+        "字段或集合未记录，不能当成确认的空集合。",
         "The field or collection is not recorded; it is not a confirmed empty collection.",
     ),
     "resource_reading.object_fields": M(
@@ -80,7 +80,7 @@ ENTRIES = {
         "report summaries and run results do not automatically become Research Memory.",
     ),
     "resource_reading.impact.memory-failures": M(
-        "失败经验需要失败性质、条件与依据；一次失败运行不能自动成为失败经验，未知原因不是已确认失败模式。",
+        "失败经验需要失败性质、条件与依据；一次失败运行不能自动成为失败经验，未知原因不构成失败模式依据。",
         "Failure experience needs failure nature, conditions and support; a failed run does not "
         "automatically become failure experience, and an unknown cause is not a confirmed "
         "failure pattern.",
