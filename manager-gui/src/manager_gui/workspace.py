@@ -477,7 +477,7 @@ class WorkspaceDataProvider:
                 {},
                 (),
                 None,
-                snapshot_token,
+                snapshot_token if snapshot_token.strip() else None,
                 Derivation("direct"),
                 Availability(ReadModelStatus.STALE, False, "Unknown application read-view token."),
                 (ReadModelError("snapshot_drift", "The requested read view is unavailable."),),

@@ -6,6 +6,7 @@ import pytest
 from strategy_workspace import WorkspaceClient, WorkspaceError
 
 from manager_gui.models import ReadModelStatus
+from manager_gui.web import ManagerGUIApp
 from manager_gui.workspace import WorkspaceDataProvider
 
 RESOURCES = (
@@ -97,3 +98,46 @@ def test_all_resources_declare_the_same_bounded_application_view(workspace, reso
         "methodology",
     }:
         assert model.availability.status is ReadModelStatus.API_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "snapshot_token=",
+        "snapshot=",
+        "snapshot_token=%20",
+        "snapshot_token={token}&snapshot_token=unknown",
+        "snapshot_token={token}&snapshot=unknown",
+        "snapshot_token=&snapshot={token}",
+    ],
+)
+def test_blank_or_conflicting_tokens_do_not_fall_back_to_latest(workspace, query):
+    provider = WorkspaceDataProvider(workspace)
+    token = provider.read().snapshot_token
+    app = ManagerGUIApp(provider)
+    model = app.read_model(app.request_state("/?" + query.format(token=token)))
+    assert model.availability.status is ReadModelStatus.STALE
+    assert model.data == {}
+    assert model.errors[0].code == "snapshot_drift"
+
+
+@pytest.mark.parametrize("token", ["", " ", "unknown"])
+def test_direct_provider_rejects_unusable_tokens(workspace, token):
+    model = WorkspaceDataProvider(workspace).read("atlas", snapshot_token=token)
+    assert model.availability.status is ReadModelStatus.STALE
+    assert model.data == {}
+
+
+def test_provider_that_ignores_requested_token_cannot_expose_latest(workspace):
+    latest = WorkspaceDataProvider(workspace).read()
+
+    class IgnoringProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            return latest
+
+    app = ManagerGUIApp(IgnoringProvider())
+    rejected = app.read_model(app.request_state("/?snapshot_token=unavailable"))
+    assert rejected.availability.status is ReadModelStatus.STALE
+    assert rejected.snapshot_token == "unavailable"
+    assert rejected.data == {}
+    assert "冻结报告正文" not in app.render("/?snapshot_token=unavailable")

@@ -12,7 +12,7 @@ from html import escape, unescape
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..fixtures import FixtureState, build_fixture
-from ..models import Availability, ManagerReadModel, ReadModelError, ReadModelStatus
+from ..models import Availability, Derivation, ManagerReadModel, ReadModelError, ReadModelStatus
 from ..provider import ManagerDataProvider
 from ..reader import (
     ProjectionMode,
@@ -445,7 +445,26 @@ class ManagerGUIApp:
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
         resource = self._resource_for_view(state.view)
-        return provider.read(resource, snapshot_token=state.snapshot_token)
+        tokens = tuple(value for key, value in state.context if key in {"snapshot_token", "snapshot"})
+        if self._provider is not None and (
+            any(not token.strip() for token in tokens) or len(set(tokens)) > 1
+        ):
+            reason = "Blank or conflicting application read-view tokens."
+        else:
+            model = provider.read(resource, snapshot_token=state.snapshot_token)
+            if (
+                self._provider is None
+                or state.snapshot_token is None
+                or model.snapshot_token == state.snapshot_token
+            ):
+                return model
+            reason = "The provider cannot honor the requested application read view."
+        requested = state.snapshot_token
+        return ManagerReadModel(
+            {}, (), None, requested if requested and requested.strip() else None,
+            Derivation("direct"), Availability(ReadModelStatus.STALE, False, reason),
+            (ReadModelError("snapshot_drift", reason),),
+        )
 
     def reader_projection(self, url: str = "/") -> ReaderProjection:
         """Project the current public v0 read into the UI-only Reader contract."""
