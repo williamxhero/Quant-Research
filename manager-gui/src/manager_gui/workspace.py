@@ -242,7 +242,13 @@ class WorkspaceDataProvider:
                     ReadModelError("artifact_integrity_failed", str(exc), identifier)
                 )
         self._token = "workspace-view-" + _digest(
-            {"root": str(Path(root).resolve()), "input": self._input, "scope": self._scope}
+            {
+                "root": str(Path(root).resolve()),
+                "input": self._input,
+                "scope": self._scope,
+                "sources": self._sources,
+                "errors": [error.to_dict() for error in self._errors],
+            }
         )
         self._records = []
         self._refs = []
