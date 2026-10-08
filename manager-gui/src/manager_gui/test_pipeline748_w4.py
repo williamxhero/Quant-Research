@@ -141,3 +141,59 @@ def test_provider_that_ignores_requested_token_cannot_expose_latest(workspace):
     assert rejected.snapshot_token == "unavailable"
     assert rejected.data == {}
     assert "冻结报告正文" not in app.render("/?snapshot_token=unavailable")
+
+
+def test_publication_and_original_bind_verifiable_versions_to_identity(workspace):
+    model = WorkspaceDataProvider(workspace).read("report_source")
+    report = model.data["reports"][0]
+    original = model.data["sources"][0]
+    refs = {ref.source_id: ref for ref in model.source_refs}
+    assert report["source_revision"] == refs["report-1"].revision
+    assert report["snapshot_token"] == model.snapshot_token
+    assert report["original_source_revision"] == original["source_revision"]
+    assert original["source_revision"] == refs[original["source_id"]].revision
+    assert report["raw_source"]["payload"]["subject_id"] == report["subject_id"] == "study-1"
+    assert report["original_source_id"] == original["source_id"]
+
+
+@pytest.mark.parametrize("change", ["record-revision", "original-revision", "linked-revision"])
+def test_same_token_does_not_hide_evidence_revision_drift(workspace, change):
+    model = WorkspaceDataProvider(workspace).read("report_source")
+    report = model.data["reports"][0]
+    original = model.data["sources"][0]
+    if change == "record-revision":
+        report["source_revision"] = "different-publication-version"
+    elif change == "original-revision":
+        original["source_revision"] = "different-original-version"
+    else:
+        report["original_source_revision"] = "different-linked-version"
+
+    class SuppliedProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            return model
+
+    app = ManagerGUIApp(SuppliedProvider())
+    document = app.render("/?view=portal&lang=en&mode=reader")
+    assert "Original and result versions differ" in document
+    assert (
+        "Cannot open the original; this content cannot be treated as verified support." in document
+    )
+
+
+@pytest.mark.parametrize("change", ["missing-original", "unreadable-original"])
+def test_unreadable_linked_original_is_not_verified_support(workspace, change):
+    model = WorkspaceDataProvider(workspace).read("report_source")
+    if change == "missing-original":
+        model.data["sources"] = []
+    else:
+        model.data["sources"][0].pop("text")
+
+    class SuppliedProvider:
+        def read(self, resource="atlas", *, snapshot_token=None):
+            return model
+
+    document = ManagerGUIApp(SuppliedProvider()).render("/?view=portal&lang=en&mode=reader")
+    assert "The matching source did not supply a readable original" in document
+    assert (
+        "Cannot open the original; this content cannot be treated as verified support." in document
+    )

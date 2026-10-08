@@ -208,6 +208,7 @@ class WorkspaceDataProvider:
                 "title": ref.get("name"),
                 "locator": ref.get("uri"),
                 "raw_source": ref,
+                "source_revision": identifier,
                 "read_status": "api_unavailable",
             }
             self._sources.append(source)
@@ -305,6 +306,8 @@ class WorkspaceDataProvider:
                 "state": run["status"],
                 "execution_status": run["status"],
                 "source_ref": identifier,
+                "source_revision": _digest(run),
+                "snapshot_token": self._token,
                 "raw_source": run,
             }
             if run.get("result") is not None:
@@ -315,6 +318,8 @@ class WorkspaceDataProvider:
                         "schema": run["result"].get("schema"),
                         "title": identifier,
                         "source_ref": identifier,
+                        "source_revision": _digest(run),
+                        "snapshot_token": self._token,
                         "raw_source": run["result"],
                     }
                 )
@@ -345,6 +350,8 @@ class WorkspaceDataProvider:
                 "schema": payload.get("schema"),
                 "title": payload.get("title") or identifier,
                 "source_ref": identifier,
+                "source_revision": _digest(publication),
+                "snapshot_token": self._token,
                 "raw_source": publication,
                 "mapping_supported": supported,
             }
@@ -352,6 +359,7 @@ class WorkspaceDataProvider:
             if len(artifacts) == 1 and isinstance(artifacts[0].get("sha256"), str):
                 item["original_source_id"] = artifacts[0]["sha256"]
                 item["original_snapshot_token"] = self._token
+                item["original_source_revision"] = artifacts[0]["sha256"]
             if supported:
                 for key in (
                     "summary",
@@ -461,9 +469,12 @@ class WorkspaceDataProvider:
                     "document_type": "raw-evidence",
                     "title": source.get("title") or source["artifact_id"],
                     "source_ref": source["source_id"],
+                    "source_revision": source["source_revision"],
+                    "snapshot_token": self._token,
                     "source_locator": source.get("locator"),
                     "original_source_id": source["source_id"],
                     "original_snapshot_token": self._token,
+                    "original_source_revision": source["source_revision"],
                     "read_status": source["read_status"],
                     "raw_source": source["raw_source"],
                 }
