@@ -132,6 +132,7 @@ def test_r4_owner_provider_has_no_fixture_banner_and_preserves_owner_sources() -
         fixture_model,
         source_refs=(owner_ref,),
         derivation=Derivation("direct", inputs=(owner_ref.source_id,), version="owner-r4-v1"),
+        snapshot_token="owner-r4",
     )
 
     class OwnerProvider:

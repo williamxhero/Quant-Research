@@ -591,6 +591,12 @@ class ManagerGUIApp:
         state = self.request_state(url)
         normalized_url = with_lang(url, state.lang)
         model = self.read_model(state)
+        if self._provider is not None and model.snapshot_token and state.snapshot_token is None:
+            parts = urlsplit(normalized_url)
+            pairs = parse_qsl(parts.query, keep_blank_values=True)
+            pairs.append(("snapshot_token", model.snapshot_token))
+            normalized_url = urlunsplit(parts._replace(query=urlencode(pairs)))
+            state = replace(state, context=(*state.context, ("snapshot_token", model.snapshot_token)))
         projection = self._project_reader_model(state, model)
         item = navigation_item(state.view)
         route = reader_route(state.view)

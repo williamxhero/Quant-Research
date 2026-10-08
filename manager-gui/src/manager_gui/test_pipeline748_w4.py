@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
+import re
+import subprocess
+import sys
+from html import unescape
 from pathlib import Path
 
 import pytest
@@ -154,6 +160,41 @@ def test_publication_and_original_bind_verifiable_versions_to_identity(workspace
     assert original["source_revision"] == refs[original["source_id"]].revision
     assert report["raw_source"]["payload"]["subject_id"] == report["subject_id"] == "study-1"
     assert report["original_source_id"] == original["source_id"]
+
+
+def test_page_export_and_navigation_pin_the_observed_input(workspace):
+    app = ManagerGUIApp(WorkspaceDataProvider(workspace))
+    token = app.read_model(app.request_state("/")).snapshot_token
+    document = app.render("/?view=portal&lang=en")
+    export_url = unescape(re.search(r'data-export-url="([^"]+)"', document)[1])
+    assert "snapshot_token=" + token in export_url
+    payload = json.loads(unescape(re.search(r'data-export-payload="([^"]+)"', document)[1]))
+    assert payload == json.loads(app.render_export(export_url))
+    links = re.findall(r'class="(?:nav-link|reading-task-link)"[^>]*href="([^"]+)"', document)
+    assert links and all("snapshot_token=" + token in unescape(link) for link in links)
+    assert 'name="snapshot_token" value="' + token + '"' in document
+
+
+def test_bytes_are_stable_across_process_hash_seeds(workspace):
+    code = """
+import hashlib, json, sys
+from manager_gui.web import ManagerGUIApp
+from manager_gui.web.navigation import ViewId
+from manager_gui.workspace import WorkspaceDataProvider
+app = ManagerGUIApp(WorkspaceDataProvider(sys.argv[1]))
+print(json.dumps([
+    hashlib.sha256(method('/?view=' + view.value).encode()).hexdigest()
+    for view in ViewId for method in (app.render_json, app.render_export, app.render)
+]))
+"""
+    outputs = [
+        subprocess.check_output(
+            [sys.executable, "-c", code, str(workspace)],
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        for seed in ("1", "7", "23")
+    ]
+    assert outputs[0] == outputs[1] == outputs[2]
 
 
 @pytest.mark.parametrize("change", ["record-revision", "original-revision", "linked-revision"])
