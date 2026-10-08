@@ -1,18 +1,25 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import pytest
 from strategy_workspace import WorkspaceClient, WorkspaceError
 
 from manager_gui.models import ReadModelStatus
-from manager_gui.web import ManagerGUIApp
+from manager_gui.web import ManagerGUIApp, create_server
+from manager_gui.web.navigation import ViewId
 from manager_gui.workspace import WorkspaceDataProvider
 
 RESOURCES = (
@@ -56,6 +63,139 @@ def workspace(tmp_path: Path) -> Path:
         artifacts=[{"source": b"original report v1", "media_type": "text/plain"}],
     )
     return root
+
+
+@pytest.fixture
+def read_guard(workspace, monkeypatch):
+    allowed = {
+        "list_runs",
+        "list_records",
+        "get_registered_package",
+        "query_lineage",
+        "read_artifact",
+    }
+    calls = []
+    constructor = WorkspaceClient.__init__
+
+    def readonly(self, root, **kwargs):
+        assert kwargs.get("read_only") is True
+        constructor(self, root, **kwargs)
+
+    def deny(*args, **kwargs):
+        pytest.fail("Owner write/non-approved operation during read-view consumption")
+
+    def audit(method, name):
+        def checked(self, *args, **kwargs):
+            assert self.read_only
+            if name != "query_lineage":
+                assert "snapshot_token" not in kwargs and "cursor" not in kwargs
+            calls.append((name, kwargs.copy()))
+            return method(self, *args, **kwargs)
+
+        return checked
+
+    monkeypatch.setattr(WorkspaceClient, "__init__", readonly)
+    for name in dir(WorkspaceClient):
+        method = getattr(WorkspaceClient, name)
+        if not name.startswith("_") and callable(method):
+            monkeypatch.setattr(
+                WorkspaceClient, name, audit(method, name) if name in allowed else deny
+            )
+
+    active = True
+    root = str(workspace.resolve()).casefold() + os.sep
+
+    def filesystem_sentinel(event, args):
+        if not active:
+            return
+        if event == "open":
+            path, _, flags = args
+            mutating = flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
+        elif event in {"os.mkdir", "os.remove", "os.rmdir", "os.rename"}:
+            path, mutating = args[0], True
+        else:
+            return
+        if isinstance(path, (str, bytes, os.PathLike)) and mutating:
+            assert not str(Path(os.fsdecode(path)).resolve()).casefold().startswith(root)
+
+    sys.addaudithook(filesystem_sentinel)
+    try:
+        yield calls
+    finally:
+        active = False
+
+
+@contextmanager
+def serving(provider):
+    server = create_server(provider=provider, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def get(path):
+        with urlopen(f"http://127.0.0.1:{server.server_port}" + path, timeout=10) as response:
+            assert response.status == 200
+            return response.read()
+
+    try:
+        yield server.app, get
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+        assert not thread.is_alive()
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "integrity", "tampered-bytes"])
+def test_source_failures_never_replace_old_evidence_or_verify_new_content(
+    workspace, read_guard, monkeypatch, failure
+):
+    old_provider = WorkspaceDataProvider(workspace)
+    old_app = ManagerGUIApp(old_provider)
+    old_bytes = old_app.render_json("/?view=portal")
+    actual_read = WorkspaceClient.read_artifact
+
+    def failed_read(self, uri):
+        if failure == "tampered-bytes":
+            result = actual_read(self, uri)
+            return {**result, "content": base64.b64encode(b"tampered bytes").decode()}
+        code = "artifact_read_failed" if failure == "unavailable" else "artifact_integrity_failed"
+        raise WorkspaceError(code, "Public original could not be verified")
+
+    monkeypatch.setattr(WorkspaceClient, "read_artifact", failed_read)
+    new_provider = WorkspaceDataProvider(workspace)
+    model = new_provider.read("report_source")
+    status = "api_unavailable" if failure == "unavailable" else "integrity_failure"
+    assert model.data["sources"][0]["read_status"] == status
+    assert "text" not in model.data["sources"][0]
+    assert model.errors
+    assert model.snapshot_token != old_provider.read().snapshot_token
+    assert old_app.render_json("/?view=portal") == old_bytes
+    assert "original report v1" in old_bytes
+    with serving(new_provider) as (app, get):
+        for lang in ("zh-CN", "en"):
+            for mode in ("reader", "expert", "raw"):
+                query = f"?view=portal&lang={lang}&mode={mode}"
+                assert json.loads(get("/api/read-model" + query)) == model.to_dict()
+                assert json.loads(get("/api/export" + query))["read_model"] == model.to_dict()
+                assert get("/" + query) == app.render("/" + query).encode()
+        reader = get("/?view=portal&lang=en").decode()
+        assert (
+            "Cannot open the original; this content cannot be treated as verified support."
+            in reader
+        )
+        assert "The source reports a read, version, or integrity problem" in reader
+
+
+def test_caller_cannot_mutate_frozen_public_input(workspace):
+    provider = WorkspaceDataProvider(workspace)
+    expected = provider.read("report_source").to_json()
+    supplied = provider.read("report_source")
+    supplied.data["reports"][0]["summary"] = "Caller replacement"
+    supplied.data["public_input"]["records"].clear()
+    supplied.data["sources"][0]["text"] = "Caller replacement"
+    assert (
+        provider.read("report_source", snapshot_token=supplied.snapshot_token).to_json() == expected
+    )
 
 
 def test_source_failure_is_part_of_read_view_version(workspace, monkeypatch):
@@ -173,6 +313,209 @@ def test_page_export_and_navigation_pin_the_observed_input(workspace):
     links = re.findall(r'class="(?:nav-link|reading-task-link)"[^>]*href="([^"]+)"', document)
     assert links and all("snapshot_token=" + token in unescape(link) for link in links)
     assert 'name="snapshot_token" value="' + token + '"' in document
+
+
+@pytest.mark.parametrize("view", list(ViewId))
+def test_public_http_matrix_reuses_canonical_bytes(workspace, read_guard, view):
+    provider = WorkspaceDataProvider(workspace)
+    initial_calls = list(read_guard)
+    token = provider.read().snapshot_token
+    with serving(provider) as (app, get):
+        expected = app.render_json("/?view=" + view.value).encode()
+        for context in (
+            "",
+            "&filter=a&filter=&filter=a&root=study-1&scope=A0&record_id=report-1",
+            "&q=&q=ignored&root=&scope=&object_id=&opaque_ref=&filter=&filter=",
+        ):
+            base = "?" + urlencode({"view": view.value, "snapshot_token": token}) + context
+            expected_export = app.render_export(base).encode()
+            for lang in ("zh-CN", "en"):
+                for mode in ("reader", "expert", "raw"):
+                    query = base + f"&lang={lang}&mode={mode}"
+                    assert (
+                        app.read_model(app.request_state(query)).to_json(indent=2).encode()
+                        == expected
+                    )
+                    assert app.render_json(query).encode() == expected
+                    assert app.render_export(query).encode() == expected_export
+                    assert (
+                        get("/api/read-model" + query) == get("/api/read-model" + query) == expected
+                    )
+                    assert (
+                        get("/api/export" + query) == get("/api/export" + query) == expected_export
+                    )
+                    document = get("/" + query)
+                    assert document == get("/" + query) == app.render("/" + query).encode()
+                    raw = unescape(
+                        re.search(
+                            r'<pre class="raw-json"[^>]*>(.*?)</pre>', document.decode(), re.S
+                        )[1]
+                    )
+                    assert raw.encode() == expected
+                    embedded = json.loads(
+                        unescape(re.search(r'data-export-payload="([^"]+)"', document.decode())[1])
+                    )
+                    assert embedded["read_model"] == json.loads(expected)
+                    assert (
+                        app.reader_projection(query).raw_source.raw_bytes
+                        == app.read_model(app.request_state(query)).to_json().encode()
+                    )
+    assert read_guard == initial_calls
+    assert {name for name, _ in read_guard} == {"list_runs", "list_records", "read_artifact"}
+
+
+def test_input_updates_keep_old_bytes_and_reject_old_tokens_in_new_views(workspace, tmp_path):
+    first = WorkspaceDataProvider(workspace)
+    first_app = ManagerGUIApp(first)
+    old_token = first.read().snapshot_token
+    query = "?view=portal&snapshot_token=" + old_token
+    old_json, old_export, old_page = (
+        first_app.render_json(query),
+        first_app.render_export(query),
+        first_app.render(query),
+    )
+    owner = WorkspaceClient(workspace)
+    owner.publish_record(
+        {
+            "record_id": "report-2",
+            "record_type": "apex-research.study-report-source.v1",
+            "created_at": "2026-10-08T10:00:00Z",
+            "payload": {
+                "schema": "apex-research.study-report-source.v1",
+                "title": "更新研究报告",
+                "body": "更新报告正文",
+                "subject_id": "study-1",
+                "version": "v2",
+            },
+        },
+        artifacts=[{"source": b"original report v2", "media_type": "text/plain"}],
+    )
+    second = WorkspaceDataProvider(workspace)
+    new_token = second.read().snapshot_token
+    assert old_token != new_token
+    assert first_app.render_json(query) == old_json
+    assert first_app.render_export(query) == old_export
+    assert first_app.render(query) == old_page
+    assert "更新报告正文" not in old_json
+    assert "original report v2" not in old_export
+    assert "更新报告正文" in ManagerGUIApp(second).render_json("/?view=portal")
+    same_new_input = WorkspaceDataProvider(workspace)
+    assert same_new_input.read().snapshot_token == new_token
+    assert same_new_input.read("report_source").to_json() == second.read("report_source").to_json()
+
+    other_root = tmp_path / "other-workspace"
+    WorkspaceClient(other_root).init()
+    other = WorkspaceDataProvider(other_root)
+    assert other.read().snapshot_token != new_token
+    for provider in (second, other):
+        with serving(provider) as (app, get):
+            for token in (old_token, "unknown", ""):
+                rejected_query = "?view=portal&snapshot_token=" + token
+                raw = get("/api/read-model" + rejected_query)
+                rejected = json.loads(raw)
+                exported = json.loads(get("/api/export" + rejected_query))
+                assert rejected["availability"]["status"] == "stale"
+                assert rejected["data"] == {}
+                assert rejected["source_refs"] == []
+                assert exported["read_model"] == rejected
+                assert raw == app.render_json(rejected_query).encode()
+                assert "更新报告正文" not in get("/" + rejected_query).decode()
+    assert (
+        first.read("report_source", snapshot_token=new_token).availability.status
+        is ReadModelStatus.STALE
+    )
+
+
+def test_lineage_without_public_key_is_disclosed_without_initialization(workspace, request):
+    WorkspaceClient(workspace).publish_record(
+        {
+            "record_id": "unready-lineage",
+            "record_type": "apex-research.research-conclusion.v1",
+            "payload": {"schema": "apex-research.research-conclusion.v1"},
+            "lineage": [
+                {"source_kind": "publication", "source_id": "report-1", "relation": "supported_by"}
+            ],
+        }
+    )
+    calls = request.getfixturevalue("read_guard")
+    provider = WorkspaceDataProvider(workspace)
+    model = provider.read("lineage")
+    assert model.availability.status is ReadModelStatus.API_UNAVAILABLE
+    assert model.errors
+    assert model.data["public_input"]["lineage_pages"] == []
+    assert "query_lineage" in {name for name, _ in calls}
+    document = ManagerGUIApp(provider).render("/?view=lineage&lang=en")
+    assert model.errors[0].code in document
+    assert provider.read("lineage").to_json() == model.to_json()
+
+
+def test_lineage_tokens_remain_scoped_paged_and_expiring(workspace):
+    owner = WorkspaceClient(workspace)
+    for index in range(101):
+        owner.publish_record(
+            {
+                "record_id": f"parent-{index:03d}",
+                "record_type": "apex-research.evidence.v1",
+                "created_at": "2026-10-08T09:00:00Z",
+                "payload": {"schema": "apex-research.evidence.v1"},
+            }
+        )
+    owner.publish_record(
+        {
+            "record_id": "lineage-root",
+            "record_type": "apex-research.research-conclusion.v1",
+            "created_at": "2026-10-08T10:00:00Z",
+            "payload": {"schema": "apex-research.research-conclusion.v1"},
+            "lineage": [
+                {
+                    "source_kind": "publication",
+                    "source_id": f"parent-{index:03d}",
+                    "relation": "supported_by",
+                }
+                for index in range(101)
+            ],
+        }
+    )
+    owner.query_lineage(
+        roots=[{"kind": "publication", "id": "lineage-root"}], direction="ancestors"
+    )
+    provider = WorkspaceDataProvider(workspace, limit=3)
+    model = provider.read("lineage")
+    page = model.data["public_input"]["lineage_pages"][0]
+    assert len(page["records"]) == 100
+    assert page["next_cursor"]
+    assert model.data["pagination"] == {"complete": False, "has_more": True}
+    assert model.data["coverage"]["publications_limit_reached"] is True
+    assert model.data["coverage"]["lineage_pages"][0]["snapshot_token"] == page["snapshot_token"]
+    query = {
+        "roots": [{"kind": "publication", "id": "lineage-root"}],
+        "direction": "ancestors",
+        "relations": [],
+        "record_types": [],
+        "max_depth": 1,
+        "page_size": 100,
+        "snapshot_token": page["snapshot_token"],
+        "cursor": page["next_cursor"],
+    }
+    readonly = WorkspaceClient(workspace, read_only=True)
+    continuation = readonly.query_lineage(**query)
+    assert len(continuation["records"]) == 1 and continuation["next_cursor"] is None
+    with pytest.raises(WorkspaceError) as mismatch:
+        readonly.query_lineage(**{**query, "page_size": 99})
+    assert mismatch.value.code == "lineage_cursor_query_mismatch"
+    late = WorkspaceClient(
+        workspace, read_only=True, clock=lambda: datetime.now(UTC) + timedelta(days=1)
+    )
+    with pytest.raises(WorkspaceError) as expired:
+        late.query_lineage(**query)
+    assert expired.value.code == "expired_lineage_cursor"
+    for owner_token in (page["snapshot_token"], page["next_cursor"]):
+        for resource in RESOURCES:
+            rejected = provider.read(resource, snapshot_token=owner_token)
+            assert rejected.availability.status is ReadModelStatus.STALE and rejected.data == {}
+    assert (
+        provider.read("lineage", snapshot_token=model.snapshot_token).to_json() == model.to_json()
+    )
 
 
 def test_bytes_are_stable_across_process_hash_seeds(workspace):
