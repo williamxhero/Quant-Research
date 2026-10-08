@@ -41,18 +41,18 @@ PACKAGE_CATALOG_SEAM = ReadSeamDecision(
 WORKSPACE_PUBLIC_READ_SEAM = ReadSeamDecision(
     seam_id="workspace-public-read",
     owner="strategy-workspace",
-    contract="Existing WorkspaceClient public read APIs",
+    contract="Zero-write WorkspaceClient public read APIs (verified read_only=True acceptance)",
     operations=(
         "get_run",
         "list_runs",
         "get_result",
         "get_record",
         "list_records",
-        "get_genome",
+        "get_registered_package",
         "query_lineage",
         "read_artifact",
     ),
-    status="blocked-read-initialization",
+    status="verified-readonly-acceptance",
     prohibited_fallbacks=(
         "private database",
         "private repository",
@@ -64,13 +64,20 @@ WORKSPACE_PUBLIC_READ_SEAM = ReadSeamDecision(
         "preinitialization",
     ),
     decision=(
-        "W1 production reads remain blocked: the Workspace owner must provide genuinely "
-        "nonwriting semantics for existing public reads, including the query_lineage cursor key. "
-        "Current reads trigger metadata initialization, a writer lock, and "
-        "RW SQLite/WAL/migrations; query_lineage also creates the cursor secret. "
-        "The inert constructor alone is insufficient. Until the owner resolves these writes, "
-        "a production Workspace provider must report api_unavailable; this declaration does not "
-        "implement a provider or introduce a new owner API, nor claim a read-only contract exists."
+        "Block lifted for the listed operations: the owner's staged zero-write acceptance "
+        "(strategy-workspace R1 #5, R2 #6, R3 #7; verified commit 169ea0f, merged as 22aea590) "
+        "proves each listed public read leaves the owner workspace byte-for-byte unchanged - no "
+        "initialization, migration, writer lock, cursor-key creation or WAL/SHM sidecar - when "
+        "the client is constructed explicitly with read_only=True on an existing compatible root. "
+        "Governing prerequisites stay mandatory: an explicit read-only construction, a frozen "
+        "share-mode view of an existing compatible database, and no active writer or sidecar. "
+        "Verified limits are part of the contract: non-frozen, missing, unpublished-artifact and "
+        "unreadable-artifact states stay unverifiable, a missing or invalid cursor key stays "
+        "lineage_cursor_unavailable, and lists stay bounded. get_genome, inspect_package, "
+        "validate_parameters, verify_artifact and doctor remain unapproved reads and must still "
+        "report api_unavailable. W1 (#763) may implement the Workspace provider on exactly these "
+        "operations with the same prohibited fallbacks; this declaration adds no new owner API and "
+        "claims no read-only guarantee beyond the verified scope."
     ),
 )
 
