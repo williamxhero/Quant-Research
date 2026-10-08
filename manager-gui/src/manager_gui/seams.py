@@ -69,8 +69,8 @@ WORKSPACE_PUBLIC_READ_SEAM = ReadSeamDecision(
         "Current reads trigger metadata initialization, a writer lock, and "
         "RW SQLite/WAL/migrations; query_lineage also creates the cursor secret. "
         "The inert constructor alone is insufficient. Until the owner resolves these writes, "
-        "Manager GUI reports api_unavailable; this "
-        "declaration neither introduces a new owner API nor claims a read-only contract exists."
+        "a production Workspace provider must report api_unavailable; this declaration does not "
+        "implement a provider or introduce a new owner API, nor claim a read-only contract exists."
     ),
 )
 
