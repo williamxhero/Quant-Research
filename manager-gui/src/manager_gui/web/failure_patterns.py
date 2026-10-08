@@ -168,6 +168,14 @@ def _compact(value: object) -> str | None:
 
 def _is_failure(item: Mapping[str, object]) -> bool:
     kind = _record_type(item)
+    schema = _text(item.get("schema")) or ""
+    if (
+        kind in {"run", "run-result", "failed-run"}
+        or kind.endswith(".run.v1")
+        or schema.startswith(("quant-research.result.", "quant-research.run."))
+        or schema == "apex-research.run.v1"
+    ):
+        return False
     if kind in _FAILURE_TYPES or "failure" in kind or kind.startswith("apex-research.failure"):
         return True
     if any(key in item for key in ("failure_category", "failure_class", "failure_reason", "failure_outcome")):
