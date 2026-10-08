@@ -23,6 +23,13 @@ def public_locator(value: str | None) -> str | None:
         parsed = urlsplit(value)
     except ValueError:
         return None
+    if parsed.scheme == "workspace-artifact":
+        digest = parsed.path.removeprefix("/")
+        return value if (
+            parsed.netloc == "sha256" and len(digest) == 64
+            and all(char in "0123456789abcdef" for char in digest)
+            and not parsed.query and not parsed.fragment
+        ) else None
     if parsed.scheme in {"http", "https"}:
         return value if parsed.netloc and not parsed.username and not parsed.password else None
     return value if parsed.scheme in LINKABLE_SCHEMES else None
