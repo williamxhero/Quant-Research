@@ -39,6 +39,25 @@ _REPORT_SCHEMAS = frozenset(
     }
 )
 
+_VIEW_RESOURCES = (
+    "atlas",
+    "stories",
+    "genomes",
+    "genome_conditions",
+    "genome_comparison",
+    "memory",
+    "failure_patterns",
+    "evidence",
+    "lineage",
+    "evidence_comparison",
+    "failure_grouping",
+    "methodology",
+    "history",
+    "source_documents",
+    "search",
+    "report_source",
+)
+
 
 def _digest(value: Any) -> str:
     return hashlib.sha256(
@@ -58,6 +77,14 @@ class WorkspaceDataProvider:
             "records": self._client.list_records(limit=limit),
         }
         self._scope = {
+            "application_read_view": {
+                "kind": "application-frozen-public-input",
+                "workspace": "workspace-" + _digest(str(Path(root).resolve())),
+                "resources": list(_VIEW_RESOURCES),
+                "lifetime": "provider instance; unavailable after replacement",
+                "observation_time": "not supplied by public reads",
+                "owner_transport_bytes": False,
+            },
             "list_limit": limit,
             "runs_observed": len(self._input["runs"]),
             "publications_observed": len(self._input["records"]),
@@ -472,8 +499,14 @@ class WorkspaceDataProvider:
                 "verify_artifact and doctor are not approved."
             )
             return ManagerReadModel(
-                {},
-                (),
+                deepcopy(
+                    {
+                        "public_input": self._input,
+                        "sources": self._sources,
+                        "coverage": {**self._scope, "resource": resource},
+                    }
+                ),
+                tuple(self._refs),
                 None,
                 self._token,
                 Derivation("direct"),
@@ -512,7 +545,7 @@ class WorkspaceDataProvider:
                     **content,
                     "sources": self._sources,
                     "public_input": self._input,
-                    "coverage": self._scope,
+                    "coverage": {**self._scope, "resource": resource},
                 }
             ),
             source_refs=tuple(self._refs),
