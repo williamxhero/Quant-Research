@@ -29,8 +29,10 @@ from manager_gui.web.atlas import (
     AtlasViewModel,
     atlas_link,
     render_atlas,
+    render_atlas_reading,
 )
 from manager_gui.web.i18n import Locale, Translator
+from manager_gui.web.research_story import render_research_story
 
 
 def _complete_model(locale: Locale | str = Locale.EN) -> ManagerReadModel:
@@ -325,3 +327,68 @@ def test_atlas_owner_title_is_escaped_once_and_remains_verbatim() -> None:
 
     assert_owner_text_escaped(markup, owner_title)
     assert 'data-record-id="owner-record"' in markup
+
+
+def test_atlas_reader_and_expert_share_explicit_story_content() -> None:
+    model = fixture_provider("complete").read("stories")
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        sample=True,
+    )
+    expert = render_research_story(
+        model, translator=Translator(Locale.EN), include_reader_surface=False
+    )
+
+    for text in (
+        "Why test the fixture strategy?",
+        "Validate the complete fixture-backed research path.",
+        "Frozen fixture design",
+        "The fixture run completed with explicit provenance.",
+        "Keep the read-only path as the integration contract.",
+        "The source reference is available for inspection.",
+    ):
+        assert text in reader
+        assert text in expert
+
+
+def test_complete_atlas_reader_answers_first_screen_with_content_or_unknowns() -> None:
+    model = fixture_provider("complete").read("atlas")
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        sample=True,
+    )
+    main_story = reader.split('<div class="atlas-reading-metadata"', 1)[0]
+
+    assert "A fabricated example, not your research record." in main_story
+    assert "Fixture campaign" in main_story
+    for heading in (
+        "Research question",
+        "Current result",
+        "Scope",
+        "What is not known yet",
+        "Evidence and entry points",
+    ):
+        assert heading in main_story
+    assert "currently unavailable" in main_story.lower()
+    assert "record_type" not in main_story
+    assert "protocol" not in main_story.lower()
+
+
+def test_atlas_reader_does_not_infer_result_from_owner_status() -> None:
+    reader = render_atlas_reading(
+        _complete_model(),
+        query_context="/?view=atlas",
+        translator=Translator(Locale.EN),
+        sample=False,
+    )
+    result_section = reader.split("Current result", 1)[1].split("Scope", 1)[0]
+
+    assert "currently unavailable" in result_section.lower()
+    assert "active" not in result_section.lower()
+    assert "completed" not in result_section.lower()

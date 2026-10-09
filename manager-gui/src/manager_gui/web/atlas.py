@@ -25,9 +25,10 @@ from ..provider import ManagerDataProvider
 from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
-from .navigation import clear_filters_link, context_link, query_values
+from .navigation import clear_filters_link, context_link
 from .reader_surface import ReaderPage, render_reader_surface
-from .source_support import source_support_computation, source_support_entry, source_support_impact
+from .research_story import ResearchStoryViewModel, StoryEntry
+from .source_support import source_support_computation, source_support_entry
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 LIFECYCLE_SPINE: tuple[str, ...] = (
@@ -920,10 +921,181 @@ def render_atlas(
     return "".join(pieces)
 
 
+def _atlas_reading_owner_text(
+    value: str | None, *, translator: Translator, sample: bool
+) -> str:
+    if value is None:
+        return ""
+    return _fixture_text(value, translator=translator, fixture=sample)
+
+
+def _atlas_reading_payload_values(
+    payload: Mapping[str, object], *keys: str
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, Mapping):
+            text = _first_text(value, "summary", "description", "text", "detail", "value", "title", "name")
+            if text is not None:
+                values.append(text)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            for item in value:
+                if isinstance(item, Mapping):
+                    text = _first_text(
+                        item, "summary", "description", "text", "detail", "value", "title", "name"
+                    )
+                else:
+                    text = _text(item)
+                if text is not None:
+                    values.append(text)
+        elif (text := _text(value)) is not None:
+            values.append(text)
+    return tuple(dict.fromkeys(values))
+
+
+def _atlas_reading_entries(story: ResearchStoryViewModel, *keys: str) -> tuple[StoryEntry, ...]:
+    selected = set(keys)
+    return tuple(entry for chapter in story.chapters if chapter.key in selected for entry in chapter.entries)
+
+
+def _render_atlas_reading_entry(
+    entry: StoryEntry,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    sample: bool,
+) -> str:
+    content: list[str] = []
+    if entry.title is not None:
+        content.append(
+            f'<h4>{_atlas_reading_owner_text(entry.title, translator=translator, sample=sample)}</h4>'
+        )
+    if entry.summary is not None and entry.summary != entry.title:
+        content.append(
+            f'<p>{_atlas_reading_owner_text(entry.summary, translator=translator, sample=sample)}</p>'
+        )
+    links: list[str] = []
+    for link in entry.links:
+        if link.source_id:
+            support = source_support_entry(
+                link.source_id,
+                record=entry.raw,
+                record_id=entry.record_id,
+                fabricated_example=sample,
+                display_name=entry.title,
+            )
+            if support:
+                links.append(support)
+            evidence_href = context_link(query_context, view="evidence", source_id=link.source_id)
+            links.append(
+                f'<a class="atlas-reading-evidence-link" href="{escape(evidence_href, quote=True)}">'
+                f'{escape(translator.t("reader.evidence_entry"))}</a>'
+            )
+        elif link.target:
+            links.append(
+                f'<a class="atlas-reading-source-link" href="{escape(link.target, quote=True)}">'
+                f'{escape(translator.t("reader.source"))}</a>'
+            )
+    if links:
+        content.append(f'<p class="atlas-reading-entry-links">{" · ".join(links)}</p>')
+    return f'<article class="atlas-reading-entry">{"".join(content)}</article>'
+
+
+def _render_atlas_reading_section(
+    section_id: str,
+    heading_key: str,
+    *,
+    entries: Sequence[StoryEntry] = (),
+    values: Sequence[str] = (),
+    query_context: QueryContext,
+    translator: Translator,
+    sample: bool,
+    unavailable_key: str = "reader.atlas.content_unavailable",
+) -> str:
+    body: list[str] = []
+    for value in values:
+        body.append(
+            f'<p>{_atlas_reading_owner_text(value, translator=translator, sample=sample)}</p>'
+        )
+    body.extend(
+        _render_atlas_reading_entry(
+            entry, query_context=query_context, translator=translator, sample=sample
+        )
+        for entry in entries
+    )
+    if not body:
+        body.append(
+            f'<p class="atlas-reading-unavailable" data-reader-availability="missing">'
+            f'{escape(translator.t(unavailable_key))}</p>'
+        )
+    return (
+        f'<section class="atlas-reading-section" id="{section_id}" '
+        f'aria-labelledby="{section_id}-title">'
+        f'<h3 id="{section_id}-title">{escape(translator.t(heading_key))}</h3>'
+        f'{"".join(body)}</section>'
+    )
+
+
+def _render_atlas_reading_story(
+    model: ManagerReadModel,
+    view: AtlasViewModel,
+    *,
+    query_context: QueryContext,
+    translator: Translator,
+    sample: bool,
+) -> str:
+    payload = _mapping(model.data) or {}
+    story = ResearchStoryViewModel.from_read_model(model)
+    root_values = (
+        story.root.strategy_family_label,
+        story.root.study_label,
+        story.root.campaign_label,
+    )
+    topic_values = tuple(value for value in root_values if value)
+    if not topic_values:
+        topic_values = _atlas_reading_payload_values(
+            payload, "research_object", "research_topic", "topic"
+        )
+    if not topic_values:
+        topic_values = tuple(
+            record.title
+            for record in view.records
+            if record.record_type in {"campaign", "study", "strategy_family"}
+        )[:1]
+    question_entries = _atlas_reading_entries(story, "intent", "initial_hypothesis")
+    question_values = _atlas_reading_payload_values(payload, "research_question", "question")
+    process_entries = _atlas_reading_entries(story, "research_design", "attempts")
+    process_values = _atlas_reading_payload_values(payload, "research_process", "process", "method")
+    result_entries = _atlas_reading_entries(story, "conclusions")
+    result_values = _atlas_reading_payload_values(
+        payload, "research_result", "result", "conclusion"
+    )
+    scope_values = _atlas_reading_payload_values(
+        payload, "research_scope", "scope", "coverage", "time_range"
+    )
+    unknown_entries = _atlas_reading_entries(story, "failures")
+    unknown_values = _atlas_reading_payload_values(payload, "unknowns", "limitations")
+    evidence_entries = _atlas_reading_entries(story, "evidence")
+    return (
+        '<section class="atlas-reading-story" data-reader-main-story '
+        'aria-labelledby="atlas-reading-story-title">'
+        f'<h2 id="atlas-reading-story-title">{escape(translator.t("reader.atlas.object_heading"))}</h2>'
+        f'{_render_atlas_reading_section("atlas-reading-object", "reader.atlas.object", values=topic_values, query_context=query_context, translator=translator, sample=sample)}'
+        f'{_render_atlas_reading_section("atlas-reading-question", "reader.atlas.question_heading", entries=question_entries, values=question_values, query_context=query_context, translator=translator, sample=sample)}'
+        f'{_render_atlas_reading_section("atlas-reading-process", "reader.atlas.process_heading", entries=process_entries, values=process_values, query_context=query_context, translator=translator, sample=sample)}'
+        f'{_render_atlas_reading_section("atlas-reading-result", "reader.atlas.result_heading", entries=result_entries, values=result_values, query_context=query_context, translator=translator, sample=sample)}'
+        f'{_render_atlas_reading_section("atlas-reading-scope", "reader.atlas.scope_heading", values=scope_values, query_context=query_context, translator=translator, sample=sample, unavailable_key="reader.atlas.scope_unknown")}'
+        f'{_render_atlas_reading_section("atlas-reading-unknowns", "reader.atlas.unknowns_heading", entries=unknown_entries, values=unknown_values, query_context=query_context, translator=translator, sample=sample)}'
+        f'{_render_atlas_reading_section("atlas-reading-evidence", "reader.atlas.evidence_heading", entries=evidence_entries, query_context=query_context, translator=translator, sample=sample, unavailable_key="reader.atlas.evidence_unavailable")}'
+        '</section>'
+    )
+
+
 def render_atlas_reading(
     model: ManagerReadModel, *, query_context: QueryContext, translator: Translator, sample: bool
 ) -> str:
-    """Concrete object entries and an auditable count of the supplied list only."""
+    """Render a plain-language projection of explicit Atlas research content."""
     view = AtlasViewModel.from_read_model(model, filters=AtlasFilters.from_query(query_context))
     records = view.records
     count = len({(record.record_type, record.record_id) for record in records})
@@ -942,48 +1114,22 @@ def render_atlas_reading(
     sample_markup = (
         f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>' if sample else ""
     )
-    cards = []
-    for record in records:
-        if record.record_type not in {"campaign", "study", "strategy_family"}:
-            continue
-        title = _first_text(record.payload, "title", "name", "label")
-        name = title or translator.t("support.title_missing")
-        display_name = _fixture_text(name, translator=translator, fixture=sample)
-        story_label = escape(translator.t("pipeline.open_story", name=name))
-        story_label = story_label.replace(escape(name), display_name, 1)
-        summary = _first_text(record.payload, "summary", "research_question", "description")
-        wording = (
-            f'<p data-owner-text="true" translate="no">{escape(summary)}</p>' if summary
-            else f'<p>{escape(translator.t("pipeline.object_result_missing"))}</p>'
-        )
-        support = source_support_entry(record.source or "", record=record.payload) or ""
-        card_sample = sample_markup if sample or record.payload.get("fabricated_example") is not True else (
-            f'<p class="sample-note">{escape(translator.t("plain.result.sample"))}</p>'
-        )
-        story_url = _story_link(record, query_context)
-        requested = query_values(query_context)
-        selected_snapshot = requested.get("snapshot_token") or requested.get("snapshot")
-        if model.snapshot_token is not None and not selected_snapshot:
-            story_url = context_link(story_url, view="stories", snapshot_token=model.snapshot_token)
-        cards.append(
-            f'<article data-research-object="{escape(record.record_id, quote=True)}">{card_sample}'
-            f'<h2>{display_name}</h2>{wording}<p>{support}</p>'
-            f'<a class="atlas-story-link" href="{escape(story_url, quote=True)}">'
-            f'{story_label}</a></article>'
-        )
     pointers = "".join(
         f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
     )
-    return (
-        '<section class="plain-result atlas-reading" data-integration-hook="atlas-view">'
-        f'<h1 data-page-title tabindex="-1">{escape(translator.t("pipeline.atlas_title"))}</h1>'
-        f'{sample_markup}{source_support_impact()}'
+    metadata = (
+        f'<div class="atlas-reading-metadata" aria-label="{escape(translator.t("reader.atlas.metadata"), quote=True)}">'
         f'{_render_filters(view, query_context=query_context, translator=translator)}'
         f'<p>{escape(translator.t("support.count", n=count))}</p>'
         f'<p>{escape(translator.t("support.count_unit"))}</p>'
         f'<p>{escape(translator.t("support.count_complete" if complete else "support.count_partial"))}</p>'
-        f'<p>{computation}</p>{"".join(cards) or escape(translator.t("pipeline.no_research_objects"))}'
-        f'{pointers}</section>'
+        f'<p>{computation}</p>{pointers}</div>'
+    )
+    return (
+        '<section class="plain-result atlas-reading" data-integration-hook="atlas-view">'
+        f'<h1 data-page-title tabindex="-1">{escape(translator.t("pipeline.atlas_title"))}</h1>'
+        f'{sample_markup}{_render_atlas_reading_story(model, view, query_context=query_context, translator=translator, sample=sample)}'
+        f'{metadata}</section>'
     )
 
 
