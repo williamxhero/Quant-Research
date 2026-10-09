@@ -100,12 +100,9 @@ def _workspace_api() -> tuple[Any, Any]:
         client = workspace.WorkspaceClient
         error = workspace.WorkspaceError
         signature = inspect.signature(client)
-        read_only = signature.parameters.get("read_only")
-        if read_only is None or read_only.kind not in (
-            inspect.Parameter.KEYWORD_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        ):
-            raise ValueError(f"WorkspaceClient{signature} 未显式支持 read_only 关键字参数")
+        # Bind the actual public call without constructing storage. Transparent wrappers
+        # can forward the keyword via **kwargs without retaining the original signature.
+        signature.bind(object(), read_only=True)
         required = (
             "list_runs",
             "list_records",

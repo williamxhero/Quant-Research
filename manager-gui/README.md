@@ -56,7 +56,7 @@ old-record/publication byte identity, and HTML boundary/accessibility checks.
 前置条件：Windows 上已安装 `uv` 和 Python 3.11+（验收使用 Python 3.12）；
 从 QuantResearch 检出目录执行，目录中有 `./manager-gui` 和
 `./strategy-workspace` 源码克隆。StrategyWorkspace 分发版本至少为 `0.2.0`，
-实际 `WorkspaceClient` API 必须显式接受 `read_only` 关键字，并提供可调用的
+实际 `WorkspaceClient` API 必须支持 `read_only=True` 的公开只读调用，并提供可调用的
 `list_runs`、`list_records`、`get_registered_package`、`query_lineage` 和
 `read_artifact`。同版本旧 wheel 不一定具备这些 API；不要用模块 `__version__`
 代替分发元数据或实际 API 检查。已安装的 `site-packages` 不是源码安装路径。
