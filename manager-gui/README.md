@@ -19,6 +19,9 @@ From the QuantResearch repository root, run:
 # Focused S1 test suite and full package regression suite
 uv run --directory manager-gui pytest -q
 
+# Reproduce tests in a fresh isolated environment; declare test plugins explicitly
+uv run --directory manager-gui --isolated --with pytest --with hypothesis pytest -q
+
 # Lint the package (the source tree is intentionally dependency-free)
 uv run --directory manager-gui ruff check .
 
@@ -55,12 +58,14 @@ old-record/publication byte identity, and HTML boundary/accessibility checks.
 
 前置条件：Windows 上已安装 `uv>=0.11.2`（验收版本为 0.11.2）和
 Python 3.11+（验收使用 Python 3.12）；
-从 QuantResearch 检出目录执行，目录中有 `./manager-gui` 和
-`./strategy-workspace` 源码克隆。StrategyWorkspace 分发版本至少为 `0.2.0`，
-实际 `WorkspaceClient` API 必须支持 `read_only=True` 的公开只读调用，并提供可调用的
-`list_runs`、`list_records`、`get_registered_package`、`query_lineage` 和
-`read_artifact`。同版本旧 wheel 不一定具备这些 API；不要用模块 `__version__`
-代替分发元数据或实际 API 检查。已安装的 `site-packages` 不是源码安装路径。
+从 QuantResearch 检出目录执行，目录中有 `manager-gui` 和
+`strategy-workspace` 源码克隆。StrategyWorkspace 分发版本至少为 `0.2.0`，
+实际 `WorkspaceClient` API 必须支持 `read_only=True` 的公开只读调用，并提供始终调用的
+`list_runs`、`list_records`。有已发布 package、谱系或制品记录时，GUI 才会按实际数据
+需要并 fail-closed 校验 `get_registered_package`、`query_lineage` 或 `read_artifact`；
+缺少条件能力不会阻断没有触达该数据的读取。需要的条件能力缺失时仍会在读取前明确拒绝。
+同版本旧 wheel 不一定具备这些 API；不要用模块 `__version__` 代替分发元数据或实际 API
+检查。已安装的 `site-packages` 不是源码安装路径。
 
 `workspace` 可选依赖组声明 `strategy-workspace>=0.2.0` 和 Windows 时区数据库
 `tzdata`；`jsonschema` 和 `referencing` 由 StrategyWorkspace 的生产依赖传递安装。
@@ -80,16 +85,16 @@ Windows 零写入只读 API；其他平台或不满足只读安全条件的工�
 不是通过初始化、迁移、建锁、checkpoint 或删除边车来补救。
 不要让安装命令操作真实研究工作区，也不要为演示改变其数据或边车。
 
-在 PowerShell 中把示例工作区路径替换为已有冻结工作区的绝对路径，并选择空闲端口：
+在 PowerShell 中把两个源码路径和工作区路径替换为绝对路径，并选择空闲端口。
+尤其在 Git worktree 内执行时，`./strategy-workspace` 通常不存在，必须指向 owner 的已有克隆：
 
 ```powershell
-uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "./manager-gui[workspace]" --with "./strategy-workspace" --default-index https://mirrors.aliyun.com/pypi/simple/ python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
+uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with 'D:/src/QuantResearch/manager-gui[workspace]' --with 'D:/src/QuantResearch/strategy-workspace' --default-index https://mirrors.aliyun.com/pypi/simple/ python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
 ```
 
-若两个克隆不在同一检出目录，可把两个 `--with` 值替换为绝对路径；GUI 路径仍保留
-`[workspace]`，例如 `--with 'D:/src/manager-gui[workspace]' --with 'E:/src/strategy-workspace'`。
-这与同版本旧 wheel 暖缓存的实际刷新验收使用不同临时 owner 克隆路径相同，不能改成只安装
-已缓存的分发包。
+GUI 路径保留 `[workspace]`。同版本旧 wheel 暖缓存验收也使用明确的源码克隆绝对路径；
+不能改成只安装已缓存的分发包。`uv run --isolated` 下运行测试须显式添加
+`--with pytest --with hypothesis`，否则可能在收集阶段因缺少测试插件失败。
 
 打开 `http://127.0.0.1:8765/?view=atlas`，或切换至其他视图。
 `--provider workspace` 必须有 `--workspace-root`，不得同时指定 `--fixture`；

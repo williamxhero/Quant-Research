@@ -128,20 +128,6 @@ def _workspace_api() -> tuple[Any, Any]:
         call_shapes = (
             ("list_runs", (), {"limit": object()}),
             ("list_records", (), {"limit": object()}),
-            (
-                "query_lineage",
-                (),
-                {
-                    "roots": [object()],
-                    "direction": "ancestors",
-                    "max_depth": 1,
-                    "page_size": 100,
-                    "relations": [],
-                    "record_types": [],
-                    "snapshot_token": None,
-                },
-            ),
-            ("read_artifact", (object(),), {}),
         )
         for name, args, kwargs in call_shapes:
             _validate_workspace_method(client, name, args, kwargs)
@@ -218,6 +204,7 @@ class WorkspaceDataProvider:
         roots = [record for record in self._input["records"] if record.get("lineage")]
         self._scope["lineage_roots_available"] = len(roots)
         owner_snapshot = None
+        lineage_api_validated = False
         for record in roots[:10]:
             query = {
                 "roots": [{"kind": "publication", "id": record["record_id"]}],
@@ -228,6 +215,29 @@ class WorkspaceDataProvider:
                 "record_types": [],
                 "snapshot_token": owner_snapshot,
             }
+            if not lineage_api_validated:
+                try:
+                    _validate_workspace_method(
+                        type(self._client),
+                        "query_lineage",
+                        (),
+                        {
+                            "roots": [object()],
+                            "direction": "ancestors",
+                            "max_depth": 1,
+                            "page_size": 100,
+                            "relations": [],
+                            "record_types": [],
+                            "snapshot_token": None,
+                        },
+                    )
+                except (AttributeError, TypeError, ValueError) as exc:
+                    import strategy_workspace as workspace
+
+                    raise WorkspaceDependencyError(
+                        f"Workspace 真实模式 API 不兼容：{exc}\n{_workspace_origin(workspace)}"
+                    ) from exc
+                lineage_api_validated = True
             try:
                 page = self._client.query_lineage(**query)
             except WorkspaceError as exc:
@@ -275,6 +285,7 @@ class WorkspaceDataProvider:
             }:
                 parts = [result.get("discovery") or {}, *(result.get("formal") or {}).values()]
                 refs.extend(ref for part in parts for ref in part.get("artifacts", []))
+        artifact_api_validated = False
         for ref in refs:
             identifier = ref.get("sha256")
             if not isinstance(identifier, str):
@@ -329,6 +340,18 @@ class WorkspaceDataProvider:
                         )
                     )
                     continue
+                if not artifact_api_validated:
+                    try:
+                        _validate_workspace_method(
+                            type(self._client), "read_artifact", (object(),), {}
+                        )
+                    except (AttributeError, TypeError, ValueError) as exc:
+                        import strategy_workspace as workspace
+
+                        raise WorkspaceDependencyError(
+                            f"Workspace 真实模式 API 不兼容：{exc}\n{_workspace_origin(workspace)}"
+                        ) from exc
+                    artifact_api_validated = True
                 readback = self._client.read_artifact(ref["uri"])
                 self._input["artifact_reads"][identifier] = readback
                 descriptor = readback["artifact"]

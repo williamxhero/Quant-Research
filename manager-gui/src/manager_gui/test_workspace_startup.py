@@ -96,14 +96,20 @@ def cli_server(*args, env=None):
             assert "W2_READONLY_GUARD_READY" in stderr
 
 
-def test_workspace_provider_checks_conditional_package_api_only_when_needed(monkeypatch, tmp_path):
+@pytest.mark.parametrize("method", ["get_registered_package", "query_lineage", "read_artifact"])
+@pytest.mark.parametrize("incompatible", [False, True])
+def test_workspace_provider_checks_conditional_api_only_when_needed(
+    monkeypatch, tmp_path, method, incompatible
+):
+    import hashlib
     import types
 
     class PublicError(Exception):
         pass
 
     class PublicClient:
-        runs = ({"run_id": "run-1", "status": "failed", "result": None},)
+        runs = [{"run_id": "run-1", "status": "failed", "result": None}]
+        records = []
 
         def __init__(self, root, *, read_only):
             assert read_only is True
@@ -112,13 +118,7 @@ def test_workspace_provider_checks_conditional_package_api_only_when_needed(monk
             return self.runs[:limit]
 
         def list_records(self, *, limit):
-            return []
-
-        def query_lineage(self, **query):
-            return {"records": [], "snapshot_token": "lineage-token", "next_cursor": None}
-
-        def read_artifact(self, uri):
-            raise AssertionError(f"Unexpected artifact read: {uri}")
+            return self.records[:limit]
 
     module = types.ModuleType("strategy_workspace")
     module.WorkspaceClient = PublicClient
@@ -129,16 +129,26 @@ def test_workspace_provider_checks_conditional_package_api_only_when_needed(monk
 
     provider = WorkspaceDataProvider(tmp_path)
     assert provider.read().data["public_input"]["packages"] == []
+    if incompatible:
+        def wrong_shape(self):
+            raise AssertionError("Incompatible method must not execute")
 
-    PublicClient.runs = [
-        {
-            "run_id": "run-with-package",
-            "request": {"strategy_package": {"strategy_id": "missing-api"}},
-            "status": "failed",
-            "result": None,
-        }
-    ]
-    with pytest.raises(WorkspaceDependencyError, match="Workspace 真实模式 API 不兼容"):
+        setattr(PublicClient, method, wrong_shape)
+    if method == "get_registered_package":
+        PublicClient.runs[0]["request"] = {"strategy_package": {"strategy_id": "missing-api"}}
+    else:
+        record = {"record_id": "published-1"}
+        if method == "query_lineage":
+            record["lineage"] = [{"source_kind": "publication", "source_id": "parent-1"}]
+        else:
+            digest = hashlib.sha256(b"").hexdigest()
+            record["artifacts"] = [{
+                "sha256": digest,
+                "uri": "workspace-artifact://sha256/" + digest,
+                "bytes": 0,
+            }]
+        PublicClient.records = [record]
+    with pytest.raises(WorkspaceDependencyError, match=f"WorkspaceClient.{method}"):
         WorkspaceDataProvider(tmp_path)
 
 
