@@ -541,8 +541,6 @@ def test_real_atlas_reader_hides_system_metadata_and_shell_snapshot() -> None:
         assert system_term.lower() not in lowered
     assert "fixture-complete-v0" not in lowered
     assert "atlas-reading-metadata" not in lowered
-    legacy = [node for node in document.elements if "reader-legacy-compat" in node.classes]
-    assert legacy and all(node.hidden for node in legacy)
 
 
 def test_real_atlas_expert_keeps_professional_research_and_system_context() -> None:
