@@ -32,7 +32,6 @@ from manager_gui.web.atlas import (
     render_atlas_reading,
 )
 from manager_gui.web.i18n import Locale, Translator
-from manager_gui.web.research_story import render_research_story
 
 
 def _complete_model(locale: Locale | str = Locale.EN) -> ManagerReadModel:
@@ -330,7 +329,7 @@ def test_atlas_owner_title_is_escaped_once_and_remains_verbatim() -> None:
 
 
 def test_atlas_reader_and_expert_share_explicit_story_content() -> None:
-    model = fixture_provider("complete").read("stories")
+    model = fixture_provider("complete").read("atlas")
 
     reader = render_atlas_reading(
         model,
@@ -338,8 +337,11 @@ def test_atlas_reader_and_expert_share_explicit_story_content() -> None:
         translator=Translator(Locale.EN),
         sample=True,
     )
-    expert = render_research_story(
-        model, translator=Translator(Locale.EN), include_reader_surface=False
+    expert = render_atlas(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        include_reader_surface=False,
     )
 
     for text in (

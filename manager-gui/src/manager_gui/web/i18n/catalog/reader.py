@@ -244,6 +244,12 @@ ENTRIES: Mapping[str, M] = {
     "reader.atlas.unknowns_heading": M("还不知道什么", "What is not known yet"),
     "reader.atlas.evidence_heading": M("证据与入口", "Evidence and entry points"),
     "reader.atlas.metadata": M("总览元数据", "Atlas metadata"),
+    "reader.atlas.expert_heading": M("专业研究内容", "Expert research content"),
+    "reader.atlas.related_stories": M("相关研究入口", "Related research entries"),
+    "reader.atlas.sample": M(
+        "编造的示例，不是你的研究记录。",
+        "A fabricated example, not your research record.",
+    ),
     "reader.atlas.content_unavailable": M(
         "这项内容目前不可用；公开研究记录没有提供它，界面不会从数量或状态推断结果。",
         "This content is currently unavailable; the public research record does not provide it, and no result is inferred from counts or status.",
