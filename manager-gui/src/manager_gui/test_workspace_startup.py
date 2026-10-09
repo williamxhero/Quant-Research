@@ -103,13 +103,16 @@ def test_workspace_provider_checks_conditional_api_only_when_needed(
 ):
     import hashlib
     import types
+    from typing import ClassVar
 
     class PublicError(Exception):
         pass
 
     class PublicClient:
-        runs = [{"run_id": "run-1", "status": "failed", "result": None}]
-        records = []
+        runs: ClassVar[list[dict[str, object]]] = [
+            {"run_id": "run-1", "status": "failed", "result": None}
+        ]
+        records: ClassVar[list[dict[str, object]]] = []
 
         def __init__(self, root, *, read_only):
             assert read_only is True
