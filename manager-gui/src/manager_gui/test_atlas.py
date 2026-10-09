@@ -7,6 +7,7 @@ from typing import cast
 from manager_gui import (
     Availability,
     Derivation,
+    ManagerGUIApp,
     ManagerReadModel,
     ReadModelStatus,
     SourceReference,
@@ -29,6 +30,7 @@ from manager_gui.web.atlas import (
     AtlasViewModel,
     atlas_link,
     render_atlas,
+    render_atlas_reading,
 )
 from manager_gui.web.i18n import Locale, Translator
 
@@ -325,3 +327,282 @@ def test_atlas_owner_title_is_escaped_once_and_remains_verbatim() -> None:
 
     assert_owner_text_escaped(markup, owner_title)
     assert 'data-record-id="owner-record"' in markup
+
+
+def test_atlas_reader_and_expert_share_explicit_story_content() -> None:
+    model = fixture_provider("complete").read("atlas")
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        sample=True,
+    )
+    expert = render_atlas(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        include_reader_surface=False,
+    )
+
+    for text in (
+        "Why test the fixture strategy?",
+        "Validate the complete fixture-backed research path.",
+        "Frozen fixture design",
+        "The fixture run completed with explicit provenance.",
+        "Keep the read-only path as the integration contract.",
+        "The source reference is available for inspection.",
+    ):
+        assert text in reader
+        assert text in expert
+
+
+def test_complete_atlas_reader_answers_first_screen_with_content_or_unknowns() -> None:
+    model = fixture_provider("complete").read("atlas")
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas&fixture=complete",
+        translator=Translator(Locale.EN),
+        sample=True,
+    )
+    main_story = reader.split('<div class="atlas-reading-metadata"', 1)[0]
+
+    assert "A fabricated example, not your research record." in main_story
+    assert "Fixture campaign" in main_story
+    for heading in (
+        "Research question",
+        "Current result",
+        "Scope",
+        "What is not known yet",
+        "Evidence and entry points",
+    ):
+        assert heading in main_story
+    assert "currently unavailable" in main_story.lower()
+    assert "record_type" not in main_story
+    assert "protocol" not in main_story.lower()
+
+
+def test_atlas_reader_does_not_infer_result_from_owner_status() -> None:
+    reader = render_atlas_reading(
+        _complete_model(),
+        query_context="/?view=atlas",
+        translator=Translator(Locale.EN),
+        sample=False,
+    )
+    result_section = reader.split("Current result", 1)[1].split("Scope", 1)[0]
+
+    assert "currently unavailable" in result_section.lower()
+    assert "active" not in result_section.lower()
+    assert "completed" not in result_section.lower()
+
+
+def test_atlas_reader_and_expert_project_all_research_story_fields_and_gaps() -> None:
+    source = SourceReference(
+        source_id="story-source",
+        owner="owner",
+        kind="public-record",
+        locator="workspace://story",
+        schema="story.v1",
+        revision="r1",
+    )
+    model = ManagerReadModel(
+        data=cast(
+            JSONValue,
+            {
+                "research_object": "Object from the same model",
+                "research_question": "Question from the same model",
+                "research_process": "Process from the same model",
+                "research_result": "Result from the same model",
+                "research_scope": "Scope from the same model",
+                "research_gaps": [
+                    {"title": "Top gap title", "detail": "Top gap detail"}
+                ],
+                "records": [
+                    {
+                        "id": "record-1",
+                        "record_type": "campaign",
+                        "title": "Record object",
+                        "research_gaps": [
+                            {"title": "Record gap title", "detail": "Record gap detail"}
+                        ],
+                    }
+                ],
+            },
+        ),
+        source_refs=(source,),
+        as_of=None,
+        snapshot_token=None,
+        derivation=Derivation(kind="direct", version="v1"),
+        availability=Availability(status=ReadModelStatus.KNOWN, complete=True),
+    )
+    reader = render_atlas_reading(
+        model, query_context="/?view=atlas", translator=Translator(Locale.EN), sample=False
+    )
+    expert = render_atlas(
+        AtlasViewModel.from_read_model(model),
+        query_context="/?view=atlas",
+        translator=Translator(Locale.EN),
+        include_reader_surface=False,
+    )
+
+    expected = (
+        "Object from the same model",
+        "Question from the same model",
+        "Process from the same model",
+        "Result from the same model",
+        "Scope from the same model",
+        "Top gap title",
+        "Top gap detail",
+        "Record gap title",
+        "Record gap detail",
+    )
+    for text in expected:
+        assert text in reader
+        assert text in expert
+
+
+def test_atlas_reader_filters_record_level_gaps_with_their_record() -> None:
+    model = _complete_model()
+    payload = cast(dict[str, object], model.data)
+    records = cast(list[dict[str, object]], payload["records"])
+    records[0]["research_gaps"] = [{"title": "Campaign-only gap", "detail": "Campaign detail"}]
+    records[1]["research_gaps"] = [{"title": "Hypothesis-only gap", "detail": "Hypothesis detail"}]
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas&record_type=hypothesis",
+        translator=Translator(Locale.EN),
+        sample=False,
+    )
+
+    assert "Hypothesis-only gap" in reader
+    assert "Hypothesis detail" in reader
+    assert "Campaign-only gap" not in reader
+    assert "Campaign detail" not in reader
+
+
+def test_atlas_reader_owner_story_links_only_use_public_locators() -> None:
+    model = _complete_model()
+    payload = cast(dict[str, object], model.data)
+    payload["chapters"] = {
+        "intent": [
+            {
+                "title": "Safe and unsafe references",
+                "links": [
+                    {"label": "safe", "href": "https://example.com/reference"},
+                    {"label": "javascript", "href": "javascript:alert(1)"},
+                    {"label": "file", "href": "file:///tmp/private"},
+                    {"label": "locator", "href": "not-a-public-locator"},
+                ],
+            }
+        ]
+    }
+
+    reader = render_atlas_reading(
+        model,
+        query_context="/?view=atlas",
+        translator=Translator(Locale.EN),
+        sample=False,
+    )
+
+    assert 'href="https://example.com/reference"' in reader
+    assert 'href="javascript:' not in reader
+    assert 'href="file:' not in reader
+    assert 'href="not-a-public-locator"' not in reader
+    assert "Source cannot be opened or verified" in reader
+    assert "javascript" in reader and "file" in reader and "locator" in reader
+
+
+def test_real_atlas_reader_hides_system_metadata_and_shell_snapshot() -> None:
+    markup = ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=reader&lang=en")
+    document = parse_html(markup)
+    visible = " ".join(surface.text for surface in document.visible_text)
+    lowered = visible.lower()
+
+    assert visible.count("Research content") == 1
+    assert lowered.index("research content") < lowered.index("open inspector")
+    assert "A fabricated example, not your research record." in visible
+    for system_term in (
+        "Expert research content",
+        "What this page answers",
+        "What can be confirmed currently",
+        "Derived from",
+        "Snapshot",
+        "schema",
+        "records, not studies",
+        "Unit: records",
+        "fixture-workspace-campaigns",
+        "Observed at",
+        "strategy-workspace",
+        "public-record",
+        "fixture://",
+    ):
+        assert system_term.lower() not in lowered
+    assert "fixture-complete-v0" not in lowered
+    assert "atlas-reading-metadata" not in lowered
+
+
+def test_real_atlas_expert_keeps_professional_research_and_system_context() -> None:
+    markup = ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=expert&lang=en")
+    document = parse_html(markup)
+    visible = " ".join(surface.text for surface in document.visible_text)
+
+    assert "Expert research content" in visible
+    assert "Snapshot" in visible
+    assert "fixture-complete-v0" in visible
+    assert "Research content" in visible
+
+
+def test_real_atlas_reader_and_expert_share_research_fields_from_one_model() -> None:
+    model = ManagerReadModel(
+        data=cast(
+            JSONValue,
+            {
+                "research_object": "Shared research topic",
+                "research_question": "Shared research question",
+                "research_process": "Shared research process",
+                "research_result": "Shared research result",
+                "research_scope": "Shared research scope",
+                "research_gaps": [{"title": "Shared research unknown"}],
+                "records": [
+                    {
+                        "id": "shared-record",
+                        "record_type": "campaign",
+                        "title": "Shared research record",
+                        "research_gaps": [{"title": "Record-level unknown"}],
+                    }
+                ],
+            },
+        ),
+        source_refs=(),
+        as_of=None,
+        snapshot_token=None,
+        derivation=Derivation(kind="direct", version="v1"),
+        availability=Availability(status=ReadModelStatus.KNOWN, complete=True),
+    )
+
+    class OwnerProvider:
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            del resource, snapshot_token
+            return model
+
+    app = ManagerGUIApp(OwnerProvider())
+    reader = " ".join(surface.text for surface in parse_html(
+        app.render("/?view=atlas&mode=reader&lang=en")
+    ).visible_text)
+    expert = " ".join(surface.text for surface in parse_html(
+        app.render("/?view=atlas&mode=expert&lang=en")
+    ).visible_text)
+
+    for field in (
+        "Shared research topic",
+        "Shared research question",
+        "Shared research process",
+        "Shared research result",
+        "Shared research scope",
+        "Shared research unknown",
+        "Record-level unknown",
+    ):
+        assert field in reader
+        assert field in expert

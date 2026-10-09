@@ -326,7 +326,8 @@ def test_shell_exposes_chinese_labels_and_keyboard_landmarks() -> None:
     assert 'aria-controls="event-drawer" aria-expanded="true"' in document
     assert 'aria-controls="inspector" aria-expanded="false"' in document
     default = ManagerGUIApp().render(_url("atlas"))
-    assert 'aria-controls="inspector" aria-expanded="true"' in default
+    # Reader mode keeps the machine-oriented inspector out of the visible story.
+    assert 'aria-controls="inspector" aria-expanded="false"' in default
     assert 'aria-controls="event-drawer" aria-expanded="false"' in default
 
 
