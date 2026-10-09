@@ -101,8 +101,7 @@ def _workspace_api() -> tuple[Any, Any]:
         client = workspace.WorkspaceClient
         error = workspace.WorkspaceError
         signature = inspect.signature(client)
-        # Bind the actual public call without constructing storage. Transparent wrappers
-        # can forward the keyword via **kwargs without retaining the original signature.
+        # Transparent **kwargs wrappers need not retain the constructor signature.
         signature.bind(object(), read_only=True)
         required = (
             "list_runs",
