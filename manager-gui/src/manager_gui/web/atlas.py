@@ -83,6 +83,8 @@ def _is_fixture(model: ManagerReadModel) -> bool:
 
 
 def _is_complete_atlas_fixture(model: ManagerReadModel) -> bool:
+    if model.snapshot_token != "fixture-complete-v0":
+        return False
     return model == build_fixture(FixtureState.COMPLETE, resource="atlas")
 
 
