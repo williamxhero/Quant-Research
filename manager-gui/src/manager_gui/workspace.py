@@ -74,7 +74,8 @@ def workspace_launch_guidance(root: str, port: int) -> str:
         "从 QuantResearch 检出目录（包含 manager-gui 和 strategy-workspace 克隆）执行：\n"
         "uv run --no-project --isolated --refresh-package quantresearch-manager-gui "
         '--refresh-package strategy-workspace --with "./manager-gui[workspace]" '
-        '--with "./strategy-workspace" python -I -m manager_gui.web '
+        '--with "./strategy-workspace" --default-index https://mirrors.aliyun.com/pypi/simple/ '
+        "python -I -m manager_gui.web "
         f"--provider workspace --workspace-root {quoted_root} --port {port}\n"
         "已安装的 site-packages 不是源码安装路径。"
         "不要在运行实例的 venv 目录里跑会重建 venv 的 uv 命令。"

@@ -53,7 +53,8 @@ old-record/publication byte identity, and HTML boundary/accessibility checks.
 
 ## 真实 Workspace 模式：受支持的一条命令
 
-前置条件：Windows 上已安装 `uv` 和 Python 3.11+（验收使用 Python 3.12）；
+前置条件：Windows 上已安装 `uv>=0.11.2`（验收版本为 0.11.2）和
+Python 3.11+（验收使用 Python 3.12）；
 从 QuantResearch 检出目录执行，目录中有 `./manager-gui` 和
 `./strategy-workspace` 源码克隆。StrategyWorkspace 分发版本至少为 `0.2.0`，
 实际 `WorkspaceClient` API 必须支持 `read_only=True` 的公开只读调用，并提供可调用的
@@ -63,8 +64,15 @@ old-record/publication byte identity, and HTML boundary/accessibility checks.
 
 `workspace` 可选依赖组声明 `strategy-workspace>=0.2.0` 和 Windows 时区数据库
 `tzdata`；`jsonschema` 和 `referencing` 由 StrategyWorkspace 的生产依赖传递安装。
-首次安装需要能访问包索引和构建依赖；无需全局安装 owner 包、手工补依赖或设置
-`PYTHONPATH`。安装目录和缓存必须位于研究工作区之外。
+首次安装需要能访问包索引和构建依赖，且 TLS 证书链受信；无需全局安装 owner 包、
+手工补依赖或设置 `PYTHONPATH`。安装目录和缓存必须位于研究工作区之外。
+以下命令显式使用已完成空缓存验收的正规阿里云公共 PyPI 镜像
+`https://mirrors.aliyun.com/pypi/simple/`，不依赖隐藏的 index 环境变量或全局配置。
+验收中默认 PyPI 出现 TLS handshake EOF，清华镜像出现 wheel 下载 403；这些失败
+不是通过禁用 TLS 验证、删除缓存或手工补包来绕过的。若组织要求另一包索引，可替换
+`--default-index` 的 URL，但须先确认索引及其下载端点可访问、证书受信，并重新执行
+空缓存验收；不可把索引连接失败算作启动成功。安装失败发生在 GUI 入口执行之前，
+此时应检查 `uv` 的完整网络错误，而不是修补运行实例的 venv。
 
 工作区须已由 owner 公共写接口准备、完成迁移并冻结，当前不含
 `-wal`、`-shm` 或 `-journal` 边车。此模式只支持 StrategyWorkspace 已审计的
@@ -75,7 +83,7 @@ Windows 零写入只读 API；其他平台或不满足只读安全条件的工�
 在 PowerShell 中把示例工作区路径替换为已有冻结工作区的绝对路径，并选择空闲端口：
 
 ```powershell
-uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "./manager-gui[workspace]" --with "./strategy-workspace" python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
+uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "./manager-gui[workspace]" --with "./strategy-workspace" --default-index https://mirrors.aliyun.com/pypi/simple/ python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
 ```
 
 打开 `http://127.0.0.1:8765/?view=atlas`，或切换至其他视图。
