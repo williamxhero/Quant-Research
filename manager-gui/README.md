@@ -86,6 +86,11 @@ Windows 零写入只读 API；其他平台或不满足只读安全条件的工�
 uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "./manager-gui[workspace]" --with "./strategy-workspace" --default-index https://mirrors.aliyun.com/pypi/simple/ python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
 ```
 
+若两个克隆不在同一检出目录，可把两个 `--with` 值替换为绝对路径；GUI 路径仍保留
+`[workspace]`，例如 `--with 'D:/src/manager-gui[workspace]' --with 'E:/src/strategy-workspace'`。
+这与同版本旧 wheel 暖缓存的实际刷新验收使用不同临时 owner 克隆路径相同，不能改成只安装
+已缓存的分发包。
+
 打开 `http://127.0.0.1:8765/?view=atlas`，或切换至其他视图。
 `--provider workspace` 必须有 `--workspace-root`，不得同时指定 `--fixture`；
 缺依赖或 API 不兼容会在打开存储客户端之前显示中文原因及可复制命令，退出而非

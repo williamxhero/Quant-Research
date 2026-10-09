@@ -103,16 +103,39 @@ def _workspace_api() -> tuple[Any, Any]:
         signature = inspect.signature(client)
         # Transparent **kwargs wrappers need not retain the constructor signature.
         signature.bind(object(), read_only=True)
-        required = (
-            "list_runs",
-            "list_records",
-            "get_registered_package",
-            "query_lineage",
-            "read_artifact",
+        call_shapes = (
+            ("list_runs", (), {"limit": object()}),
+            ("list_records", (), {"limit": object()}),
+            ("get_registered_package", (object(),), {}),
+            (
+                "query_lineage",
+                (),
+                {
+                    "roots": [object()],
+                    "direction": "ancestors",
+                    "max_depth": 1,
+                    "page_size": 100,
+                    "relations": [],
+                    "record_types": [],
+                    "snapshot_token": None,
+                },
+            ),
+            ("read_artifact", (object(),), {}),
         )
-        missing = [name for name in required if not callable(getattr(client, name, None))]
-        if missing:
-            raise ValueError("WorkspaceClient 缺少可调用的公共方法：" + "、".join(missing))
+        for name, args, kwargs in call_shapes:
+            method = getattr(client, name, None)
+            if not callable(method):
+                raise ValueError(f"WorkspaceClient.{name} 不是可调用的公共方法")
+            try:
+                method_signature = inspect.signature(method)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"WorkspaceClient.{name} 无法检查调用形状：{exc}") from exc
+            try:
+                method_signature.bind(object(), *args, **kwargs)
+            except TypeError as exc:
+                raise ValueError(
+                    f"WorkspaceClient.{name} 调用形状不兼容：{method_signature}；{exc}"
+                ) from exc
     except (AttributeError, TypeError, ValueError) as exc:
         raise WorkspaceDependencyError(f"Workspace 真实模式 API 不兼容：{exc}\n{origin}") from exc
     return client, error
