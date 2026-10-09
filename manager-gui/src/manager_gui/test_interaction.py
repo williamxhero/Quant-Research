@@ -677,6 +677,7 @@ def test_status_localization_uses_source_text_for_owner_reason() -> None:
 def test_static_client_script_has_explicit_locale_message_injection_hook() -> None:
     messages = js_messages(EN_TRANSLATOR)
     assert set(messages) == {
+        "workspace_cancelled",
         "copy_success",
         "copy_unavailable",
         "export_success",
