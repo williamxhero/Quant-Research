@@ -165,6 +165,7 @@ class WebRequestState:
     context: tuple[tuple[str, str], ...] = ()
     lang: Locale | None = None
     default_locale: Locale = DEFAULT_LOCALE
+    workspace_retry_requested: bool = False
 
     @property
     def locale(self) -> Locale:
@@ -243,10 +244,11 @@ class WebRequestState:
             context=tuple(
                 (key, value)
                 for key, value in pairs
-                if key not in {"view", "fixture", "panel", "q", "mode", "lang"}
+                if key not in {"view", "fixture", "panel", "q", "mode", "lang", "workspace_retry"}
             ),
             lang=lang,
             default_locale=resolved_default_locale,
+            workspace_retry_requested=first("workspace_retry") == "1",
         )
 
     def query_pairs(self, *, view: ViewId | None = None) -> tuple[tuple[str, str], ...]:
@@ -439,14 +441,10 @@ class ManagerGUIApp:
         return self._default_locale
 
     def request_state(self, url: str = "/") -> WebRequestState:
-        """Parse stable query state and consume an explicit GUI retry control."""
+        """Parse stable query state without consulting owner storage."""
 
-        if ("workspace_retry", "1") in parse_qsl(urlsplit(url).query):
-            restart = getattr(self._provider, "_restart_retry_cycle", None)
-            if restart is not None:
-                restart()
         return WebRequestState.from_url(
-            _without_query_keys(url, {"workspace_retry"}),
+            url,
             default_fixture=self._default_fixture,
             default_locale=self._default_locale,
         )
@@ -454,6 +452,10 @@ class ManagerGUIApp:
     def read_model(self, state: WebRequestState) -> ManagerReadModel:
         """Read through the public seam; this method intentionally has no writes."""
 
+        if state.workspace_retry_requested:
+            restart = getattr(self._provider, "_restart_retry_cycle", None)
+            if restart is not None:
+                restart()
         provider = self._provider or _FixtureReadProvider(
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
@@ -742,8 +744,7 @@ class ManagerGUIApp:
             f' data-workspace-retry-seconds="{delay}"' if pending else ""
         )
         return (
-            f'<section class="workspace-read-warning" role="alert"{timer}'
-            f' data-workspace-cancelled="{escape(translator.t("workspace.cancelled"), quote=True)}">'
+            f'<section class="workspace-read-warning" role="alert"{timer}>'
             f'<h1 class="page-title" data-page-title tabindex="-1">{escape(translator.t("workspace.unsafe"))}</h1>'
             f'<p data-workspace-retry-status>{escape(schedule)}</p>'
             f'<a href="{escape(manual_url, quote=True)}" data-workspace-retry-manual>'

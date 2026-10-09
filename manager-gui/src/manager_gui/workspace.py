@@ -661,7 +661,6 @@ class RetryingWorkspaceDataProvider:
             if (
                 self._error is not None
                 and self._error.code == "workspace_unsafe_read"
-                and self._deadline is None
             ):
                 self._attempts = 0
                 self._acquire()

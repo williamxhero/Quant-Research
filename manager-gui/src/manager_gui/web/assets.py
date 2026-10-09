@@ -357,8 +357,18 @@ JS_TEMPLATE = r"""
       cancelled.searchParams.delete('workspace_retry');
       cancelled.searchParams.set('workspace_autoload', '0');
       window.history.replaceState(null, '', cancelled);
+      document.querySelectorAll('a[href]').forEach(link => {
+        if (link.hasAttribute('data-workspace-retry-manual')) return;
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        const target = new URL(href, window.location.href);
+        if (target.origin !== window.location.origin || !['/', '/index.html'].includes(target.pathname)) return;
+        if ([...target.searchParams.keys()].some(key => key.startsWith('ui_'))) return;
+        target.searchParams.set('workspace_autoload', '0');
+        link.setAttribute('href', target.pathname + target.search + target.hash);
+      });
       workspaceWarning.querySelector('[data-workspace-retry-status]').textContent =
-        workspaceWarning.dataset.workspaceCancelled;
+        messages.workspace_cancelled;
     });
     window.addEventListener('pagehide', () => window.clearTimeout(workspaceRetryTimer), { once: true });
   }
@@ -563,6 +573,7 @@ JS_TEMPLATE = r"""
 """
 
 JS_MESSAGE_KEYS = (
+    "workspace_cancelled",
     "copy_success",
     "copy_unavailable",
     "export_success",
@@ -571,6 +582,7 @@ JS_MESSAGE_KEYS = (
     "load_unavailable",
 )
 _JS_MESSAGE_CATALOG = {
+    "workspace_cancelled": "client.workspace_cancelled",
     "copy_success": "client.copy_success",
     "copy_unavailable": "client.copy_unavailable",
     "export_success": "client.export_success",
