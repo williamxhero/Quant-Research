@@ -220,14 +220,27 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--fixture conflicts with --provider workspace")
         if not args.workspace_root:
             parser.error("--provider workspace requires --workspace-root")
+        from ..workspace import (
+            RetryingWorkspaceDataProvider,
+            WorkspaceDependencyError,
+            workspace_launch_guidance,
+        )
+
         try:
             from strategy_workspace import WorkspaceError
         except ImportError as exc:
-            parser.error(f"Workspace provider dependency unavailable: {exc}")
-        from ..workspace import RetryingWorkspaceDataProvider
+            parser.error(
+                "Workspace 真实模式依赖不可用（Workspace provider dependency unavailable）："
+                f"{exc}\n"
+                + workspace_launch_guidance(args.workspace_root, args.port)
+            )
 
         try:
             provider = RetryingWorkspaceDataProvider(args.workspace_root)
+        except WorkspaceDependencyError as exc:
+            parser.error(
+                str(exc) + "\n" + workspace_launch_guidance(args.workspace_root, args.port)
+            )
         except WorkspaceError as exc:
             friendly = Translator(args.lang).t("workspace.startup_failed")
             parser.error(f"{friendly} Workspace provider startup failed [{exc.code}]: {exc}")

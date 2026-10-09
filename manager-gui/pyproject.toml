@@ -10,6 +10,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
 
+[project.optional-dependencies]
+workspace = [
+  "strategy-workspace>=0.2.0",
+  "tzdata",
+]
+
 [project.scripts]
 manager-gui = "manager_gui.__main__:main"
 manager-gui-dossier = "manager_gui.reader.dossier_cli:main"

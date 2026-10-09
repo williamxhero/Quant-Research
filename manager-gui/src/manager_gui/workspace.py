@@ -3,12 +3,14 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import inspect
 import json
 import logging
 import math
 import threading
 import time
 from copy import deepcopy
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -69,9 +71,83 @@ def _digest(value: Any) -> str:
     ).hexdigest()
 
 
+def workspace_launch_guidance(root: str, port: int) -> str:
+    # This command is for PowerShell; single quotes prevent user paths becoming shell code.
+    quoted_root = "'" + root.replace("'", "''") + "'"
+    return (
+        "从 QuantResearch 检出目录（包含 manager-gui 和 strategy-workspace 克隆）执行：\n"
+        "uv run --no-project --isolated --refresh-package quantresearch-manager-gui "
+        '--refresh-package strategy-workspace --with "./manager-gui[workspace]" '
+        '--with "./strategy-workspace" --default-index https://mirrors.aliyun.com/pypi/simple/ '
+        "python -I -m manager_gui.web "
+        f"--provider workspace --workspace-root {quoted_root} --port {port}\n"
+        "已安装的 site-packages 不是源码安装路径。"
+        "不要在运行实例的 venv 目录里跑会重建 venv 的 uv 命令。"
+    )
+
+
+class WorkspaceDependencyError(ImportError):
+    """The installed owner cannot supply the audited public read API."""
+
+
+def _workspace_api() -> tuple[Any, Any]:
+    import strategy_workspace as workspace
+
+    try:
+        distribution_version = version("strategy-workspace")
+    except PackageNotFoundError:
+        distribution_version = "未安装分发元数据"
+    origin = (
+        f"strategy-workspace 分发版本：{distribution_version}；"
+        f"导入文件：{getattr(workspace, '__file__', '未知')}"
+    )
+    try:
+        client = workspace.WorkspaceClient
+        error = workspace.WorkspaceError
+        signature = inspect.signature(client)
+        # Transparent **kwargs wrappers need not retain the constructor signature.
+        signature.bind(object(), read_only=True)
+        call_shapes = (
+            ("list_runs", (), {"limit": object()}),
+            ("list_records", (), {"limit": object()}),
+            ("get_registered_package", (object(),), {}),
+            (
+                "query_lineage",
+                (),
+                {
+                    "roots": [object()],
+                    "direction": "ancestors",
+                    "max_depth": 1,
+                    "page_size": 100,
+                    "relations": [],
+                    "record_types": [],
+                    "snapshot_token": None,
+                },
+            ),
+            ("read_artifact", (object(),), {}),
+        )
+        for name, args, kwargs in call_shapes:
+            method = getattr(client, name, None)
+            if not callable(method):
+                raise ValueError(f"WorkspaceClient.{name} 不是可调用的公共方法")
+            try:
+                method_signature = inspect.signature(method)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"WorkspaceClient.{name} 无法检查调用形状：{exc}") from exc
+            try:
+                method_signature.bind(object(), *args, **kwargs)
+            except TypeError as exc:
+                raise ValueError(
+                    f"WorkspaceClient.{name} 调用形状不兼容：{method_signature}；{exc}"
+                ) from exc
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise WorkspaceDependencyError(f"Workspace 真实模式 API 不兼容：{exc}\n{origin}") from exc
+    return client, error
+
+
 class WorkspaceDataProvider:
     def __init__(self, root: str | Path, *, limit: int = 100) -> None:
-        from strategy_workspace import WorkspaceClient, WorkspaceError
+        WorkspaceClient, WorkspaceError = _workspace_api()
 
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("limit must be between 1 and 10000")
