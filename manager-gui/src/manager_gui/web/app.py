@@ -667,7 +667,7 @@ class ManagerGUIApp:
             )
         with support_scope(
             model, normalized_url, translator, sample=projection.sample_data is not None,
-            active=deferred or state.mode is ProjectionMode.READER,
+            active=deferred or state.mode is not ProjectionMode.READER or state.view is not ViewId.ATLAS,
             deferred=deferred,
         ) as support:
             unsafe = next((e for e in model.errors if e.code == "workspace_unsafe_read"), None)
@@ -1153,13 +1153,15 @@ class ManagerGUIApp:
         legacy_story_modes = {story_mode.value for story_mode in StoryMode}
         search_mode = raw_mode if raw_mode in legacy_story_modes else state.mode.value
         raw_view_selected = state.mode is ProjectionMode.RAW
-        inspector_hidden = " hidden" if (
-            state.panel == "events" or raw_view_selected
-            or (plain_reading and state.panel != "inspector")
-        ) else ""
+        reader_plain_shell = plain_reading or (
+            state.mode is ProjectionMode.READER
+            and state.view is ViewId.ATLAS
+            and state.fixture is FixtureState.COMPLETE
+        )
+        inspector_hidden = " hidden" if state.panel == "events" or raw_view_selected else ""
         workspace_note = (
             translator.t("plain.result.sample" if reader_projection.sample_data else "plain.result.scope")
-            if plain_reading else translator.t(
+            if reader_plain_shell else translator.t(
                 "shell.workspace_snapshot" if reader_projection.sample_data else "shell.owner_workspace_snapshot",
                 snapshot=model.snapshot_token or translator.t("shell.snapshot_missing")
             )
@@ -1222,7 +1224,7 @@ class ManagerGUIApp:
             navigation = (
                 f'<div><nav class="nav-strip reading-navigation" aria-label="{escape(translator.t("nav.reading.aria"), quote=True)}">'
                 f'{ManagerGUIApp._render_navigation_static(state, raw_url, translator, reading_tasks=True)}</nav>'
-                f'<details class="professional-navigation"><summary>{escape(translator.t("nav.professional"))}</summary>'
+                f'<details class="professional-navigation" hidden aria-hidden="true"><summary>{escape(translator.t("nav.professional"))}</summary>'
                 f'{navigation}</details></div>'
             )
         language_switcher = ManagerGUIApp._render_language_switcher(state, raw_url, translator)
@@ -1251,6 +1253,11 @@ class ManagerGUIApp:
             f"{opaque_copy_button(model.snapshot_token, translator=translator)}"
             if model.snapshot_token
             else escape(snapshot)
+        )
+        snapshot_hidden = (
+            ' hidden aria-hidden="true"'
+            if state.mode is ProjectionMode.READER and state.view is ViewId.ATLAS
+            else ''
         )
         return f"""<!doctype html>
 <html lang="{state.locale.html_lang}">
@@ -1299,7 +1306,7 @@ class ManagerGUIApp:
       <dl class="inspector-list">
         <div class="inspector-item"><dt>{escape(translator.t("shell.read_model"))}</dt><dd>manager-read-model.v0</dd></div>
         <div class="inspector-item"><dt>{escape(translator.t("shell.status"))}</dt><dd>{escape(model.availability.status.value)}</dd></div>
-        <div class="inspector-item"><dt>{escape(translator.t("shell.snapshot"))}</dt><dd>{snapshot_markup}</dd></div>
+        <div class="inspector-item"{snapshot_hidden}><dt>{escape(translator.t("shell.snapshot"))}</dt><dd>{snapshot_markup}</dd></div>
         <div class="inspector-item"><dt>{escape(translator.t("shell.observed_at"))}</dt><dd>{escape(as_of)}</dd></div>
         {ManagerGUIApp._render_context_refs(state, translator)}
         {ManagerGUIApp._render_source_refs(model, translator)}

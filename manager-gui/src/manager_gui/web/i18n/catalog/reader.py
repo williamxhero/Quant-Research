@@ -251,8 +251,8 @@ ENTRIES: Mapping[str, M] = {
         "A fabricated example, not your research record.",
     ),
     "reader.atlas.content_unavailable": M(
-        "这项内容目前不可用；公开研究记录没有提供它，界面不会从数量或状态推断结果。",
-        "This content is currently unavailable; the public research record does not provide it, and no result is inferred from counts or status.",
+        "这项内容目前不可用；公开研究记录没有提供它，界面不会仅凭读取状态推断结果。",
+        "This content is currently unavailable; the public research record does not provide it, and no result is inferred from read status alone.",
     ),
     "reader.atlas.scope_unknown": M(
         "研究范围目前未记录；不能仅凭读取状态认定范围。",
