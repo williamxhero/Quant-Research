@@ -517,22 +517,94 @@ def test_atlas_reader_owner_story_links_only_use_public_locators() -> None:
 def test_real_atlas_reader_hides_system_metadata_and_shell_snapshot() -> None:
     markup = ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=reader&lang=en")
     document = parse_html(markup)
-    visible = " ".join(surface.text for surface in document.visible_text).lower()
+    visible = " ".join(surface.text for surface in document.visible_text)
+    lowered = visible.lower()
 
-    assert "research object" in visible
-    assert visible.index("research object") < visible.index("evidence and entry points")
+    assert visible.count("Research content") == 1
+    assert lowered.index("research content") < lowered.index("open inspector")
+    assert "A fabricated example, not your research record." in visible
     for system_term in (
-        "records",
-        "count",
-        "unit",
-        "derived",
+        "Expert research content",
+        "What this page answers",
+        "What can be confirmed currently",
+        "Derived from",
+        "Snapshot",
         "schema",
-        "snapshot",
-        "fixture-structure",
+        "records, not studies",
+        "Unit: records",
+        "fixture-workspace-campaigns",
+        "Observed at",
+        "strategy-workspace",
+        "public-record",
+        "fixture://",
     ):
-        assert system_term not in visible
-    assert "fixture-complete-v0" not in visible
-    assert "atlas-reading-metadata" not in visible
-    assert "atlas-reading-metadata" not in markup
+        assert system_term.lower() not in lowered
+    assert "fixture-complete-v0" not in lowered
+    assert "atlas-reading-metadata" not in lowered
     legacy = [node for node in document.elements if "reader-legacy-compat" in node.classes]
     assert legacy and all(node.hidden for node in legacy)
+
+
+def test_real_atlas_expert_keeps_professional_research_and_system_context() -> None:
+    markup = ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=expert&lang=en")
+    document = parse_html(markup)
+    visible = " ".join(surface.text for surface in document.visible_text)
+
+    assert "Expert research content" in visible
+    assert "Snapshot" in visible
+    assert "fixture-complete-v0" in visible
+    assert "Research content" in visible
+
+
+def test_real_atlas_reader_and_expert_share_research_fields_from_one_model() -> None:
+    model = ManagerReadModel(
+        data=cast(
+            JSONValue,
+            {
+                "research_object": "Shared research topic",
+                "research_question": "Shared research question",
+                "research_process": "Shared research process",
+                "research_result": "Shared research result",
+                "research_scope": "Shared research scope",
+                "research_gaps": [{"title": "Shared research unknown"}],
+                "records": [
+                    {
+                        "id": "shared-record",
+                        "record_type": "campaign",
+                        "title": "Shared research record",
+                        "research_gaps": [{"title": "Record-level unknown"}],
+                    }
+                ],
+            },
+        ),
+        source_refs=(),
+        as_of=None,
+        snapshot_token=None,
+        derivation=Derivation(kind="direct", version="v1"),
+        availability=Availability(status=ReadModelStatus.KNOWN, complete=True),
+    )
+
+    class OwnerProvider:
+        def read(self, resource: str = "atlas", *, snapshot_token: str | None = None):
+            del resource, snapshot_token
+            return model
+
+    app = ManagerGUIApp(OwnerProvider())
+    reader = " ".join(surface.text for surface in parse_html(
+        app.render("/?view=atlas&mode=reader&lang=en")
+    ).visible_text)
+    expert = " ".join(surface.text for surface in parse_html(
+        app.render("/?view=atlas&mode=expert&lang=en")
+    ).visible_text)
+
+    for field in (
+        "Shared research topic",
+        "Shared research question",
+        "Shared research process",
+        "Shared research result",
+        "Shared research scope",
+        "Shared research unknown",
+        "Record-level unknown",
+    ):
+        assert field in reader
+        assert field in expert

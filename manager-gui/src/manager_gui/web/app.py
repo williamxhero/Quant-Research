@@ -1156,7 +1156,12 @@ class ManagerGUIApp:
         reader_plain_shell = plain_reading or (
             state.mode is ProjectionMode.READER and state.view is ViewId.ATLAS
         )
-        inspector_hidden = " hidden" if state.panel == "events" or raw_view_selected else ""
+        reader_atlas = state.mode is ProjectionMode.READER and state.view is ViewId.ATLAS
+        inspector_hidden = (
+            " hidden"
+            if state.panel == "events" or raw_view_selected or reader_atlas
+            else ""
+        )
         workspace_note = (
             translator.t("plain.result.sample" if reader_projection.sample_data else "plain.result.scope")
             if reader_plain_shell else translator.t(
