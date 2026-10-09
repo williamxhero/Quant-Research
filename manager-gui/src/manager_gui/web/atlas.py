@@ -25,6 +25,7 @@ from ..provider import ManagerDataProvider
 from ..reader import ReaderProjection, project_read_model
 from .i18n import Translator
 from .i18n.catalog import l3_atlas_story as _l3_atlas_story_catalog
+from .locators import public_locator
 from .navigation import clear_filters_link, context_link, query_values
 from .reader_surface import ReaderPage, render_reader_surface
 from .research_story import ResearchStoryViewModel, StoryEntry
@@ -339,7 +340,7 @@ class AtlasViewModel:
         recently_changed = tuple(with_dates if recent_limit is None else with_dates[:recent_limit])
         blocked = tuple(record for record in records if record.is_blocked_or_unavailable)
         unresolved = tuple(record for record in records if record.is_unresolved)
-        gaps = _extract_gaps(model.data, records)
+        gaps = _extract_gaps(model.data, records, filters=selected_filters)
         frontier = tuple(record for record in records if record.frontier)
         return cls(
             read_model=model,
@@ -434,19 +435,26 @@ def _explicit_conclusion_state(item: Mapping[str, object]) -> str | None:
     return None
 
 
-def _explicit_gaps(item: Mapping[str, object]) -> tuple[str, ...]:
+def _explicit_gap_items(item: Mapping[str, object]) -> tuple[tuple[str, str | None], ...]:
     raw = item.get("research_gaps", item.get("gaps", ()))
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         return ()
-    gaps: list[str] = []
+    gaps: list[tuple[str, str | None]] = []
     for value in raw:
         if isinstance(value, Mapping):
-            text = _first_text(cast(Mapping[str, object], value), "title", "detail", "id")
+            mapping = cast(Mapping[str, object], value)
+            title = _first_text(mapping, "title", "name", "id", "detail")
+            detail = _first_text(mapping, "detail", "description")
         else:
-            text = _text(value)
-        if text is not None:
-            gaps.append(text)
+            title = _text(value)
+            detail = None
+        if title is not None:
+            gaps.append((title, detail))
     return tuple(gaps)
+
+
+def _explicit_gaps(item: Mapping[str, object]) -> tuple[str, ...]:
+    return tuple(title for title, _ in _explicit_gap_items(item))
 
 
 def _record_from_item(item: Mapping[str, object], group_type: str | None) -> AtlasRecord | None:
@@ -483,10 +491,16 @@ def _extract_records(data: object) -> tuple[AtlasRecord, ...]:
     return tuple(records)
 
 
-def _extract_gaps(data: object, records: Sequence[AtlasRecord]) -> tuple[AtlasResearchGap, ...]:
+def _extract_gaps(
+    data: object,
+    records: Sequence[AtlasRecord],
+    *,
+    filters: AtlasFilters,
+) -> tuple[AtlasResearchGap, ...]:
     mapping = _mapping(data)
     raw = () if mapping is None else mapping.get("research_gaps", ())
     result: list[AtlasResearchGap] = []
+    selected_ids = {record.record_id for record in records}
     if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
         for index, value in enumerate(raw, start=1):
             if isinstance(value, Mapping):
@@ -494,23 +508,27 @@ def _extract_gaps(data: object, records: Sequence[AtlasRecord]) -> tuple[AtlasRe
                 gap_id = _first_text(item, "id", "gap_id") or f"gap-{index}"
                 title = _first_text(item, "title", "name", "detail") or gap_id
                 detail = _first_text(item, "detail", "description")
+                record_id = _first_text(item, "record_id", "related_record_id")
+                if filters.as_query() and record_id is not None and record_id not in selected_ids:
+                    continue
                 result.append(
                     AtlasResearchGap(
                         gap_id=gap_id,
                         title=title,
                         detail=detail,
                         source=_source(item.get("source", item.get("source_ref"))),
-                        record_id=_first_text(item, "record_id", "related_record_id"),
+                        record_id=record_id,
                     )
                 )
             elif (text := _text(value)) is not None:
                 result.append(AtlasResearchGap(gap_id=f"gap-{index}", title=text))
     for record in records:
-        for index, gap in enumerate(record.research_gaps, start=1):
+        for index, (title, detail) in enumerate(_explicit_gap_items(record.payload), start=1):
             result.append(
                 AtlasResearchGap(
                     gap_id=f"{record.record_id}-gap-{index}",
-                    title=gap,
+                    title=title,
+                    detail=detail,
                     record_id=record.record_id,
                     source=record.source,
                 )
@@ -1001,6 +1019,15 @@ def _atlas_reading_entries(story: ResearchStoryViewModel, *keys: str) -> tuple[S
     return tuple(entry for chapter in story.chapters if chapter.key in selected for entry in chapter.entries)
 
 
+def _atlas_reading_gap_values(view: AtlasViewModel) -> tuple[str, ...]:
+    values: list[str] = []
+    for gap in view.research_gaps:
+        values.append(gap.title)
+        if gap.detail is not None and gap.detail != gap.title:
+            values.append(gap.detail)
+    return tuple(values)
+
+
 def _render_atlas_reading_entry(
     entry: StoryEntry,
     *,
@@ -1035,10 +1062,17 @@ def _render_atlas_reading_entry(
                 f'{escape(translator.t("reader.evidence_entry"))}</a>'
             )
         elif link.target:
-            links.append(
-                f'<a class="atlas-reading-source-link" href="{escape(link.target, quote=True)}">'
-                f'{escape(translator.t("reader.source"))}</a>'
-            )
+            target = public_locator(link.target)
+            label = link.label or translator.t("reader.source")
+            if target is not None:
+                links.append(
+                    f'<a class="atlas-reading-source-link" href="{escape(target, quote=True)}">'
+                    f'{escape(label)}</a>'
+                )
+            else:
+                links.append(
+                    f'<span class="atlas-reading-source-unavailable">{escape(label)}</span>'
+                )
     if links:
         content.append(f'<p class="atlas-reading-entry-links">{" · ".join(links)}</p>')
     return f'<article class="atlas-reading-entry">{"".join(content)}</article>'
@@ -1166,8 +1200,8 @@ def _render_atlas_reading_story(
     unknown_entries = tuple(
         entry for entry in _atlas_reading_entries(story, "failures") if allowed(entry)
     )
-    unknown_values = () if filtered else _atlas_reading_payload_values(
-        payload, "unknowns", "limitations"
+    unknown_values = _atlas_reading_gap_values(view) + (
+        () if filtered else _atlas_reading_payload_values(payload, "unknowns", "limitations")
     )
     evidence_entries = tuple(
         entry for entry in _atlas_reading_entries(story, "evidence") if allowed(entry)
@@ -1214,7 +1248,7 @@ def render_atlas_reading(
         f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
     )
     metadata = (
-        f'<div class="atlas-reading-metadata" aria-label="{escape(translator.t("reader.atlas.metadata"), quote=True)}">'
+        f'<div class="atlas-reading-metadata" hidden aria-hidden="true" aria-label="{escape(translator.t("reader.atlas.metadata"), quote=True)}">'
         f'{_render_filters(view, query_context=query_context, translator=translator)}'
         f'<p>{escape(translator.t("support.count", n=count))}</p>'
         f'<p>{escape(translator.t("support.count_unit"))}</p>'
