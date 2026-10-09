@@ -11,7 +11,7 @@ from ..fixtures import FixtureState
 from ..models import MANAGER_READ_MODEL_SCHEMA
 from ..provider import ManagerDataProvider
 from .app import ManagerGUIApp
-from .i18n import DEFAULT_LOCALE, Locale
+from .i18n import DEFAULT_LOCALE, Locale, Translator
 
 
 class ManagerGUIServer(ThreadingHTTPServer):
@@ -224,14 +224,16 @@ def main(argv: list[str] | None = None) -> int:
             from strategy_workspace import WorkspaceError
         except ImportError as exc:
             parser.error(f"Workspace provider dependency unavailable: {exc}")
-        from ..workspace import WorkspaceDataProvider
+        from ..workspace import RetryingWorkspaceDataProvider
 
         try:
-            provider = WorkspaceDataProvider(args.workspace_root)
+            provider = RetryingWorkspaceDataProvider(args.workspace_root)
         except WorkspaceError as exc:
-            parser.error(f"Workspace provider startup failed [{exc.code}]: {exc}")
+            friendly = Translator(args.lang).t("workspace.startup_failed")
+            parser.error(f"{friendly} Workspace provider startup failed [{exc.code}]: {exc}")
         except (OSError, ValueError) as exc:
-            parser.error(f"Workspace provider startup failed: {exc}")
+            friendly = Translator(args.lang).t("workspace.startup_failed")
+            parser.error(f"{friendly} Workspace provider startup failed: {exc}")
     elif args.workspace_root is not None:
         parser.error("--workspace-root requires --provider workspace")
     run_server(

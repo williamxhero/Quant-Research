@@ -4,6 +4,10 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
+import math
+import threading
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -577,3 +581,128 @@ class WorkspaceDataProvider:
             ),
             errors=deepcopy(tuple(self._errors)),
         )
+
+
+def unavailable_workspace_model(error: ReadModelError, *, snapshot_token=None) -> ManagerReadModel:
+    """Discard partial input when the public owner cannot prove a safe read."""
+    return ManagerReadModel(
+        {}, (), None, snapshot_token, Derivation("direct"),
+        Availability(ReadModelStatus.API_UNAVAILABLE, False, error.message, error.retryable),
+        (error,),
+    )
+
+
+class RetryingWorkspaceDataProvider:
+    """GUI acquisition policy around the unchanged frozen public-input adapter.
+
+    Requests share one finite, monotonic retry cycle. No background owner reads
+    occur, and a successfully acquired frozen input stays frozen.
+    """
+
+    _delays = (1, 2, 4, 8, 16)
+
+    def __init__(self, root: str | Path, *, factory=None, clock=None) -> None:
+        self._factory = factory or WorkspaceDataProvider
+        self._clock = clock or time.monotonic
+        self._root = root
+        self._lock = threading.Lock()
+        self._provider = None
+        self._error = None
+        self._attempts = 0
+        self._deadline = None
+        self._acquire(startup=True)
+
+    def _refused(self, error: ReadModelError) -> None:
+        self._provider = None
+        self._error = error
+        delay = (
+            self._delays[self._attempts]
+            if error.code == "workspace_unsafe_read" and self._attempts < len(self._delays)
+            else None
+        )
+        self._deadline = None if delay is None else self._clock() + delay
+        logging.getLogger(__name__).warning(
+            "Workspace acquisition refused [%s]; retry_attempts=%s next_delay=%s",
+            error.code, self._attempts, delay,
+        )
+
+    def _acquire(self, *, startup=False) -> None:
+        from strategy_workspace import WorkspaceError
+
+        try:
+            provider = self._factory(self._root)
+            # Nested public artifact/package/lineage errors must reject the whole
+            # acquisition, including views whose own catalog is unavailable.
+            probe = provider.read("atlas")
+        except WorkspaceError as exc:
+            if startup and exc.code != "workspace_unsafe_read":
+                raise
+            self._refused(ReadModelError(exc.code, str(exc), details=exc.details))
+            return
+        except Exception as exc:
+            if startup:
+                raise
+            self._refused(ReadModelError(
+                "provider_read_failed", str(exc) or type(exc).__name__,
+                details={"exception_type": type(exc).__name__, "owner_code": None},
+            ))
+            return
+        unsafe = next((e for e in probe.errors if e.code == "workspace_unsafe_read"), None)
+        if unsafe is not None:
+            self._refused(unsafe)
+            return
+        self._provider = provider
+        self._error = None
+        self._deadline = None
+
+    def _restart_retry_cycle(self) -> None:
+        """Private GUI control, never an owner or public provider mutation seam."""
+        with self._lock:
+            if (
+                self._error is not None
+                and self._error.code == "workspace_unsafe_read"
+                and self._deadline is None
+            ):
+                self._attempts = 0
+                self._acquire()
+
+    def _unavailable(self, snapshot_token) -> ManagerReadModel:
+        error = self._error
+        delay = (
+            max(0, math.ceil(self._deadline - self._clock()))
+            if self._deadline is not None else None
+        )
+        details = {
+            **(error.details or {}),
+            "retry_attempts": self._attempts,
+            "retry_limit": len(self._delays),
+            "next_delay_seconds": delay,
+            "stopped": self._deadline is None,
+        }
+        return unavailable_workspace_model(
+            ReadModelError(error.code, error.message, error.source_ref,
+                           self._deadline is not None, details),
+            snapshot_token=snapshot_token,
+        )
+
+    def read(self, resource="atlas", *, snapshot_token=None) -> ManagerReadModel:
+        from strategy_workspace import WorkspaceError
+
+        with self._lock:
+            if self._deadline is not None and self._clock() >= self._deadline:
+                self._attempts += 1
+                self._acquire()
+            if self._provider is None:
+                return self._unavailable(snapshot_token)
+            try:
+                model = self._provider.read(resource, snapshot_token=snapshot_token)
+            except WorkspaceError as exc:
+                self._attempts = 0
+                self._refused(ReadModelError(exc.code, str(exc), details=exc.details))
+                return self._unavailable(snapshot_token)
+            unsafe = next((e for e in model.errors if e.code == "workspace_unsafe_read"), None)
+            if unsafe is not None:
+                self._attempts = 0
+                self._refused(unsafe)
+                return self._unavailable(snapshot_token)
+            return model

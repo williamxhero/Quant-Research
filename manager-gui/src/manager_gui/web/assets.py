@@ -334,6 +334,35 @@ JS_TEMPLATE = r"""
     }
   });
 
+  // One navigation timer per blocked page. The provider owns the shared cap;
+  // the browser never adds the manual cycle-reset flag to automatic requests.
+  const workspaceWarning = document.querySelector('.workspace-read-warning');
+  let workspaceRetryTimer = null;
+  if (workspaceWarning) {
+    const delay = Number(workspaceWarning.dataset.workspaceRetrySeconds);
+    const url = workspaceWarning.dataset.workspaceRetryUrl;
+    if (url && Number.isFinite(delay) && delay >= 0 && delay <= 16) {
+      const target = new URL(url, window.location.href);
+      target.searchParams.delete('workspace_retry');
+      if (target.origin === window.location.origin) {
+        workspaceRetryTimer = window.setTimeout(() => {
+          window.location.assign(target);
+        }, delay * 1000);
+      }
+    }
+    workspaceWarning.querySelector('[data-workspace-retry-cancel]')?.addEventListener('click', () => {
+      window.clearTimeout(workspaceRetryTimer);
+      workspaceRetryTimer = null;
+      const cancelled = new URL(window.location.href);
+      cancelled.searchParams.delete('workspace_retry');
+      cancelled.searchParams.set('workspace_autoload', '0');
+      window.history.replaceState(null, '', cancelled);
+      workspaceWarning.querySelector('[data-workspace-retry-status]').textContent =
+        workspaceWarning.dataset.workspaceCancelled;
+    });
+    window.addEventListener('pagehide', () => window.clearTimeout(workspaceRetryTimer), { once: true });
+  }
+
   window.managerGUIReaderContract = async () => {
     const contract = document.getElementById('reader-contract');
     if (!contract) throw new Error();
