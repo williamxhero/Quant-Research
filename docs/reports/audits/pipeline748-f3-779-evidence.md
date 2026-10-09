@@ -6,7 +6,7 @@ Observation date: 2026-10-09 (UTC). This report records the current integrated c
 
 ## Frozen inputs and baseline
 
-- QuantResearch / Manager GUI revision: `cde32879073811dd94f4a2f9bc631fe3e803480c` (`fix(manager-gui): defer conditional package API preflight`), isolated worktree `worktree-pipeline748-f3-779`.
+- Effective QuantResearch / Manager GUI source: current `origin/main` `cf022843c7fbfe7e39e047cde482a404afa59b9a` (F1/F2 merged). The F3 worktree tip `ee3e14409d82b8440399d156a5ec994bf37e54bf` contains only the scope-reverting commit for an unmerged local follow-up, so the source files used for this observation match `origin/main`.
 - StrategyWorkspace revision: `e4e21afd594c7b9bd78910c27aab460babf7c9e8` (F1 merged owner implementation), isolated worktree `worktree-pipeline748-f3-779-sw`.
 - Integrated launch used Python 3.12.13, Manager GUI 0.1.0 and StrategyWorkspace 0.2.0, both loaded from the uv isolated environment's `site-packages`; neither source checkout nor fixture provider supplied the live HTTP responses.
 - Supported command shape was the F2 dual-source command: `uv run --no-project --isolated --python 3.12 --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "<manager-gui>[workspace]" --with "<strategy-workspace>" --default-index https://mirrors.aliyun.com/pypi/simple/ python -I -m manager_gui.web --provider workspace --workspace-root "<real workspace>" --port 0`.
@@ -19,9 +19,9 @@ The real workspace path was used only as the `--workspace-root` for the document
 
 A full recursive inventory included hidden entries, directories, files, locks, and sidecar-name matches. Each file record includes relative path, object type, byte length, SHA-256, nanosecond mtime/ctime, before/after stat stability, and read errors. Detailed inventories and raw HTTP logs stay in local `.runtime/f3-779/` and are not committed because they contain private path and workspace metadata.
 
-- Before scan: `2026-10-09T05:43:28.219399+00:00` through `05:43:33.621886+00:00`; **991 entries**: 753 files and 238 directories; **0 scan errors**, 0 unstable entries. The only lock-named entry was `locks/writer.lock`. No `-wal`, `-shm`, or `-journal` sidecar was present.
-- Live run: `2026-10-09T05:53:26Z` through `05:56:27Z`. Health and all 17 routes returned HTTP 200. HTML responses contained no fixture/sample marker. The extra `/?view=atlas&workspace_retry=1` request also returned HTTP 200 and did not switch provider. The browser warning, manual retry, and auto-retry indicators were absent because no blocked sidecar state occurred.
-- Final scan after successful integrated run: `2026-10-09T06:21:53.830785+00:00` through `06:21:58.176835+00:00`; again **991 entries**, 0 scan errors. Relative to the initial inventory: **0 added, 0 removed, 0 changed** across type, bytes, SHA-256, mtime, and ctime.
+- Before scan: `2026-10-09T06:40:24.782494+00:00` through `06:40:28.393790+00:00`; **991 entries**: 753 files and 238 directories; **0 scan errors**, 0 unstable entries. The only lock-named entry was `locks/writer.lock`. No `-wal`, `-shm`, or `-journal` sidecar was present.
+- Live run: `2026-10-09T06:40:46Z` through `06:43:43Z`. Health and all 17 routes returned HTTP 200. HTML responses contained no fixture/sample marker. The extra `/?view=atlas&workspace_retry=1` request also returned HTTP 200 and did not switch provider. The browser warning, manual retry, and auto-retry indicators were absent because no blocked sidecar state occurred.
+- Final scan after successful integrated run: `2026-10-09T06:44:03.019308+00:00` through `06:44:06.580920+00:00`; again **991 entries**, 0 scan errors. Relative to the initial inventory: **0 added, 0 removed, 0 changed** across type, bytes, SHA-256, mtime, and ctime.
 
 This proves that the sampled read-only invocation did not leave a persistent filesystem difference detectable by the full before/after inventories. It does **not** prove no transient create/delete or write-and-restore occurred. No OS-level file operation audit was enabled. The sidecar-blocked page path and recovery during a real sidecar window were not observed.
 
