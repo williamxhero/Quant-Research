@@ -8,6 +8,25 @@ from collections.abc import Mapping
 from ..translator import M
 
 ENTRIES: Mapping[str, M] = {
+    "workspace.unsafe": M(
+        "暂时无法提供只读快照：工作区可能正在被写入，或读取安全状态无法确认。不能证明读取完整且一致，请稍后重试；不会改用样例数据。",
+        "A read-only snapshot is temporarily unavailable: the workspace may be changing, or read safety cannot be confirmed. A complete, consistent read cannot be proven. Please retry later; sample data will not be substituted.",
+    ),
+    "workspace.wait": M(
+        "已自动重试 {attempts}/{limit} 次；下一次将在 {seconds} 秒后重试。",
+        "Automatic retries: {attempts}/{limit}; next retry in {seconds} seconds.",
+    ),
+    "workspace.stopped": M(
+        "自动重试已停止（{attempts}/{limit} 次）。安全条件恢复后可人工重试。",
+        "Automatic retries stopped ({attempts}/{limit}). Retry manually when safe conditions return.",
+    ),
+    "workspace.manual": M("人工重试", "Retry manually"),
+    "workspace.cancel": M("取消自动重试", "Cancel automatic retry"),
+    "workspace.cancelled": M("已取消浏览器自动读取。", "Browser automatic reads cancelled."),
+    "workspace.startup_failed": M(
+        "无法读取所选工作区。请检查路径、访问权限、版本与完整性；未启动服务，也未改用样例数据。",
+        "Cannot read the selected workspace. Check its path, permissions, version and integrity. The server was not started; sample data was not substituted.",
+    ),
     "shell.brand": M("{term:manager_gui}", "{term:manager_gui}"),
     "shell.title": M("{view} · {term:manager_gui}", "{view} · {term:manager_gui}"),
     "shell.skip_to_workspace": M("跳到工作区", "Skip to workspace"),
