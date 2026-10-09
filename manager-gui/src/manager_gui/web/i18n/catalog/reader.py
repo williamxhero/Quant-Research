@@ -472,6 +472,7 @@ ENTRIES: Mapping[str, M] = {
     "reader.as_of": M("截至时间", "As of"),
     "reader.snapshot": M("快照", "Snapshot"),
     "reader.source": M("来源", "Source"),
+    "reader.source.unavailable": M("无法打开或核对来源", "Source cannot be opened or verified"),
     "reader.derivation": M("派生方式", "Derivation"),
     "reader.limitation": M("限制", "Limitation"),
     "reader.gap": M("知识缺口", "Knowledge gap"),

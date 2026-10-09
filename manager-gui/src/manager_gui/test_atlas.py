@@ -510,13 +510,13 @@ def test_atlas_reader_owner_story_links_only_use_public_locators() -> None:
     assert 'href="javascript:' not in reader
     assert 'href="file:' not in reader
     assert 'href="not-a-public-locator"' not in reader
+    assert "Source cannot be opened or verified" in reader
     assert "javascript" in reader and "file" in reader and "locator" in reader
 
 
 def test_real_atlas_reader_hides_system_metadata_and_shell_snapshot() -> None:
-    document = parse_html(
-        ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=reader&lang=en")
-    )
+    markup = ManagerGUIApp().render("/?view=atlas&fixture=complete&mode=reader&lang=en")
+    document = parse_html(markup)
     visible = " ".join(surface.text for surface in document.visible_text).lower()
 
     assert "research object" in visible
@@ -533,5 +533,6 @@ def test_real_atlas_reader_hides_system_metadata_and_shell_snapshot() -> None:
         assert system_term not in visible
     assert "fixture-complete-v0" not in visible
     assert "atlas-reading-metadata" not in visible
+    assert "atlas-reading-metadata" not in markup
     legacy = [node for node in document.elements if "reader-legacy-compat" in node.classes]
     assert legacy and all(node.hidden for node in legacy)

@@ -11,7 +11,6 @@ not read private storage or infer conclusions from counts.
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -29,7 +28,7 @@ from .locators import public_locator
 from .navigation import clear_filters_link, context_link, query_values
 from .reader_surface import ReaderPage, render_reader_surface
 from .research_story import ResearchStoryViewModel, StoryEntry
-from .source_support import source_support_computation, source_support_entry
+from .source_support import source_support_entry
 from .status import DisplayState, display_state_for, render_operational_state, render_status_block
 
 LIFECYCLE_SPINE: tuple[str, ...] = (
@@ -1071,7 +1070,8 @@ def _render_atlas_reading_entry(
                 )
             else:
                 links.append(
-                    f'<span class="atlas-reading-source-unavailable">{escape(label)}</span>'
+                    f'<span class="atlas-reading-source-unavailable">'
+                    f'{escape(translator.t("reader.source.unavailable"))}: {escape(label)}</span>'
                 )
     if links:
         content.append(f'<p class="atlas-reading-entry-links">{" · ".join(links)}</p>')
@@ -1226,41 +1226,16 @@ def render_atlas_reading(
 ) -> str:
     """Render a plain-language projection of explicit Atlas research content."""
     view = AtlasViewModel.from_read_model(model, filters=AtlasFilters.from_query(query_context))
-    records = view.records
-    count = len({(record.record_type, record.record_id) for record in records})
-    payload = _mapping(model.data) or {}
-    pagination = _mapping(payload.get("pagination")) or {}
-    complete = model.availability.complete and not model.errors and not (
-        pagination.get("has_more") is True or pagination.get("next_cursor")
-    )
-    filters = json.dumps({
-        "applied": dict(view.filters.as_query()),
-        "retained_query": _query_pairs(query_context),
-    }, ensure_ascii=False)
-    computation = source_support_computation(
-        tuple(record.payload for record in records), filters=filters, complete=bool(complete)
-    )
     presentation_model = _atlas_presentation_model(model, sample=sample)
     sample_markup = (
         f'<p class="sample-note">{escape(translator.t("reader.atlas.sample"))}</p>' if sample else ""
-    )
-    pointers = "".join(
-        f'<p>{source_support_entry(ref.source_id) or ""}</p>' for ref in model.source_refs
-    )
-    metadata = (
-        f'<div class="atlas-reading-metadata" hidden aria-hidden="true" aria-label="{escape(translator.t("reader.atlas.metadata"), quote=True)}">'
-        f'{_render_filters(view, query_context=query_context, translator=translator)}'
-        f'<p>{escape(translator.t("support.count", n=count))}</p>'
-        f'<p>{escape(translator.t("support.count_unit"))}</p>'
-        f'<p>{escape(translator.t("support.count_complete" if complete else "support.count_partial"))}</p>'
-        f'<p>{computation}</p>{pointers}</div>'
     )
     return (
         '<section class="plain-result atlas-reading" data-integration-hook="atlas-view">'
         f'<h1 data-page-title tabindex="-1">{escape(translator.t("pipeline.atlas_title"))}</h1>'
         f'{sample_markup}{_render_atlas_reading_story(presentation_model, view, query_context=query_context, translator=translator, sample=sample)}'
         f'{_render_atlas_story_links(view, model=model, query_context=query_context, translator=translator, fixture=sample)}'
-        f'{metadata}</section>'
+        '</section>'
     )
 
 

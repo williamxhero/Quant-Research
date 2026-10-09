@@ -1154,9 +1154,7 @@ class ManagerGUIApp:
         search_mode = raw_mode if raw_mode in legacy_story_modes else state.mode.value
         raw_view_selected = state.mode is ProjectionMode.RAW
         reader_plain_shell = plain_reading or (
-            state.mode is ProjectionMode.READER
-            and state.view is ViewId.ATLAS
-            and state.fixture is FixtureState.COMPLETE
+            state.mode is ProjectionMode.READER and state.view is ViewId.ATLAS
         )
         inspector_hidden = " hidden" if state.panel == "events" or raw_view_selected else ""
         workspace_note = (
