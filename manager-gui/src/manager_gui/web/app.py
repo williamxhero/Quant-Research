@@ -165,6 +165,7 @@ class WebRequestState:
     context: tuple[tuple[str, str], ...] = ()
     lang: Locale | None = None
     default_locale: Locale = DEFAULT_LOCALE
+    workspace_retry_requested: bool = False
 
     @property
     def locale(self) -> Locale:
@@ -243,10 +244,11 @@ class WebRequestState:
             context=tuple(
                 (key, value)
                 for key, value in pairs
-                if key not in {"view", "fixture", "panel", "q", "mode", "lang"}
+                if key not in {"view", "fixture", "panel", "q", "mode", "lang", "workspace_retry"}
             ),
             lang=lang,
             default_locale=resolved_default_locale,
+            workspace_retry_requested=first("workspace_retry") == "1",
         )
 
     def query_pairs(self, *, view: ViewId | None = None) -> tuple[tuple[str, str], ...]:
@@ -450,6 +452,10 @@ class ManagerGUIApp:
     def read_model(self, state: WebRequestState) -> ManagerReadModel:
         """Read through the public seam; this method intentionally has no writes."""
 
+        if state.workspace_retry_requested:
+            restart = getattr(self._provider, "_restart_retry_cycle", None)
+            if restart is not None:
+                restart()
         provider = self._provider or _FixtureReadProvider(
             self._default_fixture_for_state(state), self._scope_for_state(state)
         )
@@ -463,6 +469,13 @@ class ManagerGUIApp:
             try:
                 model = provider.read(resource, snapshot_token=state.snapshot_token)
             except Exception as exc:
+                if self._provider is not None and getattr(exc, "code", None) == "workspace_unsafe_read":
+                    from ..workspace import unavailable_workspace_model
+
+                    return unavailable_workspace_model(
+                        ReadModelError(exc.code, str(exc), details=getattr(exc, "details", None)),
+                        snapshot_token=state.snapshot_token,
+                    )
                 if self._provider is None or resource not in RESOURCES:
                     raise
                 return ManagerReadModel(
@@ -487,6 +500,11 @@ class ManagerGUIApp:
                         ),
                     ),
                 )
+            unsafe = next((e for e in model.errors if e.code == "workspace_unsafe_read"), None)
+            if self._provider is not None and unsafe is not None:
+                from ..workspace import unavailable_workspace_model
+
+                return unavailable_workspace_model(unsafe, snapshot_token=state.snapshot_token)
             if (
                 self._provider is None
                 or state.snapshot_token is None
@@ -624,7 +642,7 @@ class ManagerGUIApp:
         """Render a complete HTML document for the shell route."""
 
         state = self.request_state(url)
-        normalized_url = with_lang(url, state.lang)
+        normalized_url = with_lang(_without_query_keys(url, {"workspace_retry"}), state.lang)
         model = self.read_model(state)
         if self._provider is not None and model.snapshot_token and state.snapshot_token is None:
             parts = urlsplit(normalized_url)
@@ -652,14 +670,18 @@ class ManagerGUIApp:
             active=deferred or state.mode is ProjectionMode.READER,
             deferred=deferred,
         ) as support:
-            rendered = self._render_page(
-                state, model, normalized_url, translator=translator, reader_projection=projection
+            unsafe = next((e for e in model.errors if e.code == "workspace_unsafe_read"), None)
+            rendered = (
+                self._render_workspace_warning(unsafe, normalized_url, translator)
+                if unsafe is not None else self._render_page(
+                    state, model, normalized_url, translator=translator, reader_projection=projection
+                )
             )
             plain_reading = isinstance(rendered, _PlainResultPage)
             page = rendered.markup if isinstance(rendered, _PlainResultPage) else rendered
             if page is not None:
                 resource = self._resource_for_view(state.view)
-                if self._provider is not None and resource in RESOURCES:
+                if self._provider is not None and resource in RESOURCES and unsafe is None:
                     page = render_resource_reading(
                         model, resource=resource, view=state.view.value,
                         title=navigation_label(state.view, translator),
@@ -700,6 +722,39 @@ class ManagerGUIApp:
             plain_reading=plain_reading,
         )
 
+    @staticmethod
+    def _render_workspace_warning(error, url, translator) -> str:
+        details = error.details or {}
+        attempts = details.get("retry_attempts", 0)
+        limit = details.get("retry_limit", 5)
+        delay = details.get("next_delay_seconds")
+        auto_url = _without_query_keys(url, {"workspace_retry", "ui_raw", "ui_support", "ui_reader"})
+        manual_base = _without_query_keys(auto_url, {"workspace_autoload"})
+        manual_url = manual_base + ("&" if urlsplit(manual_base).query else "?") + "workspace_retry=1"
+        cancelled = ("workspace_autoload", "0") in parse_qsl(urlsplit(url).query)
+        pending = delay is not None and not details.get("stopped", True) and not cancelled
+        schedule = translator.t(
+            "workspace.wait" if pending else "workspace.stopped",
+            attempts=attempts, limit=limit, seconds=delay,
+        )
+        if cancelled:
+            schedule = translator.t("workspace.cancelled")
+        timer = (
+            f' data-workspace-retry-url="{escape(auto_url, quote=True)}"'
+            f' data-workspace-retry-seconds="{delay}"' if pending else ""
+        )
+        return (
+            f'<section class="workspace-read-warning" role="alert"{timer}>'
+            f'<h1 class="page-title" data-page-title tabindex="-1">{escape(translator.t("workspace.unsafe"))}</h1>'
+            f'<p data-workspace-retry-status>{escape(schedule)}</p>'
+            f'<a href="{escape(manual_url, quote=True)}" data-workspace-retry-manual>'
+            f'{escape(translator.t("workspace.manual"))}</a> '
+            f'<button type="button" data-workspace-retry-cancel>'
+            f'{escape(translator.t("workspace.cancel"))}</button>'
+            f'<details><summary>{escape(error.code)}</summary>'
+            f'<pre translate="no">{escape(error.message)}</pre></details></section>'
+        )
+
     def render_reader_json(self, url: str) -> str:
         state = self.request_state(url)
         projection = self._project_reader_model(state, self.read_model(state))
@@ -720,7 +775,7 @@ class ManagerGUIApp:
         state = self.request_state(url)
         model = self.read_model(state)
         # Export data stays language-neutral and excludes presentation-only mode.
-        export_context = _without_query_keys(with_lang(url, None), {"mode"})
+        export_context = _without_query_keys(with_lang(url, None), {"mode", "workspace_retry"})
         return render_current_view_export_json(
             model,
             view=state.view.value,
