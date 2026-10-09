@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import inspect
 import json
 from copy import deepcopy
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -79,9 +81,49 @@ def workspace_launch_guidance(root: str, port: int) -> str:
     )
 
 
+class WorkspaceDependencyError(ImportError):
+    """The installed owner cannot supply the audited public read API."""
+
+
+def _workspace_api() -> tuple[Any, Any]:
+    import strategy_workspace as workspace
+
+    try:
+        distribution_version = version("strategy-workspace")
+    except PackageNotFoundError:
+        distribution_version = "未安装分发元数据"
+    origin = (
+        f"strategy-workspace 分发版本：{distribution_version}；"
+        f"导入文件：{getattr(workspace, '__file__', '未知')}"
+    )
+    try:
+        client = workspace.WorkspaceClient
+        error = workspace.WorkspaceError
+        signature = inspect.signature(client)
+        read_only = signature.parameters.get("read_only")
+        if read_only is None or read_only.kind not in (
+            inspect.Parameter.KEYWORD_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            raise ValueError(f"WorkspaceClient{signature} 未显式支持 read_only 关键字参数")
+        required = (
+            "list_runs",
+            "list_records",
+            "get_registered_package",
+            "query_lineage",
+            "read_artifact",
+        )
+        missing = [name for name in required if not callable(getattr(client, name, None))]
+        if missing:
+            raise ValueError("WorkspaceClient 缺少可调用的公共方法：" + "、".join(missing))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise WorkspaceDependencyError(f"Workspace 真实模式 API 不兼容：{exc}\n{origin}") from exc
+    return client, error
+
+
 class WorkspaceDataProvider:
     def __init__(self, root: str | Path, *, limit: int = 100) -> None:
-        from strategy_workspace import WorkspaceClient, WorkspaceError
+        WorkspaceClient, WorkspaceError = _workspace_api()
 
         if type(limit) is not int or not 1 <= limit <= 10000:
             raise ValueError("limit must be between 1 and 10000")

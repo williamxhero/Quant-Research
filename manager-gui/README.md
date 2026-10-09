@@ -11,8 +11,9 @@ checklist.
 
 ## Package and commands
 
-The package is a standalone Python 3.11 project with no production
-dependencies. From the QuantResearch repository root, run:
+The package is a standalone Python 3.11+ project. Fixture mode has no production
+dependencies; the optional `workspace` extra supports real Workspace reads.
+From the QuantResearch repository root, run:
 
 ```console
 # Focused S1 test suite and full package regression suite
@@ -49,6 +50,54 @@ canonical model and operator-exported public readback bytes. They do not discove
 records, access SQLite/private storage, call Runtime or Holdout APIs, or write a
 publication. Every command reports `published`, `runtime_submission_calls`, exact
 old-record/publication byte identity, and HTML boundary/accessibility checks.
+
+## 真实 Workspace 模式：受支持的一条命令
+
+前置条件：Windows 上已安装 `uv` 和 Python 3.11+（验收使用 Python 3.12）；
+从 QuantResearch 检出目录执行，目录中有 `./manager-gui` 和
+`./strategy-workspace` 源码克隆。StrategyWorkspace 分发版本至少为 `0.2.0`，
+实际 `WorkspaceClient` API 必须显式接受 `read_only` 关键字，并提供可调用的
+`list_runs`、`list_records`、`get_registered_package`、`query_lineage` 和
+`read_artifact`。同版本旧 wheel 不一定具备这些 API；不要用模块 `__version__`
+代替分发元数据或实际 API 检查。已安装的 `site-packages` 不是源码安装路径。
+
+`workspace` 可选依赖组声明 `strategy-workspace>=0.2.0` 和 Windows 时区数据库
+`tzdata`；`jsonschema` 和 `referencing` 由 StrategyWorkspace 的生产依赖传递安装。
+首次安装需要能访问包索引和构建依赖；无需全局安装 owner 包、手工补依赖或设置
+`PYTHONPATH`。安装目录和缓存必须位于研究工作区之外。
+
+工作区须已由 owner 公共写接口准备、完成迁移并冻结，当前不含
+`-wal`、`-shm` 或 `-journal` 边车。此模式只支持 StrategyWorkspace 已审计的
+Windows 零写入只读 API；其他平台或不满足只读安全条件的工作区将安全拒绝，
+不是通过初始化、迁移、建锁、checkpoint 或删除边车来补救。
+不要让安装命令操作真实研究工作区，也不要为演示改变其数据或边车。
+
+在 PowerShell 中把示例工作区路径替换为已有冻结工作区的绝对路径，并选择空闲端口：
+
+```powershell
+uv run --no-project --isolated --refresh-package quantresearch-manager-gui --refresh-package strategy-workspace --with "./manager-gui[workspace]" --with "./strategy-workspace" python -I -m manager_gui.web --provider workspace --workspace-root 'C:/research/frozen-workspace' --port 8765
+```
+
+打开 `http://127.0.0.1:8765/?view=atlas`，或切换至其他视图。
+`--provider workspace` 必须有 `--workspace-root`，不得同时指定 `--fixture`；
+缺依赖或 API 不兼容会在打开存储客户端之前显示中文原因及可复制命令，退出而非
+回退到样例数据。API 不兼容诊断记录分发版本、实际导入文件及不符的公开 API。
+路径使用 PowerShell 单引号；若路径含单引号，写为两个单引号，避免 shell 解释。
+
+命令中的两个 `--refresh-package` 都是必需的：本地源码内容变化而版本号未变化时，
+普通 `uv run --with` 可能命中旧 wheel。每次启动均刷新 GUI 和 StrategyWorkspace
+的同版本本地构建；`--isolated` 使用新的隔离运行环境，`--no-project` 不同步或
+重建当前项目的 venv，`python -I` 忽略继承的 `PYTHONPATH` 和用户 site-packages。
+无需删除用户缓存。这里支持的是显式本地源码安装，不是猜测包索引上同名包的内容。
+
+**不要在运行实例的 venv 目录里跑会重建 venv 的 uv 命令**。
+例如 `uv run --python` 切换解释器可能清空或替换运行实例的 `site-packages`。
+保持源码检出目录、构建／依赖缓存、隔离运行环境和冻结工作区分离；不要激活或
+向正在运行的 venv 塞依赖。更新时在源码检出目录更新两个克隆，再执行上述完整命令，
+先用另一空闲端口验证新实例及实际记录内容，然后按需停止旧实例；不要修改旧 venv。
+验收覆盖空缓存／新隔离环境、同版本旧 wheel 暖缓存、缺依赖和不兼容 API，
+并核对冻结工作区目录清单、内容哈希、大小和修改时间零变化，以及另一运行中 venv
+未改变。只读 HTTP `200` 本身不是数据或零写入证明。
 
 ## 语言与 `lang` 查询参数
 
