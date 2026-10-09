@@ -86,39 +86,17 @@ class WorkspaceDependencyError(ImportError):
     """The installed owner cannot supply the audited public read API."""
 
 
-def _workspace_origin(workspace: Any) -> str:
+def _workspace_api() -> tuple[Any, Any]:
+    import strategy_workspace as workspace
+
     try:
         distribution_version = version("strategy-workspace")
     except PackageNotFoundError:
         distribution_version = "未安装分发元数据"
-    return (
+    origin = (
         f"strategy-workspace 分发版本：{distribution_version}；"
         f"导入文件：{getattr(workspace, '__file__', '未知')}"
     )
-
-
-def _validate_workspace_method(
-    client: Any, name: str, args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> None:
-    method = getattr(client, name, None)
-    if not callable(method):
-        raise ValueError(f"WorkspaceClient.{name} 不是可调用的公共方法")
-    try:
-        method_signature = inspect.signature(method)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"WorkspaceClient.{name} 无法检查调用形状：{exc}") from exc
-    try:
-        method_signature.bind(object(), *args, **kwargs)
-    except TypeError as exc:
-        raise ValueError(
-            f"WorkspaceClient.{name} 调用形状不兼容：{method_signature}；{exc}"
-        ) from exc
-
-
-def _workspace_api() -> tuple[Any, Any]:
-    import strategy_workspace as workspace
-
-    origin = _workspace_origin(workspace)
     try:
         client = workspace.WorkspaceClient
         error = workspace.WorkspaceError
@@ -128,6 +106,7 @@ def _workspace_api() -> tuple[Any, Any]:
         call_shapes = (
             ("list_runs", (), {"limit": object()}),
             ("list_records", (), {"limit": object()}),
+            ("get_registered_package", (object(),), {}),
             (
                 "query_lineage",
                 (),
@@ -144,7 +123,19 @@ def _workspace_api() -> tuple[Any, Any]:
             ("read_artifact", (object(),), {}),
         )
         for name, args, kwargs in call_shapes:
-            _validate_workspace_method(client, name, args, kwargs)
+            method = getattr(client, name, None)
+            if not callable(method):
+                raise ValueError(f"WorkspaceClient.{name} 不是可调用的公共方法")
+            try:
+                method_signature = inspect.signature(method)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"WorkspaceClient.{name} 无法检查调用形状：{exc}") from exc
+            try:
+                method_signature.bind(object(), *args, **kwargs)
+            except TypeError as exc:
+                raise ValueError(
+                    f"WorkspaceClient.{name} 调用形状不兼容：{method_signature}；{exc}"
+                ) from exc
     except (AttributeError, TypeError, ValueError) as exc:
         raise WorkspaceDependencyError(f"Workspace 真实模式 API 不兼容：{exc}\n{origin}") from exc
     return client, error
@@ -188,24 +179,11 @@ class WorkspaceDataProvider:
         self._input["lineage_pages"] = []
         self._input["packages"] = []
         package_refs = []
-        package_api_validated = False
         for run in self._input["runs"]:
             ref = (run.get("request") or {}).get("strategy_package")
             if ref is None or ref in package_refs:
                 continue
             package_refs.append(ref)
-            if not package_api_validated:
-                try:
-                    _validate_workspace_method(
-                        type(self._client), "get_registered_package", (object(),), {}
-                    )
-                except (AttributeError, TypeError, ValueError) as exc:
-                    import strategy_workspace as workspace
-
-                    raise WorkspaceDependencyError(
-                        f"Workspace 真实模式 API 不兼容：{exc}\n{_workspace_origin(workspace)}"
-                    ) from exc
-                package_api_validated = True
             try:
                 package = self._client.get_registered_package(ref)
                 if package["package_ref"] != ref:

@@ -96,52 +96,6 @@ def cli_server(*args, env=None):
             assert "W2_READONLY_GUARD_READY" in stderr
 
 
-def test_workspace_provider_checks_conditional_package_api_only_when_needed(monkeypatch, tmp_path):
-    import types
-
-    class PublicError(Exception):
-        pass
-
-    class PublicClient:
-        runs = ({"run_id": "run-1", "status": "failed", "result": None},)
-
-        def __init__(self, root, *, read_only):
-            assert read_only is True
-
-        def list_runs(self, *, limit):
-            return self.runs[:limit]
-
-        def list_records(self, *, limit):
-            return []
-
-        def query_lineage(self, **query):
-            return {"records": [], "snapshot_token": "lineage-token", "next_cursor": None}
-
-        def read_artifact(self, uri):
-            raise AssertionError(f"Unexpected artifact read: {uri}")
-
-    module = types.ModuleType("strategy_workspace")
-    module.WorkspaceClient = PublicClient
-    module.WorkspaceError = PublicError
-    monkeypatch.setitem(sys.modules, "strategy_workspace", module)
-
-    from manager_gui.workspace import WorkspaceDataProvider, WorkspaceDependencyError
-
-    provider = WorkspaceDataProvider(tmp_path)
-    assert provider.read().data["public_input"]["packages"] == []
-
-    PublicClient.runs = [
-        {
-            "run_id": "run-with-package",
-            "request": {"strategy_package": {"strategy_id": "missing-api"}},
-            "status": "failed",
-            "result": None,
-        }
-    ]
-    with pytest.raises(WorkspaceDependencyError, match="Workspace 真实模式 API 不兼容"):
-        WorkspaceDataProvider(tmp_path)
-
-
 def test_cli_workspace_starts_existing_root_without_writes(workspace_root):
     before = inventory(workspace_root)
     with cli_server("--provider", "workspace", "--workspace-root", workspace_root) as base:
