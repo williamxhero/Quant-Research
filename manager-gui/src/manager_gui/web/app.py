@@ -825,10 +825,7 @@ class ManagerGUIApp:
                 return render_atlas_reading(
                     model, query_context=url, translator=translator,
                     sample=reader_projection.sample_data is not None,
-                ) + _legacy_reader_compat(render_atlas_view(
-                    cached, query_context=url, snapshot_token=model.snapshot_token,
-                    translator=translator, reader_projection=reader_projection,
-                ))
+                )
             return render_atlas_view(
                 cached,
                 query_context=url,
